@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ロゴカッター</title>
+<style>
+  :root {
+    --night: #0e1526;
+    --surface: #182238;
+    --surface-alt: #1f2c47;
+    --border: #2e3d5c;
+    --border-strong: #45577d;
+    --text: #edf0f7;
+    --text-sec: #a8b3c9;
+    --muted: #71809c;
+    --gold: #d4af61;
+    --gold-soft: rgba(212,175,97,.14);
+    --gold-border: rgba(212,175,97,.45);
+    --danger: #e08a8a;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: var(--night); color: var(--text);
+    padding: 20px 16px calc(28px + env(safe-area-inset-bottom));
+    line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header { margin-bottom: 18px; }
+  h1 {
+    font-family: "Hiragino Mincho ProN", "Yu Mincho", serif;
+    font-size: 24px; font-weight: 600; letter-spacing: .12em;
+    color: var(--gold); margin: 0 0 2px;
+  }
+  .sub { font-size: 12.5px; color: var(--muted); margin: 0; }
+
+  /* ---- drop zone: night sky ---- */
+  #drop {
+    position: relative; overflow: hidden;
+    border: 1.5px dashed var(--gold-border); border-radius: 14px;
+    padding: 34px 16px; text-align: center; cursor: pointer;
+    background:
+      radial-gradient(1px 1px at 12% 30%, rgba(255,255,255,.7) 50%, transparent 51%),
+      radial-gradient(1px 1px at 78% 22%, rgba(255,255,255,.55) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 55% 68%, rgba(212,175,97,.8) 50%, transparent 51%),
+      radial-gradient(1px 1px at 30% 80%, rgba(255,255,255,.4) 50%, transparent 51%),
+      radial-gradient(1px 1px at 90% 62%, rgba(255,255,255,.5) 50%, transparent 51%),
+      linear-gradient(170deg, #131c33, #0f1729);
+    transition: border-color .15s, background-color .15s;
+  }
+  #drop.over { border-color: var(--gold); background-color: #1a2440; }
+  #drop .icon { font-size: 34px; line-height: 1; }
+  #drop p { margin: 8px 0 2px; font-size: 15px; }
+  #drop .hint { font-size: 12.5px; color: var(--muted); margin: 0; }
+
+  #controls { display: none; margin-top: 20px; }
+
+  .preset { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .preset .lbl { font-size: 12.5px; color: var(--text-sec); margin-right: 2px; }
+
+  button {
+    font: inherit; font-size: 13.5px; padding: 9px 15px; cursor: pointer;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: var(--radius);
+    transition: background .12s, transform .05s, border-color .12s;
+    min-height: 40px;
+  }
+  button:hover { background: var(--surface-alt); }
+  button:active { transform: scale(.97); }
+  button:disabled { opacity: .45; cursor: default; }
+  .preset-btn[data-p="std"] { border-color: var(--gold-border); color: var(--gold); }
+  #share, #zip { background: var(--gold-soft); border-color: var(--gold-border); color: var(--gold); font-weight: 600; }
+
+  .links { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; }
+  .link-chk { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-sec); cursor: pointer; }
+  .link-chk input { accent-color: var(--gold); width: 17px; height: 17px; cursor: pointer; }
+
+  .sliders { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
+  .row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .row:last-child { margin-bottom: 0; }
+  label.sl { font-size: 13px; color: var(--text-sec); min-width: 58px; }
+  input[type=range] { flex: 1; min-width: 120px; accent-color: var(--gold); height: 28px; }
+  .val { font-size: 13px; font-weight: 600; min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  .tools { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
+  .meta { font-size: 12.5px; color: var(--muted); margin-bottom: 14px; min-height: 1.2em; }
+  .meta .err { color: var(--danger); }
+
+  .note {
+    font-size: 12.5px; color: var(--text-sec);
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--gold); border-radius: 8px;
+    padding: 10px 13px; margin-bottom: 16px;
+  }
+  .note b { color: var(--gold); font-weight: 600; }
+
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 7px; overflow: hidden; cursor: pointer; transition: border-color .12s;
+  }
+  .card:hover { border-color: var(--gold-border); }
+  .card img { width: 100%; height: auto; max-height: 180px; object-fit: contain; display: block; border-radius: 7px; background: #0c1220; }
+  .card .name { font-size: 10.5px; color: var(--muted); margin: 6px 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .tapHint { font-size: 10.5px; color: var(--gold); margin: 1px 2px 0; }
+
+  /* ---- full-res overlay for long-press save ---- */
+  #overlay {
+    display: none; position: fixed; inset: 0; z-index: 50;
+    background: rgba(8,12,22,.92); padding: 16px;
+    flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  }
+  #overlay.show { display: flex; }
+  #overlay img { max-width: 100%; max-height: 72vh; border-radius: 10px; background: #0c1220; }
+  #overlay .cap { font-size: 13.5px; color: var(--text); text-align: center; }
+  #overlay .cap b { color: var(--gold); }
+  #overlay .closeBtn { border-color: var(--gold-border); color: var(--gold); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ロゴカッター</h1>
+    <p class="sub">生成画像の端をまとめて切り落とし。処理はすべてこの端末内で完結し、画像はどこにも送信されません。</p>
+  </header>
+
+  <div id="drop">
+    <div class="icon">✂️</div>
+    <p>画像をここにドラッグ＆ドロップ</p>
+    <p class="hint">またはタップして選択（複数可・PNG / JPG / WebP）／ 追加で入れると今の一覧に足されます</p>
+    <input type="file" id="file" accept="image/png,image/jpeg,image/webp" multiple style="display:none">
+  </div>
+
+  <div id="controls">
+    <div class="preset">
+      <span class="lbl">プリセット</span>
+      <button class="preset-btn" data-p="std">★ 標準（22/25/3/3）</button>
+      <button class="preset-btn" data-p="br">右下ロゴ</button>
+      <button class="preset-btn" data-p="bl">左下ロゴ</button>
+      <button class="preset-btn" data-p="zero">ゼロに戻す</button>
+    </div>
+
+    <div class="links">
+      <label class="link-chk"><input type="checkbox" id="linkLR"> 左右を連動（同じ％）</label>
+      <label class="link-chk"><input type="checkbox" id="linkTB"> 上下を連動（同じ％）</label>
+    </div>
+
+    <div class="sliders">
+      <div class="row"><label class="sl">上から</label><input type="range" id="cutT" min="0" max="45" value="22" step="1"><span class="val" id="cutTOut">22%</span></div>
+      <div class="row"><label class="sl">下から</label><input type="range" id="cutB" min="0" max="45" value="25" step="1"><span class="val" id="cutBOut">25%</span></div>
+      <div class="row"><label class="sl">左から</label><input type="range" id="cutL" min="0" max="45" value="3" step="1"><span class="val" id="cutLOut">3%</span></div>
+      <div class="row"><label class="sl">右から</label><input type="range" id="cutR" min="0" max="45" value="3" step="1"><span class="val" id="cutROut">3%</span></div>
+    </div>
+
+    <div class="tools">
+      <button id="share">📤 まとめて共有（LINE・写真へ）</button>
+      <button id="zip">📦 ZIPでまとめて保存</button>
+      <button id="dlAll">⬇ 1枚ずつ連続保存（Mac向け）</button>
+      <button id="clear">🗑 クリア</button>
+    </div>
+    <div class="meta"><span id="count"></span><span id="dims"></span> <span id="status"></span></div>
+
+    <div class="note">
+      📱 <b>iPhone</b>：<b>「まとめて共有」を押す → LINEを選ぶ → 送り先を選ぶ</b>だけで全部一度に送れます。共有シートで「画像を保存」を選べば写真アプリに一括で入ります。<br>
+      💻 <b>Mac</b>：「ZIP」か「連続保存」で保存し、Mac版LINEのトークにまとめてドラッグ＆ドロップ。
+    </div>
+
+    <div id="grid"></div>
+  </div>
+</div>
+
+<div id="overlay" role="dialog" aria-modal="true">
+  <img id="overlayImg" alt="">
+  <div class="cap">この画像を<b>長押し</b>して「"写真"に追加」を選ぶと写真アプリに入ります</div>
+  <button class="closeBtn" id="overlayClose">閉じる</button>
+</div>
+
+<script>
+"use strict";
+
+/* ================= ZIP (store方式・UTF-8ファイル名対応) ================= */
+var CRC_TABLE = (function(){
+  var t = new Uint32Array(256);
+  for(var n=0;n<256;n++){ var c=n; for(var k=0;k<8;k++){ c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); } t[n]=c>>>0; }
+  return t;
+})();
+function crc32(b){ var c=0xFFFFFFFF; for(var i=0;i<b.length;i++){ c=CRC_TABLE[(c^b[i])&0xFF]^(c>>>8);} return (c^0xFFFFFFFF)>>>0; }
+function u16(n){ return [n&255,(n>>>8)&255]; }
+function u32(n){ return [n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]; }
+function dosDateTime(){
+  var d=new Date();
+  var t=(d.getHours()<<11)|(d.getMinutes()<<5)|Math.floor(d.getSeconds()/2);
+  var dt=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+  return {t:t, d:dt};
+}
+function buildZip(files){ /* files: [{name, bytes:Uint8Array}] */
+  var enc=new TextEncoder(), FLAG_UTF8=0x0800, dd=dosDateTime();
+  var local=[], central=[], offset=0;
+  files.forEach(function(f){
+    var nameB=enc.encode(f.name), crc=crc32(f.bytes), sz=f.bytes.length;
+    var lh=[].concat(u32(0x04034b50),u16(20),u16(FLAG_UTF8),u16(0),u16(dd.t),u16(dd.d),
+      u32(crc),u32(sz),u32(sz),u16(nameB.length),u16(0));
+    var la=new Uint8Array(lh.length+nameB.length+sz);
+    la.set(lh,0); la.set(nameB,lh.length); la.set(f.bytes,lh.length+nameB.length);
+    local.push(la);
+    var ch=[].concat(u32(0x02014b50),u16(20),u16(20),u16(FLAG_UTF8),u16(0),u16(dd.t),u16(dd.d),
+      u32(crc),u32(sz),u32(sz),u16(nameB.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset));
+    var ca=new Uint8Array(ch.length+nameB.length);
+    ca.set(ch,0); ca.set(nameB,ch.length);
+    central.push(ca);
+    offset+=la.length;
+  });
+  var cs=0; central.forEach(function(c){cs+=c.length;});
+  var eocd=new Uint8Array([].concat(u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(cs),u32(offset),u16(0)));
+  var out=new Uint8Array(offset+cs+eocd.length), p=0;
+  local.forEach(function(a){out.set(a,p);p+=a.length;});
+  central.forEach(function(a){out.set(a,p);p+=a.length;});
+  out.set(eocd,p);
+  return out;
+}
+
+/* ================= アプリ本体 ================= */
+(function(){
+  var PREVIEW_MAX = 520; /* プレビューはこの長辺まで縮小して軽く保つ */
+  var images = []; /* {img, name, isPng} */
+  var overlayUrl = null;
+
+  var $ = function(id){ return document.getElementById(id); };
+  var drop=$("drop"), fileInput=$("file"), controls=$("controls"), grid=$("grid");
+  var countEl=$("count"), dimsEl=$("dims"), statusEl=$("status");
+  var linkLR=$("linkLR"), linkTB=$("linkTB");
+  var overlay=$("overlay"), overlayImg=$("overlayImg");
+
+  var sl = {
+    T:{i:$("cutT"),o:$("cutTOut")}, B:{i:$("cutB"),o:$("cutBOut")},
+    L:{i:$("cutL"),o:$("cutLOut")}, R:{i:$("cutR"),o:$("cutROut")}
+  };
+  function updOut(k){ sl[k].o.textContent = sl[k].i.value + "%"; }
+  function pct(k){ return parseInt(sl[k].i.value,10)/100; }
+  function setStatus(msg, isErr){
+    statusEl.innerHTML = isErr ? '<span class="err">'+msg+'</span>' : msg;
+  }
+
+  /* ---- 読み込み ---- */
+  function loadFiles(files){
+    var arr = Array.prototype.slice.call(files);
+    var ok = arr.filter(function(f){ return /^image\/(png|jpeg|webp)$/.test(f.type); });
+    var heic = arr.filter(function(f){ return /\.heic$/i.test(f.name) || f.type==="image/heic"; });
+    var skipped = arr.length - ok.length;
+    if(heic.length){ setStatus("HEIC形式は読み込めません（PNG/JPGに変換してから入れてください）", true); }
+    else if(skipped>0){ setStatus(skipped+"件は画像として読み込めずスキップしました", true); }
+    if(!ok.length) return;
+    var done=0, failed=0;
+    ok.forEach(function(f){
+      var r=new FileReader();
+      r.onload=function(e){
+        var img=new Image();
+        img.onload=function(){
+          images.push({img:img, name:f.name, isPng:/png$/i.test(f.name)||f.type==="image/png"});
+          if(++done+failed===ok.length) finishLoad(failed);
+        };
+        img.onerror=function(){ failed++; if(done+failed===ok.length) finishLoad(failed); };
+        img.src=e.target.result;
+      };
+      r.onerror=function(){ failed++; if(done+failed===ok.length) finishLoad(failed); };
+      r.readAsDataURL(f);
+    });
+    controls.style.display="block";
+  }
+  function finishLoad(failed){
+    if(failed>0) setStatus(failed+"枚の読み込みに失敗しました", true);
+    scheduleRender();
+  }
+
+  /* ---- 切り抜き（scale=1で原寸、<1でプレビュー） ---- */
+  function cropCanvas(entry, scale){
+    var img=entry.img, w=img.naturalWidth, h=img.naturalHeight;
+    var top=Math.round(h*pct("T")), bot=Math.round(h*pct("B"));
+    var left=Math.round(w*pct("L")), right=Math.round(w*pct("R"));
+    var sw=Math.max(1, w-left-right), sh=Math.max(1, h-top-bot);
+    var s = scale || 1;
+    var c=document.createElement("canvas");
+    c.width=Math.max(1,Math.round(sw*s)); c.height=Math.max(1,Math.round(sh*s));
+    c.getContext("2d").drawImage(img,left,top,sw,sh,0,0,c.width,c.height);
+    c._fullW=sw; c._fullH=sh;
+    return c;
+  }
+  function previewScale(entry){
+    var img=entry.img, w=img.naturalWidth, h=img.naturalHeight;
+    var m=Math.max(w,h);
+    return m>PREVIEW_MAX ? PREVIEW_MAX/m : 1;
+  }
+
+  /* ---- プレビュー描画（縮小＋デバウンスで軽量） ---- */
+  var renderTimer=null;
+  function scheduleRender(){
+    shareCache=null; /* 設定が変わったら共有用データを作り直す */
+    clearTimeout(renderTimer);
+    renderTimer=setTimeout(render, 70);
+  }
+  function render(){
+    grid.innerHTML="";
+    var firstDims=null;
+    images.forEach(function(entry, idx){
+      var card=document.createElement("div"); card.className="card";
+      var c=cropCanvas(entry, previewScale(entry));
+      if(!firstDims) firstDims={w:c._fullW, h:c._fullH};
+      var im=document.createElement("img");
+      im.src=c.toDataURL("image/jpeg",0.82); /* プレビューは軽いJPEG */
+      im.alt=entry.name;
+      card.appendChild(im);
+      var nm=document.createElement("div"); nm.className="name"; nm.textContent=entry.name;
+      card.appendChild(nm);
+      var th=document.createElement("div"); th.className="tapHint"; th.textContent="タップで原寸表示（長押し保存）";
+      card.appendChild(th);
+      card.addEventListener("click", function(){ openOverlay(idx); });
+      grid.appendChild(card);
+    });
+    countEl.textContent = images.length + " 枚";
+    dimsEl.textContent = firstDims ? ("／ 出力例 " + firstDims.w + "×" + firstDims.h + "px") : "";
+  }
+
+  /* ---- 原寸オーバーレイ（長押しで写真に追加） ---- */
+  function openOverlay(idx){
+    var entry=images[idx];
+    if(!entry) return;
+    var c=cropCanvas(entry, 1);
+    c.toBlob(function(blob){
+      if(overlayUrl) URL.revokeObjectURL(overlayUrl);
+      overlayUrl=URL.createObjectURL(blob);
+      overlayImg.src=overlayUrl;
+      overlayImg.alt=entry.name;
+      overlay.classList.add("show");
+    }, entry.isPng?"image/png":"image/jpeg", 0.95);
+  }
+  function closeOverlay(){
+    overlay.classList.remove("show");
+    overlayImg.src="";
+    if(overlayUrl){ URL.revokeObjectURL(overlayUrl); overlayUrl=null; }
+  }
+  $("overlayClose").addEventListener("click", closeOverlay);
+  overlay.addEventListener("click", function(e){ if(e.target===overlay) closeOverlay(); });
+
+  /* ---- スライダー・連動 ---- */
+  function onSlide(k){
+    updOut(k);
+    if((k==="L"||k==="R")&&linkLR.checked){ var o=(k==="L")?"R":"L"; sl[o].i.value=sl[k].i.value; updOut(o); }
+    if((k==="T"||k==="B")&&linkTB.checked){ var o2=(k==="T")?"B":"T"; sl[o2].i.value=sl[k].i.value; updOut(o2); }
+    scheduleRender();
+  }
+  Object.keys(sl).forEach(function(k){ sl[k].i.addEventListener("input", function(){ onSlide(k); }); });
+  linkLR.addEventListener("change", function(){ if(linkLR.checked){ sl.L.i.value=sl.R.i.value; updOut("L"); scheduleRender(); } });
+  linkTB.addEventListener("change", function(){ if(linkTB.checked){ sl.T.i.value=sl.B.i.value; updOut("T"); scheduleRender(); } });
+
+  function setVals(t,b,l,r){
+    sl.T.i.value=t; sl.B.i.value=b; sl.L.i.value=l; sl.R.i.value=r;
+    Object.keys(sl).forEach(updOut); scheduleRender();
+  }
+  document.querySelectorAll(".preset-btn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var p=btn.getAttribute("data-p");
+      linkLR.checked=false; linkTB.checked=false;
+      if(p==="std") setVals(22,25,3,3);
+      else if(p==="br") setVals(0,10,0,12);
+      else if(p==="bl") setVals(0,10,12,0);
+      else setVals(0,0,0,0);
+    });
+  });
+
+  /* ---- ドロップ／選択 ---- */
+  drop.addEventListener("click", function(){ fileInput.click(); });
+  fileInput.addEventListener("change", function(){ loadFiles(fileInput.files); fileInput.value=""; });
+  drop.addEventListener("dragover", function(e){ e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", function(){ drop.classList.remove("over"); });
+  drop.addEventListener("drop", function(e){ e.preventDefault(); drop.classList.remove("over"); loadFiles(e.dataTransfer.files); });
+
+  $("clear").addEventListener("click", function(){
+    images=[]; grid.innerHTML=""; countEl.textContent=""; dimsEl.textContent=""; setStatus("");
+    controls.style.display="none"; fileInput.value="";
+  });
+
+  /* ---- 保存 ---- */
+  function baseName(n){ return n.replace(/\.[^.]+$/,""); }
+  function canvasToBytes(c, isPng){
+    return new Promise(function(res, rej){
+      c.toBlob(function(blob){
+        if(!blob){ rej(new Error("画像の変換に失敗")); return; }
+        var r=new FileReader();
+        r.onload=function(){ res(new Uint8Array(r.result)); };
+        r.onerror=function(){ rej(new Error("読み取りに失敗")); };
+        r.readAsArrayBuffer(blob);
+      }, isPng?"image/png":"image/jpeg", 0.95);
+    });
+  }
+
+  var shareCache=null; /* 準備済みのFile配列（設定変更で無効化） */
+
+  function canvasToFileBlob(entry){
+    return new Promise(function(res, rej){
+      cropCanvas(entry,1).toBlob(function(blob){
+        if(!blob){ rej(new Error("変換失敗")); return; }
+        res(blob);
+      }, entry.isPng?"image/png":"image/jpeg", 0.95);
+    });
+  }
+
+  function prepareShareFiles(onProgress){
+    var files=[], i=0;
+    return new Promise(function(resolve, reject){
+      function next(){
+        if(i>=images.length){ resolve(files); return; }
+        var entry=images[i];
+        canvasToFileBlob(entry).then(function(blob){
+          var ext=entry.isPng?"png":"jpg";
+          files.push(new File([blob], baseName(entry.name)+"_cropped."+ext, {type:entry.isPng?"image/png":"image/jpeg"}));
+          i++; if(onProgress) onProgress(i, images.length);
+          setTimeout(next, 0);
+        }).catch(reject);
+      }
+      next();
+    });
+  }
+
+  var shareBtn=$("share");
+  if(!(navigator.share && navigator.canShare)){
+    shareBtn.style.display="none"; /* 非対応ブラウザでは隠す */
+  }
+  shareBtn.addEventListener("click", function(){
+    if(!images.length) return;
+
+    /* 準備済みならその場で共有シートを開く（タップ直結で確実） */
+    if(shareCache && navigator.canShare({files: shareCache})){
+      navigator.share({files: shareCache}).then(function(){
+        setStatus("✓ 共有しました");
+      }).catch(function(err){
+        if(err && err.name==="AbortError"){ setStatus(""); }
+        else setStatus("共有できませんでした。「ZIPでまとめて保存」をお使いください", true);
+      });
+      return;
+    }
+
+    /* 未準備なら画像を用意してから共有を試みる */
+    shareBtn.disabled=true;
+    setStatus("画像を準備中… 0/"+images.length);
+    prepareShareFiles(function(done,total){ setStatus("画像を準備中… "+done+"/"+total); })
+      .then(function(files){
+        shareBtn.disabled=false;
+        if(!navigator.canShare({files: files})){
+          setStatus("この環境では複数画像の共有に非対応です。「ZIPでまとめて保存」をお使いください", true);
+          return;
+        }
+        shareCache=files;
+        return navigator.share({files: files}).then(function(){
+          setStatus("✓ 共有しました");
+        }).catch(function(err){
+          if(err && err.name==="AbortError"){ setStatus(""); }
+          else if(err && err.name==="NotAllowedError"){
+            /* 準備に時間がかかりタップ扱いが切れた場合：もう一度押せば即開く */
+            setStatus("準備できました。もう一度「まとめて共有」を押してください");
+          }
+          else setStatus("共有できませんでした。「ZIPでまとめて保存」をお使いください", true);
+        });
+      })
+      .catch(function(err){
+        shareBtn.disabled=false;
+        setStatus("準備に失敗: "+err.message, true);
+      });
+  });
+
+  $("dlAll").addEventListener("click", function(){
+    images.forEach(function(entry){
+      var c=cropCanvas(entry,1);
+      c.toBlob(function(blob){
+        var url=URL.createObjectURL(blob), a=document.createElement("a");
+        a.href=url; a.download=baseName(entry.name)+"_cropped."+(entry.isPng?"png":"jpg");
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function(){URL.revokeObjectURL(url);},1200);
+      }, entry.isPng?"image/png":"image/jpeg", 0.95);
+    });
+    setStatus("保存を開始しました（ブラウザが確認を出したら「許可」を）");
+  });
+
+  $("zip").addEventListener("click", function(){
+    if(!images.length) return;
+    var btn=$("zip"); btn.disabled=true;
+    setStatus("ZIP作成中… 0/"+images.length);
+    var seen={}, files=[], i=0;
+    function next(){
+      if(i>=images.length){
+        try{
+          var zipBytes=buildZip(files);
+          var blob=new Blob([zipBytes],{type:"application/zip"});
+          var url=URL.createObjectURL(blob), a=document.createElement("a");
+          a.href=url; a.download="cropped_"+new Date().toISOString().slice(0,10)+".zip";
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(function(){URL.revokeObjectURL(url);},1500);
+          setStatus("✓ "+files.length+"枚をZIP保存しました");
+        }catch(err){ setStatus("ZIP作成エラー: "+err.message, true); }
+        btn.disabled=false;
+        return;
+      }
+      var entry=images[i];
+      var nm=baseName(entry.name)+"_cropped."+(entry.isPng?"png":"jpg");
+      if(seen[nm]){ seen[nm]++; nm=baseName(entry.name)+"_cropped("+seen[nm]+")."+(entry.isPng?"png":"jpg"); } else seen[nm]=1;
+      canvasToBytes(cropCanvas(entry,1), entry.isPng).then(function(bytes){
+        files.push({name:nm, bytes:bytes});
+        i++; setStatus("ZIP作成中… "+i+"/"+images.length);
+        setTimeout(next, 0); /* 1枚ずつ順番に処理してメモリ山を低く */
+      }).catch(function(err){
+        i++; setStatus(entry.name+" をスキップ（"+err.message+"）", true);
+        setTimeout(next, 0);
+      });
+    }
+    next();
+  });
+})();
+</script>
+</body>
+</html>
