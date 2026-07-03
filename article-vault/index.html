@@ -363,17 +363,20 @@ function countOcc(text, word){
   return c;
 }
 // 本文を読んで「何年何月の記事か」「どの星座の内容か」を判定
-// 星座:冒頭400字(タイトル・導入)の登場を5倍の重みで評価。
-//       相性コーナー等で他星座が本文中に多発しても誤警告しにくい。
+// 星座の判定基準(重要度順):
+//   1.「◯◯座のあなた」という読者への呼びかけ(×20)…対象星座にしか使われない決定的な手がかり
+//   2. 冒頭400字での登場(×5)…タイトル・導入は対象星座が出やすい
+//   3. 本文全体での登場(×1)…天体イベントで他星座も頻出するため弱い手がかり
 // 月:冒頭400字にある年月を最優先。なければ本文全体で最も多く登場する年月。
 function analyzeBody(body, signId){
   const lead = body.slice(0, 400);
   const scores = {};
   SIGNS.forEach(s=>{
     const ws = SIGN_VARIANTS[s.id];
+    const youC  = ws.reduce((a,w)=>a+countOcc(body, w+"のあなた"),0);
     const leadC = ws.reduce((a,w)=>a+countOcc(lead,w),0);
     const allC  = ws.reduce((a,w)=>a+countOcc(body,w),0);
-    scores[s.id] = leadC*5 + allC;
+    scores[s.id] = youC*20 + leadC*5 + allC;
   });
   const target = scores[signId] || 0;
   let topId = null, top = 0;
