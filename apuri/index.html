@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="設置ヘルパー">
+<meta name="theme-color" content="#12131a">
+<meta name="robots" content="noindex, nofollow">
+<title>アプリ設置ヘルパー</title>
+<style>
+  :root{
+    --ink:#e8e6df; --ink-dim:#8f8d9e; --bg:#12131a; --panel:#1a1c28;
+    --line:#2c2f42; --line-2:#3a3e5a;
+    --amber:#e3b552; --amber-deep:#a67c2e;
+    --go:#6fb98a; --go-deep:#2f6b48;
+    --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sans:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",sans-serif;
+    --slab:"SF Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:
+      linear-gradient(180deg, #171922 0%, var(--bg) 30%),
+      var(--bg);
+    color:var(--ink); font-family:var(--sans); min-height:100vh; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:640px;margin:0 auto;padding:calc(22px + env(safe-area-inset-top)) 16px 90px}
+
+  /* ---- header ---- */
+  header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:8px}
+  .kick{font-family:var(--mono);font-size:11px;letter-spacing:.34em;color:var(--amber);text-transform:uppercase}
+  h1{font-size:25px;font-weight:800;letter-spacing:.02em;margin-top:12px;line-height:1.25}
+  h1 .thin{font-weight:400;color:var(--ink-dim)}
+  .lead{font-size:12.5px;color:var(--ink-dim);line-height:1.95;margin-top:12px}
+
+  /* ---- config panel ---- */
+  .config{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:22px}
+  .config .row{margin-bottom:16px}
+  .config .row:last-child{margin-bottom:0}
+  label{display:block;font-size:11px;letter-spacing:.12em;color:var(--amber);margin-bottom:8px;font-family:var(--mono);text-transform:uppercase}
+  input[type=text]{
+    width:100%;background:#0f1017;border:1px solid var(--line-2);border-radius:10px;
+    color:var(--ink);font-family:var(--mono);font-size:15px;padding:13px 14px;
+  }
+  input[type=text]:focus{outline:2px solid var(--amber-deep);outline-offset:1px}
+  .seg{display:flex;flex-wrap:wrap;gap:7px}
+  .seg button{
+    flex:1 1 auto;min-width:104px;background:#0f1017;border:1px solid var(--line-2);border-radius:10px;
+    color:var(--ink-dim);font-family:var(--sans);font-size:13px;padding:12px 8px;cursor:pointer;transition:none;
+  }
+  .seg button.on{background:var(--amber);border-color:var(--amber);color:#20180a;font-weight:700}
+  .seg button:active{border-color:var(--amber)}
+  .slug-preview{margin-top:9px;font-family:var(--mono);font-size:12px;color:var(--ink-dim);line-height:1.7;min-height:18px}
+  .slug-preview b{color:var(--go)}
+  .slug-preview .arrow{color:var(--amber);margin:0 6px}
+  .folder-edit{margin-top:11px;display:none}
+  .folder-edit.show{display:block}
+  .folder-edit label{font-size:10px;color:var(--ink-dim);margin-bottom:6px;text-transform:none;letter-spacing:.04em}
+  .folder-edit .fe-row{display:flex;gap:8px;align-items:center}
+  .folder-edit input{flex:1;font-family:var(--mono);font-size:14px;padding:11px 12px}
+  .folder-edit .reset{flex-shrink:0;background:#0f1017;border:1px solid var(--line-2);border-radius:9px;color:var(--ink-dim);font-size:12px;padding:11px 13px;cursor:pointer;font-family:var(--sans)}
+  .folder-edit .reset:active{border-color:var(--amber);color:var(--amber)}
+  .warn-box{margin-top:10px;background:#3a2a1a;border:1px solid var(--amber-deep);border-radius:10px;padding:11px 13px;font-size:12px;line-height:1.8;color:var(--amber)}
+  .warn-box.danger{background:#3a1e1e;border-color:#8a4444;color:#e0a0a0}
+  .reg-btn{width:100%;margin-top:12px;border:1px dashed var(--line-2);border-radius:11px;background:transparent;
+    color:var(--ink-dim);font-family:var(--sans);font-size:12.5px;padding:13px;cursor:pointer;line-height:1.6}
+  .reg-btn:active{border-color:var(--go);color:var(--go)}
+  .reg-btn.done{border-style:solid;border-color:var(--go-deep);color:var(--go);cursor:default}
+
+  /* ---- steps ---- */
+  .steps{margin-top:26px}
+  .step{
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:16px 16px 18px;margin-bottom:14px;position:relative;overflow:hidden;
+  }
+  .step::before{
+    content:attr(data-n);position:absolute;top:-6px;right:10px;font-family:var(--mono);
+    font-size:52px;font-weight:800;color:rgba(255,255,255,.035);letter-spacing:-.04em;
+  }
+  .step h2{font-size:14px;letter-spacing:.02em;margin-bottom:4px;display:flex;align-items:baseline;gap:9px}
+  .step h2 .tag{font-family:var(--mono);font-size:10px;color:var(--amber);letter-spacing:.14em;flex-shrink:0}
+  .step .note{font-size:12px;color:var(--ink-dim);line-height:1.9;margin-bottom:12px}
+  .step .note b{color:var(--ink);font-weight:600}
+  .step .note .k{font-family:var(--mono);background:#0f1017;border:1px solid var(--line-2);border-radius:5px;padding:1px 6px;font-size:11px;color:var(--amber)}
+
+  /* ---- copy field ---- */
+  .copy{
+    display:flex;align-items:stretch;gap:0;background:#0f1017;border:1px solid var(--line-2);
+    border-radius:11px;overflow:hidden;margin-bottom:9px;
+  }
+  .copy:last-child{margin-bottom:0}
+  .copy .val{
+    flex:1;min-width:0;font-family:var(--mono);font-size:13.5px;color:var(--ink);
+    padding:13px 14px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;
+    display:flex;align-items:center;
+  }
+  .copy .val::-webkit-scrollbar{height:0}
+  .copy button{
+    flex-shrink:0;border:none;border-left:1px solid var(--line-2);background:#181a24;
+    color:var(--amber);font-family:var(--sans);font-size:12px;font-weight:700;padding:0 16px;cursor:pointer;
+    letter-spacing:.04em;
+  }
+  .copy button:active{background:var(--amber);color:#20180a}
+  .copy button.done{background:var(--go-deep);color:#eafff2;border-left-color:var(--go-deep)}
+  .copy.wide .val{white-space:normal;word-break:break-all;line-height:1.6}
+
+  .caption{font-family:var(--mono);font-size:10px;color:var(--ink-dim);letter-spacing:.1em;margin:2px 0 7px;text-transform:uppercase}
+
+  .open-row{margin-top:4px}
+  .open-btn{
+    display:block;width:100%;text-align:center;text-decoration:none;
+    background:linear-gradient(180deg,var(--go) 0%,#5aa87a 100%);color:#0c2016;
+    font-size:15px;font-weight:800;letter-spacing:.04em;padding:16px;border-radius:13px;
+  }
+  .open-btn:active{filter:brightness(.94)}
+  .open-note{font-size:11px;color:var(--ink-dim);text-align:center;margin-top:9px;line-height:1.8}
+
+  .foot{margin-top:26px;padding-top:18px;border-top:1px solid var(--line);font-size:11px;color:var(--ink-dim);line-height:1.9}
+  .toast{
+    position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+    background:var(--amber);color:#20180a;font-size:13px;font-weight:700;padding:11px 22px;border-radius:999px;
+    opacity:0;pointer-events:none;transition:opacity .18s, transform .18s;z-index:40;white-space:nowrap;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kick">Nightsky Deploy Helper</div>
+    <h1>アプリ設置ヘルパー<br><span class="thin">入力するのは、変わる所だけ。</span></h1>
+    <div class="lead">アプリの名前を<b style="color:var(--ink)">日本語で打つだけ</b>。GitHub用のフォルダ名(英字)を自動で考えて、手入力する<b style="color:var(--ink)">フォルダ名・ファイル名・URL</b>をぜんぶ下に出します。各行の「コピー」を押して貼るだけ。長いURLを手で打つ必要はもうありません。</div>
+  </header>
+
+  <div class="config">
+    <div class="row">
+      <label for="acct">GitHubアカウント名</label>
+      <input type="text" id="acct" value="nightsky-tools" autocapitalize="off" autocorrect="off" spellcheck="false">
+    </div>
+    <div class="row">
+      <label for="repo">リポジトリ名</label>
+      <input type="text" id="repo" value="logo-cutter" autocapitalize="off" autocorrect="off" spellcheck="false">
+    </div>
+    <div class="row">
+      <label for="appName">アプリの名前(日本語でOK)</label>
+      <input type="text" id="appName" placeholder="例:せどり管理表" autocapitalize="off" autocorrect="off">
+      <div class="slug-preview" id="slugPreview"></div>
+      <div class="folder-edit" id="folderEdit">
+        <label>フォルダ名を手直しする(英小文字・数字・- のみ)</label>
+        <div class="fe-row">
+          <input type="text" id="folderOverride" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <button class="reset" id="folderReset">自動に戻す</button>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <label>よく使うアプリ(タップで名前が入ります)</label>
+      <div class="seg" id="appSeg"></div>
+    </div>
+  </div>
+
+  <div class="steps" id="steps"></div>
+
+  <div class="foot" id="foot"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// 既存アプリ(日本語名 → 実際のフォルダ名を固定)
+// ※既に設置済みのものは、自動生成ではなく既存のフォルダ名に合わせる
+const KNOWN = [
+  { name:"記事保管庫",         folder:"article-vault" },
+  { name:"命令書保管庫",       folder:"prompt-vault" },
+  { name:"鑑定書検品スキャナ", folder:"kantei-scanner" },
+  { name:"出生図計算機",       folder:"chart-calc" },
+];
+
+// ===== 日本語 → フォルダ名(ローマ字スラッグ)変換 =====
+const WORD_DICT = {
+  '記事':'article','保管庫':'vault','保管':'vault','命令書':'prompt','命令':'command',
+  '鑑定書':'kantei','鑑定':'kantei','検品':'inspect','検査':'scan','出生図':'natal',
+  '出生':'birth','計算機':'calc','計算':'calc','占い':'uranai','星座':'zodiac','星':'star',
+  '株':'stock','分析':'analysis','温度計':'thermo','記録':'log','管理':'manage',
+  'ツール':'tool','スキャナ':'scanner','スキャナー':'scanner','カッター':'cutter','ロゴ':'logo',
+  'メモ':'memo','帳':'book','表':'sheet','図':'chart','機':'machine','器':'tool',
+  'せどり':'sedori','物販':'buppan','仕入':'shiire','販売':'sales','顧客':'customer',
+  '予約':'booking','注文':'order','売上':'revenue','在庫':'stock','商品':'product',
+  'データ':'data','設定':'config','変換':'convert','生成':'generate','編集':'edit',
+  'マイ':'my','新':'new','旧':'old','用':'for','版':'ver','箱':'box','道具':'tool',
+  '検品前':'prescan','入稿':'submit','校閲':'proof','修正':'fix','リライト':'rewrite',
+};
+const HEPBURN = {'あ':'a','い':'i','う':'u','え':'e','お':'o','か':'ka','き':'ki','く':'ku','け':'ke','こ':'ko','さ':'sa','し':'shi','す':'su','せ':'se','そ':'so','た':'ta','ち':'chi','つ':'tsu','て':'te','と':'to','な':'na','に':'ni','ぬ':'nu','ね':'ne','の':'no','は':'ha','ひ':'hi','ふ':'fu','へ':'he','ほ':'ho','ま':'ma','み':'mi','む':'mu','め':'me','も':'mo','や':'ya','ゆ':'yu','よ':'yo','ら':'ra','り':'ri','る':'ru','れ':'re','ろ':'ro','わ':'wa','を':'o','ん':'n','が':'ga','ぎ':'gi','ぐ':'gu','げ':'ge','ご':'go','ざ':'za','じ':'ji','ず':'zu','ぜ':'ze','ぞ':'zo','だ':'da','ぢ':'ji','づ':'zu','で':'de','ど':'do','ば':'ba','び':'bi','ぶ':'bu','べ':'be','ぼ':'bo','ぱ':'pa','ぴ':'pi','ぷ':'pu','ぺ':'pe','ぽ':'po','きゃ':'kya','きゅ':'kyu','きょ':'kyo','しゃ':'sha','しゅ':'shu','しょ':'sho','ちゃ':'cha','ちゅ':'chu','ちょ':'cho','にゃ':'nya','にゅ':'nyu','にょ':'nyo','ひゃ':'hya','ひゅ':'hyu','ひょ':'hyo','みゃ':'mya','みゅ':'myu','みょ':'myo','りゃ':'rya','りゅ':'ryu','りょ':'ryo','ぎゃ':'gya','ぎゅ':'gyu','ぎょ':'gyo','じゃ':'ja','じゅ':'ju','じょ':'jo','びゃ':'bya','びゅ':'byu','びょ':'byo','ぴゃ':'pya','ぴゅ':'pyu','ぴょ':'pyo','ぁ':'a','ぃ':'i','ぅ':'u','ぇ':'e','ぉ':'o','ゃ':'ya','ゅ':'yu','ょ':'yo'};
+const kataToHira = s => s.replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0)-0x60));
+function romanizeKana(input){
+  let s = kataToHira(input), out = "", i = 0;
+  while(i < s.length){
+    const ch = s[i];
+    if(ch==='っ'){ let r=HEPBURN[s.substr(i+1,2)]||HEPBURN[s.substr(i+1,1)]; if(r) out+=(r[0]==='c'?'t':r[0]); i++; continue; }
+    if(ch==='ー'){ i++; continue; }
+    const two = s.substr(i,2);
+    if(HEPBURN[two]){ out+=HEPBURN[two]; i+=2; continue; }
+    if(HEPBURN[ch]){ out+=HEPBURN[ch]; i++; continue; }
+    if(/[a-zA-Z0-9]/.test(ch)){ out+=ch.toLowerCase(); i++; continue; }
+    out += " "; i++;
+  }
+  return out;
+}
+function slugifyRaw(input){
+  if(!input) return "";
+  // 全角英数字を半角に正規化
+  let s = input.replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  const keys = Object.keys(WORD_DICT).sort((a,b)=>b.length-a.length);
+  for(const k of keys){ s = s.split(k).join(" "+WORD_DICT[k]+" "); }
+  s = romanizeKana(s);
+  return s.toLowerCase().trim().replace(/\s+/g,"-").replace(/[^a-z0-9\-]/g,"").replace(/\-+/g,"-").replace(/^\-|\-$/g,"");
+}
+// 既存アプリ名なら固定フォルダ名を返す。それ以外は自動生成+フォールバック
+function nameToFolder(name){
+  const hit = KNOWN.find(k => k.name === name.trim());
+  if(hit) return { folder: hit.folder, known: true, auto: false };
+  const raw = slugifyRaw(name);
+  if(raw) return { folder: raw, known: false, auto: true };
+  // 漢字だらけ等で変換不能 → 日付ベースの安全名
+  const d = new Date();
+  const fb = "app-" + `${d.getMonth()+1}`.padStart(2,"0") + `${d.getDate()}`.padStart(2,"0") + "-" + `${d.getHours()}`.padStart(2,"0") + `${d.getMinutes()}`.padStart(2,"0");
+  return { folder: fb, known: false, auto: true, fallback: true };
+}
+
+const $ = (id)=>document.getElementById(id);
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+// hrefに入れる前に:http(s)のみ許可し、不正な文字を含むURLはリンクを無効化(#)する
+function safeUrl(u){
+  try{
+    // 二重スラッシュ(空のアカウント/リポジトリ名)を含むURLは無効化
+    if(/github\.(com|io)\/\//.test(u) || /\/\/[^\/]*\.github\.io\/\//.test(u)) return "#";
+    const url = new URL(u);
+    if(url.protocol !== "http:" && url.protocol !== "https:") return "#";
+    if(/["'<>\s]/.test(u)) return "#";
+    return u;
+  }catch(e){ return "#"; }
+}
+
+// セグメント生成(タップで日本語名を入力欄に流し込む)
+const seg = $("appSeg");
+for(const a of KNOWN){
+  const b = document.createElement("button");
+  b.textContent = a.name;
+  b.onclick = ()=>{
+    $("appName").value = a.name;
+    folderOverride = null;
+    render();
+  };
+  seg.appendChild(b);
+}
+
+// ===== 設置の記録(この端末に保存し、次回の衝突チェックに使う) =====
+const REG_KEY = "deploy-helper-registry-v1";
+let registry = [];
+let storageOk = true;
+try{
+  const t = "__t" + Date.now();
+  localStorage.setItem(t, "1"); localStorage.removeItem(t);
+  const raw = localStorage.getItem(REG_KEY);
+  if(raw){
+    const parsed = JSON.parse(raw);
+    if(Array.isArray(parsed)){
+      registry = parsed.filter(x => x && typeof x.name === "string" && typeof x.folder === "string").slice(0, 200);
+    }
+  }
+}catch(e){ storageOk = false; }
+function saveRegistry(){
+  if(!storageOk) return;
+  try{ localStorage.setItem(REG_KEY, JSON.stringify(registry.slice(0, 200))); }catch(e){}
+}
+function registerDeploy(name, folder){
+  registry = registry.filter(r => normFolder(r.folder) !== normFolder(folder));
+  registry.push({ name: String(name).slice(0,60), folder: normFolder(folder), ts: Date.now() });
+  saveRegistry();
+}
+function unregisterDeploy(folder){
+  registry = registry.filter(r => normFolder(r.folder) !== normFolder(folder));
+  saveRegistry();
+}
+
+// 手直し中のフォルダ名(ユーザーが上書きしたら優先)
+let folderOverride = null; // null=自動、文字列=手直し
+
+// 現在の入力から{表示名, フォルダ名, ...}を得る
+function current(){
+  const name = ($("appName").value || "").trim();
+  if(!name) return { name:"", folder:"", info:null, overridden:false };
+  const info = nameToFolder(name);
+  let folder = info.folder;
+  let overridden = false;
+  if(folderOverride !== null && folderOverride.trim() !== ""){
+    folder = folderOverride.trim().replace(/^\/+|\/+$/g,"");
+    overridden = true;
+  }
+  return { name, folder, info, overridden };
+}
+
+// このフォルダ名が既存アプリと衝突していないか(大文字/空白/末尾スラッシュを正規化して比較)
+function normFolder(f){ return String(f||"").trim().toLowerCase().replace(/^\/+|\/+$/g,""); }
+function collisionOf(name, folder){
+  const nf = normFolder(folder);
+  const self = KNOWN.find(k => k.name === name.trim());
+  if(self && normFolder(self.folder) === nf) return null;
+  const hit = KNOWN.find(k => normFolder(k.folder) === nf);
+  if(hit) return hit.name;
+  // 自分で設置した記録との衝突(同じ日本語名での再設置=上書き更新は許可)
+  const reg = registry.find(r => normFolder(r.folder) === nf);
+  if(reg && reg.name !== name.trim()) return reg.name + "(設置記録)";
+  return null;
+}
+
+async function copyText(text, btn){
+  let ok = false;
+  try{ await navigator.clipboard.writeText(text); ok = true; }
+  catch(e){
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try{ ok = document.execCommand("copy"); }catch(e2){}
+    ta.remove();
+  }
+  if(ok){
+    const old = btn.textContent;
+    btn.textContent = "済"; btn.classList.add("done");
+    toast("コピーしました");
+    setTimeout(()=>{ btn.textContent = old; btn.classList.remove("done"); }, 1400);
+  }else{
+    toast("コピーできませんでした(長押しで選択してください)", true);
+  }
+}
+let toastTimer = null;
+function toast(msg){
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove("show"), 1800);
+}
+
+// コピー行を作る
+function copyRow(value, {wide=false}={}){
+  const wrap = document.createElement("div");
+  wrap.className = "copy" + (wide ? " wide" : "");
+  const val = document.createElement("div");
+  val.className = "val"; val.textContent = value;
+  const btn = document.createElement("button");
+  btn.textContent = "コピー";
+  btn.onclick = ()=> copyText(value, btn);
+  wrap.appendChild(val); wrap.appendChild(btn);
+  return wrap;
+}
+function stepEl(n, tag, title, noteHtml){
+  const s = document.createElement("div");
+  s.className = "step"; s.dataset.n = n;
+  const h = document.createElement("h2");
+  h.innerHTML = `<span class="tag">${tag}</span><span>${title}</span>`;
+  s.appendChild(h);
+  if(noteHtml){
+    const p = document.createElement("div");
+    p.className = "note"; p.innerHTML = noteHtml;
+    s.appendChild(p);
+  }
+  return s;
+}
+
+function render(){
+  const acct = ($("acct").value || "").trim();
+  const repo = ($("repo").value || "").trim();
+  const { name, folder, info, overridden } = current();
+  const steps = $("steps");
+  steps.innerHTML = "";
+
+  // 手直し欄の表示制御(アプリ名が入っていて、既存の設置済みでない時だけ出す)
+  const feBox = $("folderEdit");
+  if(name && !(info && info.known && !overridden)){
+    feBox.classList.add("show");
+    // 自動生成の値をプレースホルダ的に反映(手直ししていない時のみ同期)
+    if(folderOverride === null) $("folderOverride").value = info ? info.folder : "";
+  }else{
+    feBox.classList.remove("show");
+  }
+
+  // スラッグのプレビュー表示
+  const prev = $("slugPreview");
+  const validFolder = /^[a-z0-9\-]+$/.test(folder);
+  if(!name){
+    prev.innerHTML = "アプリ名を入れると、フォルダ名を自動で作ります。";
+  }else if(overridden){
+    prev.innerHTML = `<b>${esc(name)}</b><span class="arrow">→</span>フォルダ名 <b>${esc(folder)}</b>(手直し済み)`;
+  }else if(info.known){
+    prev.innerHTML = `<b>${esc(name)}</b><span class="arrow">→</span>フォルダ名 <b>${esc(folder)}</b>(設置済みのアプリ)`;
+  }else if(info.fallback){
+    prev.innerHTML = `<b>${esc(name)}</b><span class="arrow">→</span>フォルダ名 <b>${esc(folder)}</b>(英字にできない文字が多いため日付で自動命名)`;
+  }else{
+    prev.innerHTML = `<b>${esc(name)}</b><span class="arrow">→</span>フォルダ名 <b>${esc(folder)}</b>(自動生成。気になれば下で手直しできます)`;
+  }
+
+  const base = `https://github.com/${acct}/${repo}`;
+  const pageUrl = `https://${acct}.github.io/${repo}/${folder}/`;
+
+  // 衝突・不正フォルダ名の警告(STEP2の前に大きく出す)
+  const collision = name ? collisionOf(name, folder) : null;
+  if(name && folder && !validFolder){
+    const w = document.createElement("div");
+    w.className = "warn-box danger";
+    w.innerHTML = "⚠ フォルダ名に使えない文字が含まれています。英小文字・数字・「-」だけにしてください(手直し欄で直せます)。";
+    steps.appendChild(w);
+  }else if(collision){
+    const w = document.createElement("div");
+    w.className = "warn-box danger";
+    w.innerHTML = `⚠ このフォルダ名 <b>${esc(folder)}</b> は、既に「${esc(collision)}」で使われています。<br>このまま設置すると<b>「${esc(collision)}」を上書きして壊してしまいます</b>。下の手直し欄で別の名前(例:${esc(folder)}-2)にしてください。`;
+    steps.appendChild(w);
+  }
+
+  // ---- STEP 1:GitHubを開く ----
+  {
+    const s = stepEl("1", "OPEN", "GitHubのリポジトリを開く",
+      `このURLを開いて、作業する置き場所(リポジトリ)に入ります。`);
+    s.appendChild(copyRow(base, {wide:true}));
+    const open = document.createElement("div");
+    open.className = "open-row";
+    open.style.marginTop = "9px";
+    const oa = document.createElement("a");
+    oa.className = "open-btn";
+    oa.href = safeUrl(base);
+    oa.target = "_blank"; oa.rel = "noopener";
+    oa.textContent = "GitHubを開く ↗";
+    open.appendChild(oa);
+    s.appendChild(open);
+    steps.appendChild(s);
+  }
+
+  // ---- STEP 2:フォルダを作る ----
+  {
+    const valid = /^[a-z0-9\-]+$/i.test(folder);
+    const s = stepEl("2", "FOLDER", "フォルダを作る",
+      `<b>Add file → Create new file</b> を開き、名前の欄に下をそのまま貼り付け。<span class="k">/</span> を境にフォルダになります。中身は空のまま <b>Commit changes</b>。`);
+    if(folder){
+      s.appendChild(copyRow(`${folder}/README.md`));
+    }
+    if(folder && !valid){
+      const warn = document.createElement("div");
+      warn.className = "note";
+      warn.style.color = "#e0a0a0"; warn.style.marginTop = "8px"; warn.style.marginBottom = "0";
+      warn.innerHTML = "⚠ フォルダ名は半角の英数字と「-」だけにしてください(日本語・スペースは使えません)。";
+      s.appendChild(warn);
+    }
+    if(!folder){
+      const warn = document.createElement("div");
+      warn.className = "note";
+      warn.style.marginTop = "0"; warn.style.marginBottom = "0";
+      warn.textContent = "↑ 上でアプリの名前を入れると、ここに貼り付ける文字が出ます。";
+      s.appendChild(warn);
+    }
+    steps.appendChild(s);
+  }
+
+  // ---- STEP 3:ファイル名 ----
+  {
+    const s = stepEl("3", "RENAME", "ファイルの名前を確認",
+      `Claudeからダウンロードしたアプリの<b>ファイル名を、必ずこれにする</b>。作ったフォルダを開いてから <b>Add file → Upload files</b> でドロップ → <b>Commit changes</b>。`);
+    s.appendChild(copyRow("index.html"));
+    const tip = document.createElement("div");
+    tip.className = "note";
+    tip.style.marginTop = "10px"; tip.style.marginBottom = "0";
+    tip.innerHTML = `<span class="k">index (1).html</span> や <span class="k">indexのコピー.html</span> だと表示されません。ぴったり <b>index.html</b> に。`;
+    s.appendChild(tip);
+    steps.appendChild(s);
+  }
+
+  // ---- STEP 4:開くURL ----
+  {
+    const s = stepEl("4", "LIVE", "できたアプリを開く",
+      `アップから<b>数分〜10分ほど</b>待ってから、このURLで開きます(すぐ開けなくても失敗ではありません)。開けたら <b>共有 → ホーム画面に追加</b> でアイコン化。`);
+    const cap = document.createElement("div");
+    cap.className = "caption"; cap.textContent = "公開URL";
+    s.appendChild(cap);
+    s.appendChild(copyRow(pageUrl, {wide:true}));
+    if(folder){
+      const open = document.createElement("div");
+      open.className = "open-row";
+      open.style.marginTop = "9px";
+      const oa = document.createElement("a");
+      oa.className = "open-btn";
+      oa.href = safeUrl(pageUrl);
+      oa.target = "_blank"; oa.rel = "noopener";
+      oa.textContent = "このアプリを開く ↗";
+      open.appendChild(oa);
+      s.appendChild(open);
+      const on = document.createElement("div");
+      on.className = "open-note";
+      on.textContent = "↑ ボタンで開けない時は、上のURLをコピーしてSafariのアドレス欄に貼ってください。";
+      s.appendChild(on);
+      // 設置完了の記録(新規アプリのみ・記録済みなら表示を変える)
+      if(!(info && info.known)){
+        const already = registry.find(r => normFolder(r.folder) === normFolder(folder));
+        const regBtn = document.createElement("button");
+        regBtn.className = "reg-btn" + (already ? " done" : "");
+        regBtn.textContent = already
+          ? `✓ 記録済み(「${already.name}」として)`
+          : "✓ 設置が終わったら押す(記録して、今後の上書き事故を防ぐ)";
+        regBtn.onclick = ()=>{
+          if(!storageOk){ toast("この開き方では記録を保存できません"); return; }
+          if(collisionOf(name, folder)){
+            toast("⚠ このフォルダ名は既存アプリと衝突しています。先に手直しで別名にしてください");
+            return;
+          }
+          registerDeploy(name, folder);
+          toast("記録しました。次からこのフォルダ名への衝突を警告します");
+          render();
+        };
+        s.appendChild(regBtn);
+        if(!storageOk){
+          const sw = document.createElement("div");
+          sw.className = "open-note";
+          sw.textContent = "⚠ この開き方では記録を保存できません(プレビュー等)。GitHub PagesのURLから開くと使えます。";
+          s.appendChild(sw);
+        }
+      }
+    }
+    steps.appendChild(s);
+  }
+
+  // ---- 設置済みアプリの全リンク集(控え用)----
+  const foot = $("foot");
+  foot.innerHTML = "";
+  const ft = document.createElement("div");
+  ft.innerHTML = `<div style="color:var(--amber);font-family:var(--mono);letter-spacing:.14em;font-size:10px;margin-bottom:10px">設置済みアプリのURL — まとめて控える用</div>`;
+  foot.appendChild(ft);
+  KNOWN.forEach(a=>{
+    const cap = document.createElement("div");
+    cap.className = "caption"; cap.textContent = a.name;
+    foot.appendChild(cap);
+    foot.appendChild(copyRow(`https://${acct}.github.io/${repo}/${a.folder}/`, {wide:true}));
+  });
+  // 自分で設置した記録
+  if(registry.length){
+    const rt = document.createElement("div");
+    rt.innerHTML = `<div style="color:var(--amber);font-family:var(--mono);letter-spacing:.14em;font-size:10px;margin:18px 0 10px">自分で設置したアプリ(この端末の記録)</div>`;
+    foot.appendChild(rt);
+    for(const r of [...registry].sort((a,b)=>(b.ts||0)-(a.ts||0))){
+      const cap = document.createElement("div");
+      cap.className = "caption";
+      cap.textContent = r.name;
+      const del = document.createElement("span");
+      del.textContent = " ✕記録を消す";
+      del.style.cssText = "color:#8a6a6a;cursor:pointer;margin-left:8px";
+      del.onclick = ()=>{
+        // 二度タップ確認:連打や位置ズレで隣の記録を巻き添えにしない
+        if(del.dataset.arm !== "1"){
+          del.dataset.arm = "1";
+          del.textContent = " もう一度タップで削除";
+          del.style.color = "#e0a0a0";
+          setTimeout(()=>{ del.dataset.arm = ""; del.textContent = " ✕記録を消す"; del.style.color = "#8a6a6a"; }, 2500);
+          return;
+        }
+        unregisterDeploy(r.folder);
+        toast(`「${r.name}」の記録を消しました`);
+        render();
+      };
+      cap.appendChild(del);
+      foot.appendChild(cap);
+      foot.appendChild(copyRow(`https://${acct}.github.io/${repo}/${r.folder}/`, {wide:true}));
+    }
+  }
+}
+
+// 入力の変化で再描画
+$("acct").addEventListener("input", render);
+$("repo").addEventListener("input", render);
+// アプリ名を変えたら手直しをリセット(新しい名前の自動生成に戻す)
+$("appName").addEventListener("input", ()=>{ folderOverride = null; render(); });
+// フォルダ名の手直し
+$("folderOverride").addEventListener("input", (e)=>{ folderOverride = e.target.value; render(); });
+$("folderReset").addEventListener("click", ()=>{
+  folderOverride = null;
+  const { info } = current();
+  $("folderOverride").value = info ? info.folder : "";
+  render();
+});
+// よく使うアプリのボタンでも手直しリセット
+render();
+</script>
+</body>
+</html>
