@@ -651,6 +651,10 @@ function hideUndoBar(){
 }
 async function undoPaste(){
   if(!lastPaste){ hideUndoBar(); return; }
+  // 月が(月まとめ削除などで)消えていても、復元先を作り直して確実に戻す
+  if(lastPaste.before && !state.months[lastPaste.monthKey]){
+    state.months[lastPaste.monthKey] = { signs: {} };
+  }
   const mo = state.months[lastPaste.monthKey];
   if(mo && mo.signs){
     if(lastPaste.before) mo.signs[lastPaste.signId] = lastPaste.before;
@@ -793,7 +797,8 @@ async function revertCurrent(){
 // ---- バックアップ書き出し・復元 ----
 function exportBackup(){
   try{
-    const blob = new Blob([JSON.stringify(state, null, 2)], {type:"application/json"});
+    const out = Object.assign({}, state, { syncHint: (sync && sync.gistId) ? { gistId: sync.gistId } : undefined });
+    const blob = new Blob([JSON.stringify(out, null, 2)], {type:"application/json"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     const n = new Date();
@@ -809,11 +814,24 @@ function importBackup(file){
   const r = new FileReader();
   r.onload = async ()=>{
     try{
-      const data = JSON.parse(r.result);
-      if(!data || typeof data !== "object" || (!data.months && !data.signs && !data.extras)) throw new Error("format");
-      if(!confirm("現在のデータをバックアップの内容で置き換えます。よろしいですか?")) return;
-      state = migrate(data);
-      if(await save()){ toast("復元しました"); render(); }
+      const parsed = JSON.parse(r.result);
+      const hint = parsed && parsed.syncHint && parsed.syncHint.gistId;
+      const data = migrate(parsed);
+      if(!data || typeof data !== "object" || !data.months) throw new Error("format");
+      const doMerge = confirm("復元方法を選んでください。\n\n[OK] 統合:いまのデータとバックアップを合体します(同じ記事は新しい方を採用。おすすめ)\n[キャンセル] 置き換え:いまのデータを消してバックアップの内容だけにします");
+      if(doMerge){
+        state = mergeStates(state, data);
+      }else{
+        if(!confirm("いまのデータは消えて、バックアップの内容だけになります。本当に置き換えますか?")) return;
+        state = data;
+      }
+      if(await save()){
+        toast(doMerge ? "統合して復元しました" : "置き換えて復元しました");
+        render();
+        if(hint && (!sync || !sync.gistId)){
+          setTimeout(()=> alert("このバックアップにはクラウド同期のID(同期ID)が含まれていました:\n\n" + hint + "\n\n新しい端末で同期を再開する場合は、「同期を設定」でトークンとパスワードと一緒にこのIDを入力してください。"), 300);
+        }
+      }
     }catch(e){
       toast("読み込めませんでした。ファイルを確認してください", true);
     }
@@ -947,12 +965,16 @@ function syncErrMsg(e){
   return "同期エラー:通信状態を確認してください";
 }
 function scheduleCloudPush(){
+  if(syncBusy) return;
   if(!sync) return;
   clearTimeout(pushTimer);
   pushTimer = setTimeout(()=> syncNow(false), 2000); // 押し込む前にも必ずクラウドを確認(同時編集対策)
 }
+let syncBusy = false;
 async function syncNow(showToast){
   if(!sync){ toast("先に「同期を設定」を押してください", true); return; }
+  if(syncBusy) return; // 二重実行の防止(クラウド保管庫の分裂対策)
+  syncBusy = true;
   setSyncStatus("同期中…");
   try{
     const cloud = await pullCloud();
@@ -985,6 +1007,8 @@ async function syncNow(showToast){
   }catch(e){
     setSyncStatus(syncErrMsg(e), true);
     if(showToast) toast("同期に失敗しました", true);
+  }finally{
+    syncBusy = false;
   }
 }
 async function setupSync(){
