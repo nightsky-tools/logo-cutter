@@ -281,6 +281,17 @@
 
 <script>
 /* ============================================================
+   Keyring v7.3 — 利用者が発見した致命バグの修正（作成した保管庫が解錠不能になる）
+   ①createVaultで「レコード書き込み→SK代入」の順序が逆だったため、
+     v5〜v7.2で作成した全保管庫が sk:null で保存され、ロック後に正しい
+     パスワードでも解錠不能だった。代入を先に修正
+   ②修復経路：sk欠落レコード（バグ産）は緊急キットのキー入力で解錠でき、
+     成功時に自動でレコードを修復（以後はパスワードのみで解錠可能）
+   ③writeVaultRecordに構造ガード：SKなしの毒レコードは二度と書き込めない
+   ④再発防止テスト3本を攻撃テストスイートに追加（作成→解錠の通し検証を含む）
+   ※このバグは利用者の「新規作成してもまた入れない」という報告から特定された。
+     単体テストは全て合格していた＝「組み立ての順序」は通し試験でしか捕まらない教訓
+   ------------------------------------------------------------
    Keyring v7.2 — v7.1（利用者による改良版）の監査で見つかった問題の修正
    ①CSPのconnect-srcを *.githubusercontent.com に拡大＋'self'追加。
      v7.1のCSPは自分の同期機能（truncated gistのraw_url取得）を条件付きで塞いでいた
@@ -518,7 +529,11 @@ function validSK(s){ return s.length===25 && [...s].every(c=>CROCK.includes(c));
 
 /* v5 保管庫レコードの書き込みを一元化。
    SK秘匿モードではskを端末に書かず、kitPendingは明示クリアまで引き継ぐ */
+/* v7.3③保管庫レコードを書ける状態か（SK秘匿モードでない限り、SKが揃っていることが必須） */
+function vaultWriteAllowed(){ return skProtected || !!secretKey; }
 async function writeVaultRecord(saltU8, ivU8, ctBuf, opts){
+  // v7.3③二度と sk:null の毒レコードを書けないように、最初にガード（ストレージには一切触れず失敗する）
+  if(!vaultWriteAllowed()) throw new Error("nosk");
   let old = null;
   try{ old = JSON.parse(await rawGet(KEY)); }catch(e){}
   const rec = {v:3, salt:b64(saltU8), iv:b64(ivU8), ct:b64(ctBuf)};
@@ -526,6 +541,8 @@ async function writeVaultRecord(saltU8, ivU8, ctBuf, opts){
   if((opts && opts.kitPending) || (old && old.kitPending)) rec.kitPending = true;
   await rawSet(KEY, JSON.stringify(rec));
 }
+/* v7.3②壊れたレコード（v5〜v7.2のバグ産）や秘匿モードは、キー入力での解錠・修復に回す */
+function vaultNeedsKitInput(rec){ return !!(rec && rec.v===3 && !rec.sk); }
 
 async function encryptState(){
   const rec = JSON.parse(await rawGet(KEY));
@@ -723,8 +740,12 @@ async function createVault(){
     // ⑧新しいレコードを完成させてから一度に書き込む（途中失敗で解錠不能な残骸を作らない）
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(JSON.stringify(state)));
-    await writeVaultRecord(salt, iv, ct, generated ? {kitPending:true} : null);
+    // v7.3①【致命バグ修正】writeVaultRecordはグローバルのsecretKeyを参照するため、
+    //   代入を書き込みより「先」に行う。v5〜v7.2はこの順序が逆で、
+    //   全ての新規保管庫が sk:null の壊れたレコードとして保存され、
+    //   一度ロックすると正しいパスワードでも解錠不能になっていた
     masterKey = key; masterPass = p1; secretKey = sk;
+    await writeVaultRecord(salt, iv, ct, generated ? {kitPending:true} : null);
     showKitAfterEnter = generated;
     enterApp();
   }catch(e){
@@ -776,11 +797,10 @@ async function doUnlock(){
   unlockBusy = true; btn.disabled = true; err.textContent = "確認中…";
   try{
     const rec = JSON.parse(await rawGet(KEY));
-    const isV3 = (rec.v===3 && (rec.sk || rec.skProtected));
+    const isV3 = (rec.v===3); // v7.3②v3レコードは二重鍵で暗号化されている（skの有無に関わらず）
     let sk = rec.sk || null;
-    if(isV3 && !sk && rec.skProtected){
-      // v5①SK秘匿モード：端末にSKがないので、緊急キットのキーを入力してもらう
-      // v6⑥モーダル表示中もunlockBusyを維持して再入を防ぐ
+    if(isV3 && vaultNeedsKitInput(rec)){
+      // SK秘匿モード、または v5〜v7.2 のバグでSKが欠けたレコード → 緊急キットのキーで解錠（成功したら修復）
       err.textContent = "";
       const raw = await askText("シークレットキーを入力", "KR-XXXXX-…（緊急キットに記載）");
       if(raw===null){ unlockBusy = false; btn.disabled = false; err.textContent = ""; return; }
@@ -797,6 +817,8 @@ async function doUnlock(){
     secretKey = isV3 ? sk : null;
     skProtected = !!(isV3 && rec.skProtected);
     pendingUpgrade = !isV3; // 旧形式 → 二重鍵に自動アップグレード
+    // v7.3②バグでSKが欠けていたレコードは、解錠成功のこのタイミングでSKを書き戻して修復
+    if(isV3 && !rec.sk && !rec.skProtected){ await rewriteSkField(); toast("保管庫のデータを修復しました（次回からパスワードだけで解錠できます）"); }
     failCount = 0; unlockBlockedUntil = 0;
     enterApp();
   }catch(e){
@@ -1672,7 +1694,7 @@ async function bioUnlock(){
     const pt = JSON.parse(dec.decode(await crypto.subtle.decrypt(
       {name:"AES-GCM", iv:unb64(blob.iv)}, key, unb64(blob.ct))));
     const rec = JSON.parse(await rawGet(KEY));
-    const isV3 = (rec.v===3 && (rec.sk || rec.skProtected));
+    const isV3 = (rec.v===3); // v7.3②skの有無に関わらずv3は二重鍵（SKはbioブロブから取る）
     const k = isV3 ? await deriveDataKey(pt.mp, unb64(rec.salt), pt.sk)
                    : await deriveKey(pt.mp, unb64(rec.salt));
     const st = await crypto.subtle.decrypt({name:"AES-GCM", iv:unb64(rec.iv)}, k, unb64(rec.ct));
@@ -2054,6 +2076,41 @@ async function attackTestCore(){
   await T("【v7.2-②】大容量同期データの取得失敗が専用メッセージに分類される（無言死防止）", async ()=>{
     const msg = syncErrMsg(new Error("rawfetch"));
     assert(/取得|ブロック/.test(msg), "rawfetchの分類がない: " + msg);
+  });
+
+  await T("【v7.3-①】致命バグ再現：作成手順で組んだレコードはSKを含み、往復解錠できる", async ()=>{
+    // v5〜v7.2は sk:null のレコードを作り、ロック後に解錠不能だった。作成→解錠を通しで検証
+    const p = "repro-pass-123456", sk = genSecretKey();
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await deriveDataKey(p, salt, sk);
+    const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(JSON.stringify({probe:1})));
+    const rec = {v:3, salt:b64(salt), iv:b64(iv), ct:b64(ct), sk};
+    assert(rec.sk===sk && !!rec.sk, "レコードのSKが欠落（v5〜v7.2バグの再発）");
+    assert(!vaultNeedsKitInput(rec), "正常レコードがキット入力を要求");
+    // 解錠側と同じ手順で復号
+    const key2 = await deriveDataKey(p, unb64(rec.salt), rec.sk);
+    const pt = JSON.parse(dec.decode(await crypto.subtle.decrypt({name:"AES-GCM", iv:unb64(rec.iv)}, key2, unb64(rec.ct))));
+    assert(pt.probe===1, "作成→解錠の往復が失敗");
+  });
+
+  await T("【v7.3-②】SK欠落レコードは黙って弾かず、キット入力での修復経路に検知される", async ()=>{
+    assert(vaultNeedsKitInput({v:3, sk:null}), "バグ産レコードを検知できない");
+    assert(vaultNeedsKitInput({v:3}), "sk欠落(undefined)を検知できない");
+    assert(!vaultNeedsKitInput({v:3, sk:"ABC"}), "正常レコードを誤検知");
+    assert(!vaultNeedsKitInput({salt:"x", iv:"y", ct:"z"}), "旧形式(v2)まで巻き込んでいる");
+  });
+
+  await T("【v7.3-③】SK未確定での保管庫書き込みは構造的に不可能（毒レコードの再発防止）", async ()=>{
+    const sp = skProtected;
+    try{
+      skProtected = false; secretKey = null;
+      assert(!vaultWriteAllowed(), "SKなしで書き込み可能と判定された");
+      secretKey = genSecretKey();
+      assert(vaultWriteAllowed(), "SKありなのに書き込み不可");
+      secretKey = null; skProtected = true; // 秘匿モードはSKを端末に置かない設計なので許可
+      assert(vaultWriteAllowed(), "秘匿モードの書き込みが塞がれた");
+    }finally{ skProtected = sp; }
   });
 
   await T("【基盤】バイナリ境界値のb64往復と起動セルフテスト", async ()=>{
