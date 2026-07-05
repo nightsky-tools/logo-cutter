@@ -153,6 +153,16 @@
   .icon-btn.danger{color:var(--danger);border-color:#5a3040}
 
   .ov-body{flex:1;overflow-y:auto;padding:18px 16px 170px;-webkit-overflow-scrolling:touch}
+  .part-card{background:var(--card);border:1px solid var(--card-edge);border-radius:12px;margin-bottom:12px;overflow:hidden}
+  .part-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--card-edge)}
+  .part-head .pt{font-family:var(--serif);color:var(--gold-soft);font-size:13px;letter-spacing:.1em}
+  .part-head .pc{font-size:10px;color:var(--ink-dim);font-family:var(--mono)}
+  .part-copy{background:var(--night-2);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;
+    padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);flex-shrink:0}
+  .part-copy:active{background:var(--gold);color:#1a1508}
+  .part-text{padding:12px;font-family:var(--serif);font-size:13px;line-height:1.9;letter-spacing:.02em;
+    white-space:pre-wrap;word-break:break-word;color:var(--ink);max-height:170px;overflow-y:auto;
+    -webkit-overflow-scrolling:touch;opacity:.85}
   .article-text{
     font-family:var(--serif);font-size:15px;line-height:2.0;letter-spacing:.03em;
     white-space:pre-wrap;word-break:break-word;color:var(--ink);
@@ -215,7 +225,7 @@
   .toast.err{background:var(--danger);color:#fff}
 
   .undo-bar{
-    position:fixed;left:50%;bottom:34px;transform:translateX(-50%);
+    position:fixed;left:50%;bottom:150px;transform:translateX(-50%);
     background:var(--card);border:1px solid var(--gold-dim);border-radius:999px;
     display:none;align-items:center;gap:14px;padding:10px 10px 10px 20px;
     z-index:21;box-shadow:0 4px 20px rgba(0,0,0,.5);max-width:92vw;
@@ -295,6 +305,7 @@
       <summary id="vCompileSum"></summary>
       <div class="cl" id="vCompileList"></div>
     </details>
+    <div id="vParts" style="display:none"></div>
     <div class="article-text" id="vText"></div>
   </div>
   <div class="ov-foot">
@@ -815,6 +826,7 @@ async function pasteAndSave(id){
     else toast(`${labelOf(state.current)}の${s.nm}に保存しました(${text.length.toLocaleString()}字)`);
     showUndoBar(`${s.nm}にペーストしました`);
     render();
+    openSign(id); // ペースト直後に記事を開く:下部に[タイトル][無料A][有料B]が表示される
   }
 }
 
@@ -866,12 +878,40 @@ function openSign(id){
   else check = " ／ ⚠ 本文に星座名なし";
   if(a.month && a.month !== boardMonth) check += ` ／ ⚠ ${a.month}の記事の可能性`;
   document.getElementById("vMeta").textContent = `${month} ／ ${d.body.length.toLocaleString()}字 ／ 更新 ${d.updated||"—"}${check}`;
-  document.getElementById("vText").textContent = d.body;
   document.getElementById("vRevert").style.display = (d.prev && d.prev.body) ? "block" : "none";
-  document.getElementById("splitRow").classList.add("on"); // 星座記事は分割コピー可
-  // 整形プレビュー(3ボタンのコピー時に適用される内容を事前表示。保存された本文は変わらない)
+  document.getElementById("splitRow").classList.remove("on");
+  // 整形プレビュー+3分割ビュー(保存された本文は変わらない。分割はこの場で計算)
   {
     const r = compileParts(d.body);
+    const vp = document.getElementById("vParts");
+    const vt = document.getElementById("vText");
+    if(r.ok){
+      // 3分割された画面:タイトル/無料A/有料B をそれぞれの枠で表示し、枠ごとにコピー
+      const parts = [];
+      if(r.title) parts.push({label:"タイトル(noteのタイトル欄へ)", text:r.title, msg:"タイトルをコピーしました"});
+      parts.push({label:"無料エリア A(はじめに+第1章)", text:r.partA, msg:"無料エリア(A)をコピーしました"});
+      parts.push({label:"有料エリア B(第2章〜第9章)", text:r.partB, msg:"有料エリア(B)をコピーしました"});
+      vp.innerHTML = parts.map((p,i)=>`
+        <div class="part-card">
+          <div class="part-head"><span><span class="pt">${esc(p.label)}</span> <span class="pc">${p.text.length.toLocaleString()}字</span></span>
+          <button class="part-copy" data-i="${i}">コピー</button></div>
+          <div class="part-text">${esc(p.text)}</div>
+        </div>`).join("");
+      vp.querySelectorAll(".part-copy").forEach(btn=>{
+        btn.onclick = async ()=>{
+          const p = parts[+btn.dataset.i];
+          await copyText(p.text, p.msg + "(" + p.text.length.toLocaleString() + "字)");
+          btn.textContent = "コピーしました";
+          setTimeout(()=>{ btn.textContent = "コピー"; }, 1600);
+        };
+      });
+      vp.style.display = "block";
+      vt.style.display = "none";
+    }else{
+      vp.style.display = "none";
+      vt.style.display = "block";
+      vt.textContent = d.body;
+    }
     const sum = document.getElementById("vCompileSum");
     const list = document.getElementById("vCompileList");
     let cls = "", label = "";
@@ -895,7 +935,10 @@ function openExtra(i){
   const x = state.extras[i];
   document.getElementById("vTitle").textContent = x.title || "無題";
   document.getElementById("vMeta").textContent = `${x.month ? x.month+" ／ " : ""}${(x.body||"").length.toLocaleString()}字 ／ 更新 ${x.updated||"—"}`;
-  document.getElementById("vText").textContent = x.body || "";
+  document.getElementById("vParts").style.display = "none";
+  const vtE = document.getElementById("vText");
+  vtE.style.display = "block";
+  vtE.textContent = x.body || "";
   document.getElementById("vRevert").style.display = (x.prev && x.prev.body) ? "block" : "none";
   document.getElementById("splitRow").classList.remove("on"); // その他テキストは通常コピーのみ
   document.getElementById("vCompile").style.display = "none";
@@ -982,6 +1025,7 @@ async function saveEditor(){
     toast(msg, err);
     hideOverlay("editor");
     render();
+    if(current.kind === "sign" && body.trim()) openSign(current.id); // 保存後すぐ3分割ボタンへ
   }
 }
 async function deleteCurrent(){
