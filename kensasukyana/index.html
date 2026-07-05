@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>星野ソラ 検品前スキャナ v1.4</title>
+<style>
+  :root{
+    --bg:#0c111f;
+    --panel:#141b2e;
+    --panel2:#1a2340;
+    --line:#2a3555;
+    --ink:#dde4f5;
+    --dim:#8b96b8;
+    --star:#e8c56a;
+    --ok:#6fd39a;
+    --warn:#e8c56a;
+    --bad:#f08a8a;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace,"Hiragino Sans","Noto Sans JP",sans-serif;
+    --sans:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.7;}
+  header{padding:26px 22px 18px;border-bottom:1px solid var(--line);
+    background:
+      radial-gradient(1px 1px at 12% 30%, #fff8 0, transparent 100%),
+      radial-gradient(1px 1px at 28% 70%, #fff5 0, transparent 100%),
+      radial-gradient(1.5px 1.5px at 46% 25%, #ffd97a99 0, transparent 100%),
+      radial-gradient(1px 1px at 63% 60%, #fff6 0, transparent 100%),
+      radial-gradient(1px 1px at 78% 35%, #fff4 0, transparent 100%),
+      radial-gradient(1.5px 1.5px at 91% 65%, #ffd97a88 0, transparent 100%),
+      linear-gradient(180deg,#10182e,#0c111f);}
+  header h1{margin:0;font-size:19px;font-weight:700;letter-spacing:.06em;}
+  header h1 .v{color:var(--star);font-size:12px;margin-left:8px;letter-spacing:.1em;}
+  header p{margin:6px 0 0;color:var(--dim);font-size:12px;}
+  main{max-width:980px;margin:0 auto;padding:20px 22px 80px;}
+  .grid{display:grid;grid-template-columns:1fr;gap:14px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;}
+  .card h2{margin:0 0 8px;font-size:13px;color:var(--star);letter-spacing:.08em;font-weight:700;}
+  .card .note{color:var(--dim);font-size:12px;margin:0 0 8px;}
+  textarea,input[type=text],select{width:100%;background:#0e1424;border:1px solid var(--line);border-radius:8px;
+    color:var(--ink);padding:10px 12px;font-family:var(--sans);font-size:13px;line-height:1.6;}
+  textarea:focus,input:focus,select:focus{outline:2px solid #3d4f86;border-color:#3d4f86;}
+  textarea{resize:vertical;}
+  #blob{min-height:260px;}
+  .row{display:flex;gap:12px;flex-wrap:wrap;}
+  .row > div{flex:1;min-width:220px;}
+  label{display:block;font-size:12px;color:var(--dim);margin:0 0 4px;}
+  .runbar{display:flex;align-items:center;gap:14px;margin:18px 0;}
+  button{cursor:pointer;border:none;border-radius:8px;font-family:var(--sans);font-weight:700;}
+  #run{background:var(--star);color:#1a1608;font-size:15px;padding:12px 34px;letter-spacing:.1em;}
+  #run:hover{filter:brightness(1.08);}
+  #copy,#copyfixed{background:var(--panel2);color:var(--ink);border:1px solid var(--line);font-size:13px;padding:10px 20px;display:none;}
+  #copyfixed{border-color:#6b5a28;color:var(--star);}
+  #copy:hover,#copyfixed:hover{background:#223058;}
+  #copiedmsg{color:var(--ok);font-size:12px;display:none;}
+  #summary{display:none;margin:0 0 14px;}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;}
+  .chip{border-radius:999px;padding:3px 12px;font-size:12px;font-weight:700;border:1px solid;}
+  .chip.ok{color:var(--ok);border-color:#2c5a41;background:#12281c;}
+  .chip.warn{color:var(--warn);border-color:#6b5a28;background:#2a2410;}
+  .chip.bad{color:var(--bad);border-color:#6b3232;background:#2a1414;}
+  #report{display:none;background:#0e1424;border:1px solid var(--line);border-radius:10px;padding:16px;
+    white-space:pre-wrap;font-family:var(--mono);font-size:12.5px;line-height:1.75;overflow-x:auto;}
+  #report .ok{color:var(--ok);} #report .warn{color:var(--warn);} #report .bad{color:var(--bad);}
+  #report .sec{color:var(--star);font-weight:700;}
+  #report .dim{color:var(--dim);}
+  footer{color:var(--dim);font-size:11px;text-align:center;padding:14px;}
+  @media (max-width:640px){ main{padding:14px 12px 60px;} }
+</style>
+</head>
+<body>
+<header>
+  <h1>星野ソラ 検品前スキャナ<span class="v">v1.4</span></h1>
+  <p>機械的走査(列挙・件数)を全部このツールが行い、意味判定(主語・主根拠など)だけを検品チャットに残す前段ツール。レポートを本文と一緒に検品へ渡す。</p>
+</header>
+<main>
+  <div class="grid">
+    <div class="card">
+      <h2>ここに貼るだけ</h2>
+      <p class="note">記事本文をそのまま貼り付け。<b>天体データ(monthly_sky出力)や画像プロンプトが混ざっていても自動で仕分ける。</b>タイトル・対象星座も自動検出。貼った瞬間に走査が走る。</p>
+      <textarea id="blob" placeholder="記事全文をここに貼り付け(天体データ・画像プロンプトを続けて貼ってもOK)"></textarea>
+      <div class="row" style="margin-top:10px;align-items:center;">
+        <div style="flex:0 0 200px;">
+          <label for="sign">対象星座(自動検出・手動で上書き可)</label>
+          <select id="sign">
+            <option value="">— 自動検出できず —</option>
+            <option>牡羊座</option><option>牡牛座</option><option>双子座</option><option>蟹座</option>
+            <option>獅子座</option><option>乙女座</option><option>天秤座</option><option>蠍座</option>
+            <option>射手座</option><option>山羊座</option><option>水瓶座</option><option>魚座</option>
+          </select>
+        </div>
+        <div>
+          <label>自動仕分けの結果</label>
+          <div id="detected" style="font-size:12px;color:var(--dim);padding:9px 0;">— 貼り付け待ち —</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="runbar">
+    <button id="run">再走査</button>
+    <button id="copy">レポートをコピー</button>
+    <button id="copyfixed">修正済みテキストをコピー</button>
+    <span id="copiedmsg">コピーしました</span>
+  </div>
+
+  <div id="summary" class="card"><h2>サマリー</h2><div class="chips" id="chips"></div>
+    <p id="fixinfo" class="note" style="margin:10px 0 0;"></p></div>
+  <div id="report"></div>
+</main>
+<footer>検品前スキャナ v1.4(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
+
+<script>
+/* =====================================================================
+   ★ 辞書・設定(編集エリア)ここから
+   ===================================================================== */
+const DICT = {
+
+  // A-5 過去構文の走査語(主語判定は検品チャットが行う)
+  PAST_WORDS: ["てきました","てきた","これまで","先月まで","ここ数ヶ月","ここ数カ月","ここ数か月"],
+
+  // A-6 季節語・暦語(長い語を先に照合するので順不同でよい。単漢字は最後の網)
+  SEASON_WORDS: [
+    "この夏","真夏","夏バテ","夏の疲れ","残暑","猛暑","梅雨","春風","花冷え","新緑",
+    "秋の夜長","紅葉","木枯らし","冬本番","年の瀬","年末","年内","年明け","年始",
+    "来年","今年中","この1年","この一年","年を越","年をまた","年度末","新年度",
+    "新学期","新生活","師走","正月","お盆","クリスマス","初詣","ゴールデンウィーク","連休",
+    "春","夏","秋","冬"
+  ],
+
+  // B-7 決め台詞
+  DANGEN: "断言します",
+  DANGEN_LIMIT: 2,
+
+  // A-7(g) 固定文言(一字一句)
+  FIXED_1: "多くの占いは『運勢』を語りますが、このnoteは違います",
+  FIXED_2: "この一冊には、3,000円以上の価値があると自負しています。それでも、価格を理由にあなたがこの1ヶ月を逃すことがないように。毎月15日までは、コーヒー1杯分の「500円」で。16日からは「1,000円」でお届けしています。",
+
+  // 第8章の4定型見出し(一字一句)
+  CH8_HEADINGS: [
+    "【対 火の星座（牡羊座・獅子座・射手座）】",
+    "【対 地の星座（牡牛座・乙女座・山羊座）】",
+    "【対 風の星座（双子座・天秤座・水瓶座）】",
+    "【対 水の星座（蟹座・蠍座・魚座）】"
+  ],
+
+  // A-3b 支配部位(第6章のみ走査。単独の「手」「足」は誤検出が多いため不使用)
+  BODY_PARTS: {
+    "牡羊座":["頭","顔"],
+    "牡牛座":["首","喉","甲状腺"],
+    "双子座":["肩","腕","肺","神経"],
+    "蟹座":["胸","胃","乳房"],
+    "獅子座":["心臓","背中","脊椎","背骨"],
+    "乙女座":["腸","消化器","胃腸"],
+    "天秤座":["腰","腎臓"],
+    "蠍座":["生殖器","排泄器","泌尿器"],
+    "射手座":["太もも","ヒップ","肝臓"],
+    "山羊座":["骨","膝","関節","皮膚","歯"],
+    "水瓶座":["ふくらはぎ","足首","血行","循環"],
+    "魚座":["足先","リンパ","免疫","足裏"]
+  },
+  // 未成年配慮:記事のどこにあっても言い換え対象として警告する語
+  SENSITIVE_PARTS: ["生殖器","排泄器","泌尿器","乳房"],
+
+  // B-1(c) 星座名冠り深掘り見出しの上限(生成命令書v10.2)
+  KANMURI_LIMIT: 2,
+
+  // 見出しコロンの方針: "report"=件数報告のみ / "zenkaku"=半角を違反 / "hankaku"=全角を違反
+  COLON_POLICY: "report",
+
+  // 自動修正(一意に直せるものだけ)の置換テーブル
+  AUTOFIX_SENSITIVE: [
+    ["生殖器・排泄器", "お腹の奥・体の深部"],
+    ["生殖器", "お腹の奥"],
+    ["排泄器", "体の深部(巡りと排出)"],
+    ["泌尿器", "体の深部(巡りと排出)"],
+    ["乳房", "胸まわり"]
+  ],
+
+  ZODIAC: ["牡羊座","牡牛座","双子座","蟹座","獅子座","乙女座","天秤座","蠍座","射手座","山羊座","水瓶座","魚座"]
+};
+/* ===================================================================== 
+   ★ 辞書・設定(編集エリア)ここまで
+   ===================================================================== */
+
+const $ = id => document.getElementById(id);
+const z2h = s => s.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+// ---- 位置ラベル(直前の章見出し) ----
+function buildHeadingIndex(text){
+  const idx = [];
+  const re = /【(はじめに|第[1-9１-９]章)[^】]*】/g;
+  let m;
+  while((m = re.exec(text))){
+    let label = m[1].startsWith("第") ? z2h(m[1]) : "導入(はじめに)";
+    idx.push({pos:m.index, label});
+  }
+  return idx;
+}
+function locate(hIdx, pos){
+  let label = "冒頭(タイトル付近)";
+  for(const h of hIdx){ if(h.pos <= pos) label = h.label; else break; }
+  return label;
+}
+// ---- 該当文の切り出し ----
+function sentenceAt(text, pos, len){
+  const bounds = "。！？\n";
+  let s = pos, e = pos + len;
+  while(s > 0 && !bounds.includes(text[s-1])) s--;
+  while(e < text.length && !bounds.includes(text[e])) e++;
+  let sent = text.slice(s, Math.min(e+1, text.length)).trim();
+  if(sent.length > 110) sent = sent.slice(0, 110) + "…";
+  return sent;
+}
+// ---- 重なりを避けた辞書走査(長い語優先) ----
+function dictScan(text, words, offset=0){
+  const sorted = [...words].sort((a,b)=>b.length-a.length);
+  const taken = [];
+  const hits = [];
+  for(const w of sorted){
+    let from = 0, i;
+    while((i = text.indexOf(w, from)) !== -1){
+      const overlap = taken.some(r => i < r[1] && i + w.length > r[0]);
+      if(!overlap){ taken.push([i, i+w.length]); hits.push({word:w, pos:i+offset, localPos:i, len:w.length}); }
+      from = i + 1;
+    }
+  }
+  hits.sort((a,b)=>a.pos-b.pos);
+  return hits;
+}
+function section(text, startPat, endPat){
+  const s = text.search(startPat);
+  if(s === -1) return null;
+  let e = text.length;
+  if(endPat){ const rest = text.slice(s+1).search(endPat); if(rest !== -1) e = s + 1 + rest; }
+  return {start:s, end:e, text:text.slice(s,e)};
+}
+
+// ==================== 走査本体 ====================
+// ---- 貼り付け1本からの自動仕分け ----
+function parseBlob(blob){
+  const lines = blob.split("\n");
+  const skyLines = [], artLines = [];
+  const evWord = /(新月|満月|逆行|順行|へ入|に入|移動|イングレス|食)/;
+  for(const line of lines){
+    const t = line.trim();
+    const isoStart = /^\d{4}-\d{2}-\d{2}/.test(t);
+    const dateStart = /^([0-9０-９]{1,2})[\/／月][0-9０-９]{1,2}日?/.test(t);
+    if(isoStart || (dateStart && evWord.test(t) && !t.includes("。") && t.length < 70)){
+      skyLines.push(line);
+    }else{
+      artLines.push(line);
+    }
+  }
+  // 画像プロンプト:英語主体 or watercolor を含む段落を分離
+  const paras = artLines.join("\n").split(/\n\s*\n/);
+  const prompts = [], artParas = [];
+  for(const para of paras){
+    const t = para.trim();
+    if(!t){ continue; }
+    const ascii = (t.match(/[A-Za-z]/g)||[]).length;
+    const isPrompt = /watercolor art style/i.test(t) || (t.length > 30 && ascii / t.length > 0.55);
+    (isPrompt ? prompts : artParas).push(t);
+  }
+  const article = artParas.join("\n\n");
+  // タイトル:定型行を検出
+  let title = "";
+  for(const line of article.split("\n")){
+    if(/^【[0-9０-９]{1,2}月限定】.*【保存版】/.test(line.trim())){ title = line.trim(); break; }
+  }
+  // 対象星座:「〇〇座のあなた」から検出
+  let sign = "";
+  const sm = article.match(/(牡羊|牡牛|双子|蟹|獅子|乙女|天秤|蠍|射手|山羊|水瓶|魚)座のあなた/);
+  if(sm) sign = sm[1] + "座";
+  return {article, sky: skyLines.join("\n").trim(), prompts, title, sign, skyLines};
+}
+
+function runScan(){
+  const blob = $("blob").value.replace(/\r\n/g,"\n");
+  if(!blob.trim()){ alert("記事本文を貼り付けてください。"); return; }
+  const P = parseBlob(blob);
+  const raw = P.article;
+  if(P.sign && !$("sign").dataset.manual) $("sign").value = P.sign;
+  const sign = $("sign").value;
+  const title = P.title;
+  const sky = P.sky;
+  const promptsList = P.prompts;
+  $("detected").innerHTML =
+    "タイトル:" + (title ? "検出◯" : "未検出") +
+    " ／ 星座:" + (sign || "未検出") +
+    " ／ 天体データ:" + (sky ? sky.split("\n").length + "行" : "なし") +
+    " ／ プロンプト:" + (promptsList.length ? promptsList.length + "件" : "なし");
+
+  const hIdx = buildHeadingIndex(raw);
+  const L = [];               // plain-text report lines
+  const chips = [];           // summary chips {cls,label}
+  const V = { ok:"◯", warn:"▲", bad:"✕" };
+  const mark = (cls, s) => ({cls, s});
+  const now = new Date();
+  const stamp = now.getFullYear()+"/"+(now.getMonth()+1)+"/"+now.getDate()+" "+String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
+
+  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v1.4"});
+  L.push({cls:"dim", s:"走査日時:"+stamp+" ／ 本文:"+raw.length+"文字 ／ 対象星座:"+(sign||"未指定")});
+  L.push({cls:"dim", s:"※このレポートの【要判定】項目は、検品チャットが主語・文脈を判定する(列挙はスキャナが保証)。"});
+  L.push({s:""});
+
+  // ---------- [1] A-5 過去構文 ----------
+  L.push({cls:"sec", s:"[1] 過去構文走査(検品A-5用)"});
+  const pastHits = dictScan(raw, DICT.PAST_WORDS);
+  const perWord = {};
+  DICT.PAST_WORDS.forEach(w => perWord[w]=0);
+  pastHits.forEach(h => perWord[h.word]++);
+  L.push({s:"  " + DICT.PAST_WORDS.map(w=>"「"+w+"」="+perWord[w]+"件").join(" / ") + " ｜ 計"+pastHits.length+"件"});
+  if(pastHits.length === 0){
+    L.push({cls:"ok", s:"  ◯ 0件(A-5(a)の過去構文走査は該当なし)"});
+    chips.push({cls:"ok", label:"過去構文 0件"});
+  }else{
+    pastHits.forEach((h,i)=>{
+      L.push({s:"  ("+(i+1)+") ["+locate(hIdx,h.pos)+"]「"+h.word+"」→ "+sentenceAt(raw,h.pos,h.len)});
+    });
+    L.push({cls:"warn", s:"  ▲ 計"+pastHits.length+"件【要判定】各文の主語を判定:(あ)読者=要修正/(い)天体・空・光=◯/(う)星座一般論=◯。迷えば要修正側へ。"});
+    chips.push({cls:"warn", label:"過去構文 "+pastHits.length+"件 要判定"});
+  }
+  L.push({s:""});
+
+  // ---------- [2] A-6 季節語・暦語 ----------
+  L.push({cls:"sec", s:"[2] 季節語・暦語走査(検品A-6用)"});
+  const fixed2Free = raw.split(DICT.FIXED_2).join("");
+  const seasonHits = dictScan(fixed2Free, DICT.SEASON_WORDS);
+  if(seasonHits.length === 0){
+    L.push({cls:"ok", s:"  ◯ 0件(辞書照合。辞書外の暦依存表現の包括判定のみ検品に残る)"});
+    chips.push({cls:"ok", label:"季節語 0件"});
+  }else{
+    seasonHits.forEach((h,i)=>{
+      L.push({s:"  ("+(i+1)+") 「"+h.word+"」→ "+sentenceAt(fixed2Free,h.localPos,h.len)});
+    });
+    L.push({cls:"warn", s:"  ▲ 計"+seasonHits.length+"件【要判定】暦・季節に依存し他月号へ流用不能にする表現か確認(固有名詞内の偶然一致は◯)。"});
+    chips.push({cls:"warn", label:"季節語 "+seasonHits.length+"件"});
+  }
+  L.push({s:""});
+
+  // ---------- [3] A-7b 記号走査 ----------
+  L.push({cls:"sec", s:"[3] 記号走査(検品A-7b用)"});
+  const qHits = [];
+  for(let i=0;i<raw.length;i++){ if(raw[i]==="?"||raw[i]==="!") qHits.push(i); }
+  const dashRe = /[―—–]+/g; const dashHits=[]; let dm;
+  while((dm=dashRe.exec(raw))) dashHits.push(dm.index);   // 「――」は連続で1件と数える
+  // 第8章の定型見出し内の正規スペース(「対 火の星座」等)は走査対象から除外(同じ長さでマスク)
+  let spTarget = raw;
+  DICT.CH8_HEADINGS.forEach(h=>{ spTarget = spTarget.split(h).join("＊".repeat(h.length)); });
+  const spRe = /([ぁ-んァ-ヶ一-龯々ー])( +)([ぁ-んァ-ヶ一-龯々ー])/g; const spHits=[]; let sm;
+  while((sm=spRe.exec(spTarget))) spHits.push(sm.index+1);
+  const mojiRe = /[□◇�]/g; const mojiHits=[]; let mm;
+  while((mm=mojiRe.exec(raw))) mojiHits.push(mm.index);
+
+  const symTotal = qHits.length + dashHits.length + spHits.length + mojiHits.length;
+  L.push({s:"  半角?!="+qHits.length+"件 / 接続ダッシュ(―,—,–)="+dashHits.length+"件 / 日本語間の半角スペース="+spHits.length+"件 / 文字化け記号="+mojiHits.length+"件"});
+  const symDetail = (arr, name) => arr.forEach(p=>{
+    L.push({s:"  ・"+name+" ["+locate(hIdx,p)+"] …"+raw.slice(Math.max(0,p-14),p)+"【"+raw[p]+"】"+raw.slice(p+1,p+15)+"…"});
+  });
+  symDetail(qHits,"半角?!"); symDetail(dashHits,"ダッシュ"); symDetail(spHits,"空白"); symDetail(mojiHits,"文字化け");
+  if(symTotal===0){ L.push({cls:"ok", s:"  ◯ すべて0件"}); chips.push({cls:"ok", label:"記号 0件"}); }
+  else{ L.push({cls:"bad", s:"  ✕ 計"+symTotal+"件 要修正(半角?!→全角/ダッシュ→読点or句点/空白→削除)"}); chips.push({cls:"bad", label:"記号 "+symTotal+"件"}); }
+  L.push({s:""});
+
+  // ---------- [4] B-7 決め台詞 ----------
+  L.push({cls:"sec", s:"[4] 決め台詞カウント(検品B-7用)"});
+  const dHits=[]; { let f=0,i; while((i=raw.indexOf(DICT.DANGEN,f))!==-1){ dHits.push(i); f=i+1; } }
+  dHits.forEach((p,i)=> L.push({s:"  ("+(i+1)+") ["+locate(hIdx,p)+"] "+sentenceAt(raw,p,DICT.DANGEN.length)}));
+  if(dHits.length<=DICT.DANGEN_LIMIT){ L.push({cls:"ok", s:"  ◯「"+DICT.DANGEN+"」="+dHits.length+"回(上限"+DICT.DANGEN_LIMIT+"回以内)"}); chips.push({cls:"ok", label:"断言します "+dHits.length+"回"}); }
+  else{ L.push({cls:"bad", s:"  ✕「"+DICT.DANGEN+"」="+dHits.length+"回(上限"+DICT.DANGEN_LIMIT+"回)→3回目以降を通常の断定文へ開く"}); chips.push({cls:"bad", label:"断言します "+dHits.length+"回"}); }
+  L.push({s:""});
+
+  // ---------- [5] A-7(g) 固定文言・金額 ----------
+  L.push({cls:"sec", s:"[5] 固定文言・金額走査(検品A-7(g)用)"});
+  const f1 = raw.includes(DICT.FIXED_1);
+  const f2 = raw.includes(DICT.FIXED_2);
+  if(f1){ L.push({cls:"ok", s:"  ◯ 固定文言①:一字一句一致"}); }
+  else{
+    const partial = raw.includes("多くの占いは");
+    L.push({cls:"bad", s:"  ✕ 固定文言①:完全一致なし"+(partial?"(「多くの占いは」を含む文はあり→変形の疑い。該当文を固定形へ復元)":"(段落ごと欠落の疑い)")});
+  }
+  if(f2){ L.push({cls:"ok", s:"  ◯ 固定文言②(価格段落):一字一句一致"}); }
+  else{
+    const partial2 = raw.includes("3,000円以上の価値") || raw.includes("コーヒー1杯分");
+    L.push({cls:"bad", s:"  ✕ 固定文言②:完全一致なし"+(partial2?"(近い表現あり→変形の疑い。固定形へ復元)":"(欠落または旧価格段落の疑い)")});
+  }
+  const moneyHits=[];
+  const moneyRes=[/[0-9０-９][0-9０-９,，]*\s*円/g, /ランチ[^\n。]{0,6}回分/g, /コーヒー[0-9０-９一二三]*杯/g];
+  for(const re of moneyRes){ let m2; while((m2=re.exec(fixed2Free))) moneyHits.push({pos:m2.index, str:m2[0]}); }
+  if(moneyHits.length===0){ L.push({cls:"ok", s:"  ◯ 固定文言②以外の金額表現:0件"}); }
+  else{
+    moneyHits.forEach(h=> L.push({s:"  ・金額「"+h.str+"」→ "+sentenceAt(fixed2Free,h.pos,h.str.length)}));
+    L.push({cls:"bad", s:"  ✕ 固定文言②以外に金額表現"+moneyHits.length+"件(価格記載は②に一本化。削除する)"});
+  }
+  chips.push({cls:(f1&&f2&&moneyHits.length===0)?"ok":"bad", label:"固定文言/金額"});
+  L.push({s:""});
+
+  // ---------- [6] 構造チェック ----------
+  L.push({cls:"sec", s:"[6] 構造チェック(検品A-7用)"});
+  const missing=[];
+  for(let n=1;n<=9;n++){ if(!(new RegExp("【第"+n+"章】").test(raw)) && !(new RegExp("【第"+"１２３４５６７８９"[n-1]+"章】").test(raw))) missing.push("第"+n+"章"); }
+  const hajimeni = /【はじめに/.test(raw);
+  if(!hajimeni) missing.push("【はじめに:〜】見出し");
+  const ch8missing = DICT.CH8_HEADINGS.filter(h=>!raw.includes(h));
+  if(missing.length===0 && ch8missing.length===0){
+    L.push({cls:"ok", s:"  ◯ 【はじめに】+第1〜9章そろい / 第8章の4定型見出し一字一句一致"});
+    chips.push({cls:"ok", label:"構造 ◯"});
+  }else{
+    if(missing.length) L.push({cls:"bad", s:"  ✕ 欠落:"+missing.join("・")});
+    if(ch8missing.length) L.push({cls:"bad", s:"  ✕ 第8章定型と不一致(または欠落):"+ch8missing.join(" / ")+" ※変形・説明句混入の疑い。定型へ復元"});
+    chips.push({cls:"bad", label:"構造 要修正"});
+  }
+  L.push({s:""});
+
+  // ---------- [7] 見出し一覧・コロン ----------
+  L.push({cls:"sec", s:"[7] 見出し一覧+コロン走査(検品B-1の列挙材料)"});
+  const lines = raw.split("\n");
+  const chHeads=[], digHeads=[];
+  lines.forEach(line=>{
+    if(/^【第[1-9１-９]章】/.test(line.trim())) chHeads.push(line.trim());
+  });
+  const digRe = /【深掘り[：:]\s*([^】]+)】/g; let dg;
+  while((dg=digRe.exec(raw))) digHeads.push(dg[1].trim());
+  L.push({s:"  ◇章見出し("+chHeads.length+"本):"});
+  chHeads.forEach(h=> L.push({s:"   ・"+h}));
+  L.push({s:"  ◇深掘り見出し("+digHeads.length+"本):"});
+  digHeads.forEach(h=> L.push({s:"   ・"+h}));
+  let zenColon=0, hanColon=0;
+  lines.forEach(line=>{
+    const t=line.trim();
+    if(t.startsWith("【") || /【深掘り/.test(t)){
+      zenColon += (t.match(/：/g)||[]).length;
+      hanColon += (t.match(/:/g)||[]).length;
+    }
+  });
+  L.push({s:"  ◇見出し行内のコロン:全角「：」="+zenColon+"件 / 半角\":\"="+hanColon+"件"});
+  if(DICT.COLON_POLICY==="report"){ L.push({cls:"dim", s:"   (方針=件数報告のみ。仕様確定後にDICT.COLON_POLICYを zenkaku / hankaku へ変更)"}); }
+  else if(DICT.COLON_POLICY==="zenkaku" && hanColon>0){ L.push({cls:"bad", s:"  ✕ 半角コロン"+hanColon+"件→全角「：」へ統一"}); chips.push({cls:"bad", label:"コロン "+hanColon+"件"}); }
+  else if(DICT.COLON_POLICY==="hankaku" && zenColon>0){ L.push({cls:"bad", s:"  ✕ 全角コロン"+zenColon+"件→半角\":\"へ統一"}); chips.push({cls:"bad", label:"コロン "+zenColon+"件"}); }
+  else if(DICT.COLON_POLICY!=="report"){ L.push({cls:"ok", s:"  ◯ コロン表記は方針どおり"}); }
+  L.push({s:""});
+
+  // ---------- [8] 星座名冠り深掘り見出し ----------
+  L.push({cls:"sec", s:"[8] 星座名冠り深掘り見出し(検品B-1(c)用・上限"+DICT.KANMURI_LIMIT+"章)"});
+  if(digHeads.length===0){
+    L.push({cls:"warn", s:"  ▲ 【深掘り:〜】形式の見出しを1本も検出できず。形式が崩れている可能性(検出0本は◯ではない)。本文の深掘り見出しの書式を確認。"});
+  }
+  const kanmuri = digHeads.filter(h => DICT.ZODIAC.some(z => h.startsWith(z)));
+  const zAny = digHeads.filter(h => DICT.ZODIAC.some(z => h.includes(z)));
+  L.push({s:"  星座名で始まる深掘り見出し="+kanmuri.length+"本 / 星座名を含む見出し="+zAny.length+"本"});
+  kanmuri.forEach(h=> L.push({s:"   ・(冠り)"+h}));
+  zAny.filter(h=>!kanmuri.includes(h)).forEach(h=> L.push({s:"   ・(含む)"+h}));
+  if(digHeads.length===0){ chips.push({cls:"warn", label:"深掘り見出し 検出0本"}); }
+  else if(kanmuri.length<=DICT.KANMURI_LIMIT){ L.push({cls:"ok", s:"  ◯ "+kanmuri.length+"本(上限"+DICT.KANMURI_LIMIT+"以内)"}); chips.push({cls:"ok", label:"冠り見出し "+kanmuri.length+"本"}); }
+  else{ L.push({cls:"bad", s:"  ✕ "+kanmuri.length+"本(上限"+DICT.KANMURI_LIMIT+")→超過分を場面・比喩・宣言型の見出しへ差し替え"}); chips.push({cls:"bad", label:"冠り見出し "+kanmuri.length+"本"}); }
+  L.push({s:""});
+
+  // ---------- [9] 第6章 部位語走査 ----------
+  L.push({cls:"sec", s:"[9] 第6章 部位語走査(検品A-3b用)"});
+  const ch6 = section(raw, /【第[6６]章】/, /【第[7７]章】/);
+  if(!ch6){ L.push({cls:"dim", s:"  スキップ(第6章見出しが見つからない)"}); }
+  else if(!sign){ L.push({cls:"dim", s:"  スキップ(対象星座が未選択)"}); }
+  else{
+    const own = DICT.BODY_PARTS[sign] || [];
+    let otherWords = [];
+    for(const [z,parts] of Object.entries(DICT.BODY_PARTS)){
+      if(z===sign) continue;
+      parts.forEach(p=>{ if(!own.includes(p) && !otherWords.includes(p)) otherWords.push(p); });
+    }
+    const hits = dictScan(ch6.text, otherWords);
+    const attr = w => Object.entries(DICT.BODY_PARTS).filter(([z,ps])=>z!==sign&&ps.includes(w)).map(([z])=>z).join("・");
+    if(hits.length===0){ L.push({cls:"ok", s:"  ◯ 他星座の部位語:0件(対象="+sign+")"}); chips.push({cls:"ok", label:"部位語 0件"}); }
+    else{
+      hits.forEach(h=> L.push({s:"  ・「"+h.word+"」("+attr(h.word)+"の領域)→ "+sentenceAt(ch6.text,h.localPos,h.len)}));
+      L.push({cls:"warn", s:"  ▲ 計"+hits.length+"件【要判定】支配部位として挙げていれば要修正、単なる日常語(「肩の力を抜く」等)なら◯。"});
+      chips.push({cls:"warn", label:"部位語 "+hits.length+"件"});
+    }
+    if(sign==="乙女座" && ch6.text.includes("胃腸")){
+      L.push({cls:"bad", s:"  ✕ 「胃腸」検出(乙女座は「腸・消化器」と書く。胃は蟹座領域)"});
+    }
+    const sens = dictScan(raw, DICT.SENSITIVE_PARTS);
+    if(sens.length){
+      sens.forEach(h=> L.push({s:"  ・要言い換え語「"+h.word+"」["+locate(hIdx,h.pos)+"] → "+sentenceAt(raw,h.pos,h.len)}));
+      L.push({cls:"bad", s:"  ✕ 未成年配慮の言い換え対象"+sens.length+"件(蠍座:生殖器・排泄器→「お腹の奥・体の深部」/蟹座:乳房→「胸まわり・胸元」)"});
+    }else{
+      L.push({cls:"ok", s:"  ◯ 要言い換え語(生殖器・排泄器・泌尿器・乳房):0件"});
+    }
+  }
+  L.push({s:""});
+
+  // ---------- [10] 第7章 週レンジ+必須イベント ----------
+  L.push({cls:"sec", s:"[10] 第7章 週レンジ照合+必須イベント突合(検品A-10用)"});
+  const ch7 = section(raw, /【第[7７]章】/, /【第[8８]章】/);
+  if(!ch7){ L.push({cls:"dim", s:"  スキップ(第7章見出しが見つからない)"}); }
+  else{
+    const wLines = ch7.text.split("\n");
+    const weeks = [];
+    let cur = null;
+    const rangeRe = /([0-9０-９]{1,2})\s*[\/／月]\s*([0-9０-９]{1,2})日?\s*[〜~～ー－―\-]\s*(?:([0-9０-９]{1,2})\s*[\/／月]\s*)?([0-9０-９]{1,2})日?/;
+    wLines.forEach(line=>{
+      if(/第[1-5１-５]週/.test(line)){
+        const r = line.match(rangeRe);
+        cur = {head:line.trim(), body:"", range:null};
+        if(r){
+          const sM=+z2h(r[1]), sD=+z2h(r[2]);
+          const eM=r[3]?+z2h(r[3]):sM, eD=+z2h(r[4]);
+          cur.range={sM,sD,eM,eD};
+        }
+        weeks.push(cur);
+      }else if(cur){ cur.body += line + "\n"; }
+    });
+    if(weeks.length===0){ L.push({cls:"warn", s:"  ▲ 週見出し(第N週)が検出できず。手動確認へ。"}); }
+    else{
+      let outCount=0;
+      const inRange = (rg,m,d)=>{
+        const v=m*100+d, s=rg.sM*100+rg.sD, e=rg.eM*100+rg.eD;
+        return (e>=s) ? (v>=s&&v<=e) : (v>=s||v<=e);
+      };
+      weeks.forEach(w=>{
+        const label = w.head.length>34 ? w.head.slice(0,34)+"…" : w.head;
+        if(!w.range){ L.push({cls:"warn", s:"  ▲ "+label+" → 日付範囲を読み取れず(手動確認)"}); return; }
+        const dre=/([0-9０-９]{1,2})月([0-9０-９]{1,2})日|([0-9０-９]{1,2})[\/／]([0-9０-９]{1,2})/g;
+        let dmatch; const found=[];
+        while((dmatch=dre.exec(w.body))){
+          const m = +z2h(dmatch[1]||dmatch[3]), d = +z2h(dmatch[2]||dmatch[4]);
+          if(m>=1&&m<=12&&d>=1&&d<=31) found.push({m,d,str:dmatch[0],pos:dmatch.index});
+        }
+        const outs = found.filter(f=>!inRange(w.range,f.m,f.d));
+        if(outs.length===0){ L.push({cls:"ok", s:"  ◯ "+label+" ｜ 本文内日付"+found.length+"件、すべて範囲内"}); }
+        else{
+          outCount += outs.length;
+          outs.forEach(o=> L.push({cls:"bad", s:"  ✕ "+label+" ｜ 範囲外「"+o.str+"」→ "+sentenceAt(w.body,o.pos,o.str.length)}));
+        }
+      });
+      if(outCount===0){ chips.push({cls:"ok", label:"週レンジ ◯"}); }
+      else{ L.push({cls:"bad", s:"  ✕ 週またぎ"+outCount+"件(日付が属する週の本文へ移す)"}); chips.push({cls:"bad", label:"週またぎ "+outCount+"件"}); }
+    }
+    // 必須イベント突合
+    if(!sky){ L.push({cls:"dim", s:"  必須イベント突合:スキップ(天体データ未貼付)"}); }
+    else{
+      const events=[];
+      sky.split("\n").forEach(line=>{
+        const isMoon = /新月|満月/.test(line);
+        const isMerc = /水星/.test(line) && /(逆行|順行)/.test(line);
+        if(!isMoon && !isMerc) return;
+        let m=null,d=null;
+        let r = line.match(/([0-9]{1,2})月([0-9]{1,2})日/) || line.match(/\b[0-9]{4}-([0-9]{2})-([0-9]{2})/) || line.match(/([0-9]{1,2})\/([0-9]{1,2})/);
+        if(r){ m=+r[1]; d=+r[2]; }
+        let label = isMoon ? (line.includes("新月")?"新月":"満月") : ("水星"+(line.includes("順行")?"順行(逆行終了)":"逆行"));
+        events.push({label, m, d, line:line.trim()});
+      });
+      if(events.length===0){ L.push({cls:"dim", s:"  必須イベント突合:天体データ内に新月・満月・水星逆行の行を検出できず"}); }
+      else{
+        let missing2=0;
+        events.forEach(ev=>{
+          if(ev.m==null){ L.push({cls:"warn", s:"  ▲ "+ev.label+":日付を読み取れず(手動確認)「"+ev.line+"」"}); return; }
+          // 表記候補:「9月27日」「9/27」「27日」(日単独は誤検出防止のためイベント語との近接まで確認)
+          const pats=[ev.m+"月"+ev.d+"日", ev.m+"/"+ev.d];
+          let okp = pats.some(p=>ch7.text.includes(p));
+          if(!okp){
+            // 「27日」+イベント語(新月/満月/水星/逆行)が同一文内にあれば記載ありとみなす
+            const evKey = ev.label.includes("新月") ? "新月" : ev.label.includes("満月") ? "満月" : "水星";
+            const dayRe = new RegExp("[^0-9]"+ev.d+"日[^0-9]?");
+            let pos = 0, found = false;
+            while(true){
+              const i = ch7.text.indexOf(ev.d+"日", pos);
+              if(i === -1) break;
+              const sent = sentenceAt(ch7.text, i, String(ev.d).length+1);
+              if(sent.includes(evKey)){ found = true; break; }
+              pos = i + 1;
+            }
+            okp = found;
+          }
+          if(okp){ L.push({cls:"ok", s:"  ◯ 必須イベント記載あり:"+ev.label+"("+ev.m+"月"+ev.d+"日)"}); }
+          else{ missing2++; L.push({cls:"warn", s:"  ▲ 未検出:"+ev.label+"("+ev.m+"月"+ev.d+"日)が第7章に見当たらない【要確認】表記ゆれ(「この日の満月」等)の可能性あり。実際に漏れていれば該当週へ補記"}); }
+        });
+        chips.push(missing2===0 ? {cls:"ok", label:"必須イベント ◯"} : {cls:"warn", label:"必須イベント未検出 "+missing2+"件"});
+      }
+    }
+  }
+  L.push({s:""});
+
+  // ---------- [11] タイトル定型 ----------
+  L.push({cls:"sec", s:"[11] タイトル定型(検品A-12用)"});
+  if(!title){ L.push({cls:"dim", s:"  スキップ(定型のタイトル行を未検出)"}); }
+  else{
+    const t = title;
+    const c1 = /^【[0-9０-９]{1,2}月限定】/.test(t);
+    const c2 = /座のあなたへ。/.test(t);
+    const c4 = /1ヶ月【保存版】$/.test(t);
+    const signOk = !sign || t.includes(sign);
+    L.push({s:"  (1)【〇月限定】冒頭:"+(c1?"◯":"✕")+" / (2)「〇〇座のあなたへ。」:"+(c2?"◯":"✕")+(sign?("(対象星座一致:"+(signOk?"◯":"✕")+")"):"")+" / (4)末尾「1ヶ月【保存版】」:"+(c4?"◯":"✕")});
+    if(c1&&c2&&c4&&signOk){ L.push({cls:"ok", s:"  ◯ 定型4要素を充足(フックの重複は過去タイトル一覧との照合を検品で実施)"}); chips.push({cls:"ok", label:"タイトル ◯"}); }
+    else{ L.push({cls:"bad", s:"  ✕ 定型崩れ→固定型へ復元"}); chips.push({cls:"bad", label:"タイトル 要修正"}); }
+  }
+  L.push({s:""});
+
+  // ---------- [12] 画像プロンプト ----------
+  L.push({cls:"sec", s:"[12] 画像プロンプト(検品A-13用)"});
+  if(promptsList.length===0){ L.push({cls:"dim", s:"  スキップ(プロンプト未検出)"}); }
+  else{
+    const ps = promptsList;
+    let bad=0;
+    ps.forEach((p,i)=>{
+      const jp = /[ぁ-んァ-ヶ一-龯]/.test(p);
+      const wc = /watercolor art style/i.test(p);
+      const k8 = /8k/i.test(p);
+      const hq = /[?!]/.test(p);
+      const probs=[];
+      if(jp) probs.push("日本語混入");
+      if(!wc) probs.push("watercolor art style なし");
+      if(!k8) probs.push("8k なし");
+      if(hq) probs.push("半角?!あり(全角へ)");
+      if(probs.length){ bad++; L.push({cls:"bad", s:"  ✕ プロンプト"+(i+1)+":"+probs.join(" / ")}); }
+      else{ L.push({cls:"ok", s:"  ◯ プロンプト"+(i+1)+":英語のみ・必須語あり"}); }
+    });
+    L.push({cls:"dim", s:"  (タイトル画像の構図規定〈対象星座が主役・他星座は淡いアクセント〉は意味判定のため検品A-13(c)で確認)"});
+    chips.push(bad===0 ? {cls:"ok", label:"プロンプト ◯"} : {cls:"bad", label:"プロンプト "+bad+"件"});
+  }
+  L.push({s:""});
+
+  // ---------- [13] 自動仕分けの除外内容(誤仕分けの可視化) ----------
+  L.push({cls:"sec", s:"[13] 自動仕分けで本文から除外した内容(誤仕分けチェック用)"});
+  if(P.skyLines.length===0 && promptsList.length===0){
+    L.push({cls:"ok", s:"  ◯ 除外なし(貼り付け全文を本文として走査)"});
+  }else{
+    if(P.skyLines.length){
+      L.push({s:"  ◇天体データとして除外("+P.skyLines.length+"行):"});
+      P.skyLines.forEach(l=> L.push({cls:"dim", s:"   ・"+l.trim()}));
+    }
+    if(promptsList.length){
+      L.push({s:"  ◇画像プロンプトとして除外("+promptsList.length+"段落):"});
+      promptsList.forEach(pr=> L.push({cls:"dim", s:"   ・"+(pr.length>60?pr.slice(0,60)+"…":pr)}));
+    }
+    L.push({cls:"warn", s:"  ▲ 上記に本文の一部(箇条書きの日付行など)が混ざっていないか一読して確認。混ざっていたら該当行に「。」を付けるか手動で戻して再走査。"});
+  }
+  L.push({s:""});
+  L.push({cls:"dim", s:"―― 以上。検品チャットへは「本文+このレポート」を渡し、検品命令書の走査系項目はこのレポートを正とする。"});
+
+  // ---------- render ----------
+  $("chips").innerHTML = chips.map(c=>'<span class="chip '+c.cls+'">'+esc(c.label)+'</span>').join("");
+  $("summary").style.display = "block";
+  $("report").innerHTML = L.map(l=>{
+    const cls = l.cls ? ' class="'+l.cls+'"' : "";
+    return "<span"+cls+">"+(l.cls? esc(l.s) : esc(l.s))+"</span>";
+  }).join("\n");
+  $("report").style.display = "block";
+  window.__reportText = L.map(l=>l.s).join("\n");
+
+  // ---------- 自動修正(一意に直せるものだけ) ----------
+  const fixes = [];
+  let fixed = raw;
+  // (1) 半角?! → 全角
+  let c1=0; fixed = fixed.replace(/\?/g, ()=>{c1++; return "？";}).replace(/!/g, ()=>{c1++; return "！";});
+  if(c1) fixes.push("半角?!→全角:"+c1+"件");
+  // (2) 日本語間の半角スペース削除(第8章定型見出し内の正規スペースは保護)
+  let protectedText = fixed;
+  DICT.CH8_HEADINGS.forEach(h=>{ protectedText = protectedText.split(h).join("\u0000".repeat(h.length)); });
+  let c2=0; let out="";
+  for(let i=0;i<fixed.length;i++){
+    if(fixed[i]===" " && i>0 && i<fixed.length-1
+       && /[ぁ-んァ-ヶ一-龯々ー]/.test(fixed[i-1]) && /[ぁ-んァ-ヶ一-龯々ー]/.test(fixed[i+1])
+       && protectedText[i]!=="\u0000"){ c2++; continue; }
+    out += fixed[i];
+  }
+  fixed = out;
+  if(c2) fixes.push("日本語間の半角スペース削除:"+c2+"件");
+  // (3) 乙女座の「胃腸」→「腸・消化器」(対象星座が乙女座のときのみ)
+  if(sign==="乙女座" && fixed.includes("胃腸")){
+    const n = fixed.split("胃腸").length-1;
+    fixed = fixed.split("胃腸").join("腸・消化器");
+    fixes.push("「胃腸」→「腸・消化器」:"+n+"件(乙女座)");
+  }
+  // (4) 未成年言い換え語の置換(長い語から順に)
+  for(const [from,to] of DICT.AUTOFIX_SENSITIVE){
+    if(fixed.includes(from)){
+      const n = fixed.split(from).length-1;
+      fixed = fixed.split(from).join(to);
+      fixes.push("「"+from+"」→「"+to+"」:"+n+"件");
+    }
+  }
+  window.__fixedText = fixed;
+  window.__fixesApplied = fixes;
+  if(fixes.length){
+    $("fixinfo").innerHTML = "自動修正できる箇所:" + fixes.join(" / ") + "(それ以外の指摘は修正済みテキストにも残る=検品・手動対応)";
+    $("copyfixed").style.display = "inline-block";
+  }else{
+    $("fixinfo").innerHTML = "自動修正の対象(半角?!・不正スペース・胃腸・要言い換え語)は0件。";
+    $("copyfixed").style.display = "none";
+  }
+  $("copy").style.display = "inline-block";
+  $("copiedmsg").style.display = "none";
+  $("report").scrollIntoView({behavior:"smooth"});
+}
+
+$("run").addEventListener("click", runScan);
+let _t = null;
+$("blob").addEventListener("input", ()=>{
+  clearTimeout(_t);
+  const len = $("blob").value.trim().length;
+  if(len < 200) return;           // 断片では走らせない
+  _t = setTimeout(runScan, 500);  // 貼り付け後、自動走査
+});
+$("sign").addEventListener("change", ()=>{ $("sign").dataset.manual = "1"; if($("blob").value.trim().length >= 200) runScan(); });
+$("copyfixed").addEventListener("click", async ()=>{
+  const t = window.__fixedText || "";
+  try{ await navigator.clipboard.writeText(t); }
+  catch(e){
+    const ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
+  }
+  $("copiedmsg").style.display="inline";
+  setTimeout(()=>{ $("copiedmsg").style.display="none"; }, 2000);
+});
+// 設定指紋:保管庫と固定文言②が一致しているかを照合(価格改定の反映漏れ検出)+設定価格の常時表示
+(function(){
+  function cfgFp(str){let h=5381;for(let i=0;i<str.length;i++){h=((h<<5)+h+str.charCodeAt(i))>>>0;}return h.toString(16);}
+  try{
+    const prices=(DICT.FIXED_2.match(/「[0-9,，]+円」/g)||[]).join("・");
+    const f=document.querySelector("footer");
+    if(f) f.textContent += " ｜ 設定中の価格:"+prices;
+    const fp=cfgFp(DICT.FIXED_2);
+    let reg={}; try{ reg=JSON.parse(localStorage.getItem("hoshino-config-fp")||"{}"); }catch(e2){}
+    reg.scanner={fp,ts:Date.now()};
+    localStorage.setItem("hoshino-config-fp",JSON.stringify(reg));
+    if(reg.vault && reg.vault.fp!==fp){
+      const d=document.createElement("div");
+      d.style.cssText="background:#2a1414;color:#f08a8a;border-bottom:1px solid #6b3232;padding:8px 22px;font-size:12px;line-height:1.6;";
+      d.textContent="⚠ 記事保管庫と固定文言②が一致していません(価格改定の反映漏れの可能性)。両ツールの★設定/DICTを確認してください。";
+      document.body.insertBefore(d, document.body.firstChild);
+    }
+  }catch(e){}
+})();
+$("copy").addEventListener("click", async ()=>{
+  const t = window.__reportText || "";
+  try{ await navigator.clipboard.writeText(t); }
+  catch(e){
+    const ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
+  }
+  $("copiedmsg").style.display="inline";
+  setTimeout(()=>{ $("copiedmsg").style.display="none"; }, 2000);
+});
+</script>
+</body>
+</html>
