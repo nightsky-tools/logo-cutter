@@ -1,0 +1,2142 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<!-- v7.1②CSP：外部スクリプトの読込と、GitHub API以外への通信を遮断。
+     万一スクリプトが注入されても、解錠中の平文を外部サーバへ送信する経路をブラウザ層で塞ぐ。
+     単一ファイル構成のため script-src 'unsafe-inline' は必要（注入コードの実行自体は防げない点は正直に明記）
+     v7.2①gistのraw_urlはgist.githubusercontent.com以外のサブドメインになる場合があるため
+     *.githubusercontent.comに拡大（固定だと保管庫が大きくなった日に同期が無言で死ぬ）。'self'も追加 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self' https://api.github.com https://*.githubusercontent.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Keyring">
+<meta name="theme-color" content="#0f1420">
+<meta name="robots" content="noindex, nofollow">
+<title>Keyring パスワード管理</title>
+<style>
+  :root{
+    --night:#0f1420;
+    --night-2:#161c2e;
+    --card:#1b2338;
+    --edge:#2a3554;
+    --card-edge:#2a3554;
+    --accent:#5ed3a8;
+    --accent-dim:#39ab84;
+    --ink:#eef1f6;
+    --ink-dim:#95a0bd;
+    --danger:#c96a6a;
+    --ok:#7ec9a2;
+    --serif:"Hiragino Mincho ProN","Yu Mincho","YuMincho","Noto Serif JP",serif;
+    --sans:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:
+      radial-gradient(1100px 550px at 85% -10%, #17352a 0%, transparent 60%),
+      radial-gradient(800px 450px at -10% 100%, #16203c 0%, transparent 55%),
+      var(--night);
+    color:var(--ink);
+    font-family:var(--sans);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{position:relative;z-index:1;max-width:640px;margin:0 auto;padding:calc(20px + env(safe-area-inset-top)) 16px 60px}
+
+  header{padding:14px 2px 16px;display:flex;align-items:center;gap:12px}
+  .mark{width:30px;height:30px;flex:none}
+  h1{font-family:var(--serif);font-weight:600;font-size:22px;letter-spacing:.12em;color:var(--ink)}
+  h1 small{display:block;font-size:11px;letter-spacing:.28em;color:var(--accent);margin-top:5px;font-family:var(--sans)}
+  .header-actions{margin-left:auto;display:flex;gap:8px}
+  .icon-btn{background:transparent;border:1px solid var(--edge);color:var(--ink);border-radius:10px;padding:8px 12px;font-size:12px;cursor:pointer;font-family:var(--sans);flex-shrink:0}
+  .icon-btn:active{background:var(--card)}
+  .icon-btn.danger{color:var(--danger);border-color:#5a3040}
+
+  .cat-row{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 18px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .cat-row::-webkit-scrollbar{display:none}
+  .cat-chip{flex-shrink:0;background:var(--card);border:1px solid var(--edge);color:var(--ink-dim);border-radius:999px;padding:9px 16px;font-size:13px;cursor:pointer;font-family:var(--sans);letter-spacing:.03em;display:flex;align-items:center;gap:6px}
+  .cat-chip.active{background:var(--accent);color:#08150f;border-color:var(--accent);font-weight:600}
+  .cat-chip .pencil{font-size:11px;opacity:.8}
+  .cat-chip.add{border-style:dashed;color:var(--ink-dim)}
+
+  .searchbar{display:flex;gap:9px;margin-bottom:16px}
+  .searchbar input{flex:1;background:var(--card);border:1px solid var(--edge);border-radius:12px;color:var(--ink);font-size:15px;padding:12px 14px;font-family:var(--sans)}
+  .searchbar input:focus{outline:2px solid var(--accent-dim);outline-offset:1px}
+
+  .doc-list{display:flex;flex-direction:column;gap:12px}
+  .entry-card{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:14px}
+  .ec-main{display:flex;align-items:center;gap:12px;width:100%;cursor:pointer;border:none;background:transparent;font-family:var(--sans);color:var(--ink);text-align:left;padding:0 0 10px}
+  .ec-main:active{opacity:.7}
+  .avatar{width:40px;height:40px;border-radius:11px;flex:none;display:grid;place-items:center;font-weight:700;font-size:17px;color:#08150f;background:var(--accent)}
+  .ec-name{font-family:var(--serif);font-size:16px;letter-spacing:.04em;color:#fff}
+  .type-badge{display:inline-block;font-family:var(--sans);font-size:10px;letter-spacing:.04em;color:var(--accent);border:1px solid var(--accent-dim);border-radius:999px;padding:2px 8px;margin-left:8px;vertical-align:middle}
+  .ec-id{font-size:12.5px;color:var(--ink-dim);word-break:break-all;margin-top:2px}
+  .ec-actions{display:flex;gap:8px}
+  .ec-act{flex:1;padding:11px 0;font-size:12px;border-radius:9px;cursor:pointer;font-family:var(--sans);letter-spacing:.04em;background:var(--night-2);border:1px solid var(--edge);color:var(--ink)}
+  .ec-act:active{background:var(--night)}
+  .ec-act.copy-id{color:var(--ink)}
+  .ec-act.copy-pw{color:var(--accent);border-color:var(--accent-dim)}
+
+  .add-doc{width:100%;background:transparent;border:1px dashed var(--edge);color:var(--ink-dim);border-radius:12px;padding:13px;font-size:13px;cursor:pointer;font-family:var(--sans);margin-top:12px}
+  .add-doc:active{background:var(--night-2)}
+
+  .section-label{margin:28px 0 10px;font-size:11px;letter-spacing:.26em;color:var(--ink-dim)}
+  .backup-row{display:flex;gap:8px}
+  .tool-btn{flex:1;background:var(--card);border:1px solid var(--edge);color:var(--ink-dim);border-radius:12px;padding:12px;font-size:13px;cursor:pointer;font-family:var(--sans)}
+  .tool-btn:active{background:var(--night-2)}
+  .empty-note{color:var(--ink-dim);font-size:13px;line-height:1.9;text-align:center;padding:20px}
+  #syncStatus,#statsInfo{text-align:left;padding:8px 4px;font-size:12px}
+  #backupRemind,#mpRemind{display:none;background:#3b331d;border:1px solid #e2b25a;border-radius:12px;padding:12px 16px;margin-top:8px;font-size:12px;line-height:1.8;color:#e2b25a}
+
+  /* overlay */
+  .overlay{position:fixed;inset:0;z-index:10;background:var(--night);display:none;flex-direction:column}
+  .overlay.open{display:flex}
+  .ov-head{display:flex;align-items:center;gap:10px;padding:calc(14px + env(safe-area-inset-top)) 16px 14px;border-bottom:1px solid var(--edge);background:var(--night-2)}
+  .ov-title{font-family:var(--serif);font-size:16px;letter-spacing:.06em;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ov-body{flex:1;overflow-y:auto;padding:18px 16px 130px;-webkit-overflow-scrolling:touch}
+  .meta-line{font-size:11px;color:var(--ink-dim);margin-bottom:16px;letter-spacing:.04em}
+
+  .detail-row{display:flex;align-items:center;gap:10px;background:var(--night-2);border:1px solid var(--edge);border-radius:11px;padding:13px 14px;margin-bottom:11px}
+  .dr-label{font-size:11px;color:var(--ink-dim);width:70px;flex:none;letter-spacing:.04em}
+  .dr-val{flex:1;font-family:var(--mono);font-size:14px;word-break:break-all;color:var(--ink)}
+  .dr-val.pw{letter-spacing:.05em}
+  .dr-btn{background:transparent;border:1px solid var(--edge);color:var(--ink);border-radius:8px;padding:8px 11px;font-size:12px;cursor:pointer;font-family:var(--sans);flex-shrink:0}
+  .dr-btn:active{background:var(--card)}
+  .dr-btn.accent{color:var(--accent);border-color:var(--accent-dim)}
+  .url-link{color:var(--accent);text-decoration:none;word-break:break-all}
+
+  textarea.editor,input.title-input,select.title-input{width:100%;background:var(--night-2);border:1px solid var(--edge);border-radius:11px;color:var(--ink);font-family:var(--sans);font-size:15px;padding:12px 13px;margin-bottom:11px}
+  textarea.editor{font-family:var(--mono);font-size:14px;line-height:1.7;min-height:80px;resize:vertical}
+  input.title-input:focus,textarea.editor:focus,select.title-input:focus{outline:2px solid var(--accent-dim);outline-offset:1px}
+  .field-label{font-size:11px;color:var(--ink-dim);margin:2px 2px 6px;letter-spacing:.05em}
+  .gen-btn{width:100%;background:var(--night-2);border:1px solid var(--accent-dim);color:var(--accent);border-radius:11px;padding:12px;font-size:13px;cursor:pointer;font-family:var(--sans);margin-bottom:14px}
+  .gen-btn:active{background:var(--night)}
+  .pw-strength{font-size:11px;margin:-6px 2px 12px;letter-spacing:.04em}
+
+  .ov-foot{position:fixed;left:0;right:0;bottom:0;padding:14px 16px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(transparent, var(--night) 30%);display:flex;gap:10px;max-width:640px;margin:0 auto}
+  .big-btn{flex:1;border:none;border-radius:14px;padding:16px;font-size:15px;font-weight:600;cursor:pointer;font-family:var(--sans);letter-spacing:.06em}
+  .big-btn.accent{background:var(--accent);color:#08150f}
+  .big-btn.accent:active{background:var(--accent-dim)}
+  .big-btn.ghost{background:var(--card);color:var(--ink);border:1px solid var(--edge)}
+
+  /* lock screen */
+  .lock-wrap{max-width:420px;margin:0 auto;padding:calc(40px + env(safe-area-inset-top)) 20px 40px;position:relative;z-index:1}
+  .lock-card{background:var(--card);border:1px solid var(--edge);border-radius:18px;padding:30px 24px}
+  .lock-icon{width:46px;height:46px;margin:0 auto 16px;display:block}
+  .lock-title{text-align:center;font-family:var(--serif);font-size:18px;margin:0 0 6px;letter-spacing:.06em}
+  .lock-sub{text-align:center;color:var(--ink-dim);font-size:13px;line-height:1.8;margin:0 0 24px}
+  .lock-card input{width:100%;background:var(--night-2);border:1px solid var(--edge);border-radius:11px;color:var(--ink);font-size:16px;padding:13px 14px;margin-bottom:12px;font-family:var(--sans)}
+  .lock-card input:focus{outline:2px solid var(--accent-dim);outline-offset:1px}
+  .lock-btn{width:100%;background:var(--accent);color:#08150f;border:none;border-radius:12px;padding:15px;font-size:15px;font-weight:600;cursor:pointer;font-family:var(--sans);letter-spacing:.06em}
+  .lock-btn:active{background:var(--accent-dim)}
+  .lock-err{color:var(--danger);font-size:13px;text-align:center;min-height:18px;margin-top:12px}
+  .lock-hint{font-size:12px;color:var(--ink-dim);line-height:1.75;margin-top:18px;padding-top:16px;border-top:1px solid var(--edge)}
+
+  /* modal */
+  .modal-bg{position:fixed;inset:0;z-index:30;background:rgba(10,13,26,.75);display:none;align-items:center;justify-content:center;padding:20px}
+  .modal-bg.open{display:flex}
+  .modal{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:20px;width:100%;max-width:420px}
+  .modal h3{font-family:var(--serif);font-size:15px;letter-spacing:.06em;margin-bottom:14px;color:#fff}
+  .modal .m-msg{font-size:13px;color:var(--ink-dim);line-height:1.9;margin-bottom:14px;white-space:pre-wrap;max-height:52vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .modal input{width:100%;background:var(--night-2);border:1px solid var(--edge);border-radius:10px;color:var(--ink);font-size:15px;padding:12px 13px;margin-bottom:14px;font-family:var(--sans)}
+  .modal input:focus{outline:2px solid var(--accent-dim);outline-offset:1px}
+  .modal .m-btns{display:flex;flex-direction:column;gap:8px}
+  .m-btn{border:none;border-radius:11px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans);letter-spacing:.04em}
+  .m-btn.primary{background:var(--accent);color:#08150f}
+  .m-btn.ghost{background:var(--night-2);color:var(--ink);border:1px solid var(--edge)}
+  .m-btn.danger{background:transparent;color:var(--danger);border:1px solid #5a3040}
+
+  .toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%) translateY(10px);background:var(--accent);color:#08150f;font-size:13px;font-weight:600;padding:10px 22px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .2s, transform .2s;z-index:40;letter-spacing:.04em;box-shadow:0 4px 20px rgba(0,0,0,.4);max-width:92vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.err{background:var(--danger);color:#fff}
+
+  .undo-bar{position:fixed;left:50%;bottom:34px;transform:translateX(-50%);background:var(--card);border:1px solid var(--accent-dim);border-radius:999px;display:none;align-items:center;gap:14px;padding:10px 10px 10px 20px;z-index:21;box-shadow:0 4px 20px rgba(0,0,0,.5);max-width:92vw}
+  .undo-bar.show{display:flex}
+  .undo-bar .ut{font-size:13px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .undo-bar button{background:var(--accent);color:#08150f;border:none;border-radius:999px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);flex-shrink:0;letter-spacing:.04em}
+
+  .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--night);z-index:50;color:var(--ink-dim);font-size:13px;letter-spacing:.2em}
+  #storageWarn{display:none;position:relative;z-index:2;background:#5a3040;color:#ffd9d9;font-size:12px;line-height:1.7;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;text-align:center}
+  #app{display:none}
+</style>
+</head>
+<body>
+<div class="loading" id="loading">読み込み中…</div>
+<div id="storageWarn">⚠ この開き方ではデータを保存できません(プレビュー表示です)。<br>Safariやブラウザで、ファイルまたはURLから開いてください。</div>
+
+<!-- lock / setup -->
+<div class="lock-wrap" id="lockWrap" style="display:none">
+  <div class="lock-card" id="lockCard"></div>
+</div>
+
+<!-- main app -->
+<div id="app">
+<div class="wrap">
+  <header>
+    <svg class="mark" viewBox="0 0 24 24" fill="none"><circle cx="8" cy="8" r="4.4" stroke="#5ed3a8" stroke-width="1.8"/><path d="M11 11l7 7M15 15l-1.6 1.6M17 13l-1.6 1.6" stroke="#5ed3a8" stroke-width="1.8" stroke-linecap="round"/></svg>
+    <h1>Keyring<small>ENCRYPTED VAULT</small></h1>
+    <div class="header-actions">
+      <button class="icon-btn" id="lockBtn">ロック</button>
+    </div>
+  </header>
+
+  <div class="cat-row" id="catRow"></div>
+
+  <div class="searchbar">
+    <input id="search" placeholder="サービス名・IDで検索" autocapitalize="off" autocomplete="off">
+  </div>
+
+  <div class="doc-list" id="docList"></div>
+  <button class="add-doc" id="addDoc">＋ 登録を追加</button>
+
+  <div class="section-label">バックアップ</div>
+  <div class="backup-row">
+    <button class="tool-btn" id="exportBtn">全データを書き出し</button>
+    <button class="tool-btn" id="importBtn">ファイルから復元</button>
+  </div>
+  <input type="file" id="importFile" accept=".json,application/json" style="display:none">
+
+  <div class="section-label">クラウド同期(Mac ⇄ iPhone・暗号化)</div>
+  <div class="backup-row">
+    <button class="tool-btn" id="syncSetupBtn">同期の設定</button>
+    <button class="tool-btn" id="syncNowBtn">今すぐ同期</button>
+  </div>
+  <div class="empty-note" id="syncStatus"></div>
+  <div class="empty-note" id="statsInfo"></div>
+  <div id="backupRemind"></div>
+  <div id="mpRemind"></div>
+
+  <div class="section-label">鍵の管理</div>
+  <div class="backup-row">
+    <button class="tool-btn" id="changeMasterBtn">マスターパスワードを変更</button>
+    <button class="tool-btn" id="secretKeyBtn">シークレットキー / 緊急キット</button>
+  </div>
+  <div class="backup-row" style="margin-top:8px">
+    <button class="tool-btn" id="bioBtn">生体認証（Face ID / Touch ID）</button>
+  </div>
+
+  <div class="section-label">検証</div>
+  <div class="backup-row">
+    <button class="tool-btn" id="attackTestBtn">攻撃テストを実行（過去の全欠陥を再現）</button>
+  </div>
+</div>
+</div>
+
+<!-- viewer -->
+<div class="overlay" id="viewer">
+  <div class="ov-head">
+    <button class="icon-btn" id="vBack">← 戻る</button>
+    <div class="ov-title" id="vTitle"></div>
+    <button class="icon-btn" id="vEdit">編集</button>
+  </div>
+  <div class="ov-body">
+    <div class="meta-line" id="vMeta"></div>
+    <div id="vDetail"></div>
+  </div>
+  <div class="ov-foot" id="viewerFoot"></div>
+</div>
+
+<!-- editor -->
+<div class="overlay" id="editor">
+  <div class="ov-head">
+    <button class="icon-btn" id="eCancel">キャンセル</button>
+    <div class="ov-title" id="eTitle">編集</div>
+    <button class="icon-btn danger" id="eDelete">削除</button>
+  </div>
+  <div class="ov-body">
+    <div class="field-label">種類</div>
+    <select class="title-input" id="eTypeSelect"></select>
+    <div class="field-label">名前（サービス名・銀行名・カード名など）</div>
+    <input class="title-input" id="eName" placeholder="例）Amazon／三菱UFJ銀行／楽天カード" autocapitalize="off">
+    <div class="field-label">カテゴリー</div>
+    <select class="title-input" id="eCatSelect"></select>
+    <div id="eDynFields"></div>
+    <div class="field-label">メモ（任意）</div>
+    <textarea class="editor" id="eNote" placeholder="任意（登録メール、秘密の質問の答え、窓口電話など）"></textarea>
+  </div>
+  <div class="ov-foot">
+    <button class="big-btn ghost" id="eCancel2">キャンセル</button>
+    <button class="big-btn accent" id="eSave">保存する</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3 id="mTitle"></h3>
+    <div class="m-msg" id="mMsg" style="display:none"></div>
+    <input type="text" id="mInput" style="display:none">
+    <div class="m-btns" id="mBtns"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="undo-bar" id="undoBar">
+  <span class="ut" id="undoText"></span>
+  <button id="undoBtn">元に戻す</button>
+</div>
+
+<script>
+/* ============================================================
+   Keyring v7.2 — v7.1（利用者による改良版）の監査で見つかった問題の修正
+   ①CSPのconnect-srcを *.githubusercontent.com に拡大＋'self'追加。
+     v7.1のCSPは自分の同期機能（truncated gistのraw_url取得）を条件付きで塞いでいた
+   ②raw_url取得の失敗を専用エラー(rawfetch)に分類し、無言死を防止
+   ③短いマスターパスワードのままの既存利用者に、解錠後バナーで変更を促す
+     （強制はしない＝締め出し防止。推奨は16文字以上のフレーズ）
+   ④CSP攻撃テストを新しい許可リストに合わせて更新＋rawfetch分類テストを追加
+   ------------------------------------------------------------
+   Keyring v7.1 — 残存弱点2件の修正
+   ①マスターパスワードの最低長を12文字に（新規設定・変更時のみ強制）
+     端末内の保管庫レコードにはSKが同梱されるため、ローカルデータの防壁は実質MPの強さのみ。
+     PBKDF2はGPU耐性が低く（Argon2はWebCrypto非対応）、短いMPはオフライン総当たりで破られる。
+     ※既存保管庫の「解錠」には要求しない（締め出し防止）。短いMPの人は
+       「マスターパスワードを変更」を通るときに自然に引き上げられる。
+   ②Content-Security-Policy追加：外部スクリプト読込を遮断し、
+     通信先を api.github.com / gist.githubusercontent.com（同期）のみに制限。
+     ＝ホスト汚染・ファイル改変などでコードが注入された場合の「データ持ち出し経路」を塞ぐ。
+   ------------------------------------------------------------
+   Keyring v7 — 攻撃テストスイート同梱
+   この開発過程の敵対的テストで見つかった全欠陥を「攻撃シナリオ」として本体に同梱。
+   設定の「攻撃テストを実行」で、いつでも実コードに対して再現攻撃をかけ、
+   全て防がれることをその場で検証できる（結果は改変不能なコードとして誰でも読める）。
+   テストは実データに一切触れず、メモリ上の使い捨てデータのみで行う。
+   ------------------------------------------------------------
+   Keyring v6 — v5の欠陥修正＋画面上の露出最小化
+   ①openSafe：window.openを同期実行に（iOS Safariのポップアップブロック回避）
+   ②WebAuthn操作中は自動ロックを抑止（Face IDシート表示→ロック→null値ラップの毒データ防止）
+     ＋ラップ前にmp/skの存在を検証（毒データを構造的に作れないように）
+   ③SK秘匿モード有効化前に、緊急キーの末尾5文字の入力で「キットの実在」を検証
+   ④IndexedDB二重保存に書き込み時刻と健全性監視を追加。
+     予備からの復旧時は「いつ時点のコピーか」を明示警告（サイレント・ロールバック防止）
+   ⑤二重鍵化が済んでいない状態では生体認証を設定不可に
+   ⑥解錠のSK入力モーダル中の再入を防止
+   ⑦persist()要求を解錠後に移動（起動即プロンプトを回避）
+   ⑧【画面録画・覗き見対策】検知はWebでは不可能なため「露出の最小化」で対抗：
+     表示した秘密は10秒で自動的に再び伏せ字に／ウィンドウのフォーカスが外れた瞬間に即伏せ字
+     （コピー中心の運用なら、秘密は一度も画面に映らない）
+   ------------------------------------------------------------
+   Keyring v5 — 専業サービスとの残差を可能な限り埋める版
+   ①生体認証（Face ID / Touch ID・WebAuthn PRF）による解錠【端末内保護】
+     ＋任意で「SK秘匿モード」：シークレットキーを端末の保存領域から取り除き、
+       生体認証チップ（と緊急キット）だけで扱う → 端末を盗まれてもSKを読めない
+   ②「コピーして正しいサイトを開く」【フィッシング対策】
+     登録済みURLから開く習慣をUIで支援（メール・SMSのリンクから開かない）
+   ③保存の二重化【消失対策】localStorage＋IndexedDBに同時保存・相互復旧、
+     navigator.storage.persist() で永続化を要求、状態を画面に表示
+   ④起動時セルフテスト【監査の部分代替】暗号往復・エンコード・SK生成を毎回検証し、
+     異常があれば起動を止める（※第三者監査の代わりにはならない。正直に言うとここは埋められない）
+   ------------------------------------------------------------
+   Keyring v4 — 緊急キットまわりの致命傷を修正
+   ①キット表示中・ファイル保存直後は自動ロックを抑止（保存操作がロックを誘発してキーを見失う事故を防止）
+     ＋キット未確認フラグ(kitPending)を保管庫に持ち、確認するまで次回解錠時にも再表示
+     ＋「閉じる」前に保存確認を挟む
+   ②鍵を差し替える処理(アップグレード/MP変更/SK変更)の前に自動pushタイマーを必ず破棄
+     ＋SK未設定でのクラウド暗号化をガード（SK:nullで暗号化した復元不能データを作らない）
+   ③同期設定の平文→暗号化移行は、鍵が確定した後(enterAppの最後)に実施
+   ④クラウド/バックアップにSKのチェック値(skh)を同梱し、
+     「パスワード違い」と「シークレットキー違い」をエラーで区別できるように
+   ⑤緊急キットに「印刷後はファイル削除を」と明記
+   ⑥端末盗難時はMP強度依存であることを注意書きで正直に明示
+   ⑦アップグレード失敗時の再試行手段（次回解錠＋設定から手動）
+   ------------------------------------------------------------
+   Keyring v3 — 二重鍵（シークレットキー）方式
+   ・暗号化キー = PBKDF2(マスターパスワード) を HKDF でシークレットキー(SK, 125bit乱数)と合成
+   ・クラウド同期・バックアップは MP+SK の両方がないと復号不可能
+     → gistトークン漏洩やクラウド流出があっても、総当たりが数学的に不可能（1Passwordと同方式）
+   ・SKは端末内に保存（1Password同様、SKが守るのは「外に出るデータ」）。
+     「緊急キット」として書き出して別保管する
+   ・旧形式の保管庫は解錠時に自動アップグレード。旧バックアップ・旧クラウドデータも読める
+   ------------------------------------------------------------
+   Keyring v2 — 意地悪テストを踏まえた修正版
+   ①パスワード変更→クラウドはpullせず強制上書き（同期の永久破損を防止）
+   ②tombstoneは件数上限(slice -100)をやめ、90日の期限制に（削除の復活を防止）
+   ③ロック時にクリップボードを消さない（コピー→他アプリで貼り付けを壊さない）
+   ④URLは http/https のみリンク化（javascript:スキーム排除）
+   ⑤解錠の待機時間をEnterキーでも強制（バックオフの素通り防止）
+   ⑥crypto.subtle非対応環境では起動時に明示エラー
+   ⑦GitHubトークン等の同期設定をマスターキーで暗号化して保存
+   ⑧マスターパスワード変更に現在パスワード確認＋モーダル入力＋原子的書き込み
+   ⑨バックアップ読込エラーを「形式破損」と「パスワード違い」で区別
+   ============================================================ */
+const KEY = "keyring-vault-v1";
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+let masterKey = null;      // AES-GCM key derived from master password (+ secret key)
+let masterPass = null;     // kept in memory for cloud sync (same password)
+let secretKey = null;      // 25文字のシークレットキー（正規化済み）。端末内保存・緊急キットで別保管
+let pendingUpgrade = false; // 旧形式(v2以前)の保管庫を解錠した → 二重鍵化が必要
+let showKitAfterEnter = false; // 新しくSKを生成した → 緊急キットを表示する
+let kitOpen = false;        // ①緊急キット表示中は自動ロックを抑止
+let lockGraceUntil = 0;     // ①ファイル保存直後の数秒はvisibilityロックを抑止（DL＝画面遷移扱いのブラウザ対策）
+let skProtected = false;    // v5①SK秘匿モード：シークレットキーを端末の保存領域に置かない
+let persistGranted = null;  // v5③永続ストレージの承認状態（true/false/null=不明）
+let webauthnBusy = false;   // v6②WebAuthn（Face ID等）の操作中は自動ロックを抑止
+let idbHealthy = true;      // v6④IndexedDBへの二重保存が機能しているか
+let recoveredAt = undefined; // v6④予備(IndexedDB)から復旧した場合、そのコピーの書き込み時刻
+let remaskTimer = null;     // v6⑧表示した秘密を自動で再び伏せる
+let state = null;          // {cats, activeCat, entries, savedAt, tombstones, lastBackupAt}
+let current = null;        // entry index in state.entries
+let query = "";
+
+/* ---------------- storage detection ---------------- */
+const hasAppStorage = !!(window.storage && typeof window.storage.get === "function");
+let hasLocalStorage = false;
+try{ localStorage.setItem("__k_test__","1"); localStorage.removeItem("__k_test__"); hasLocalStorage = true; }catch(e){}
+const memoryOnly = !hasAppStorage && !hasLocalStorage;
+const memMap = new Map(); // fallback store when no persistence
+
+/* v5③ IndexedDB：localStorageと二重保存し、どちらかが消えても相互に復旧する。
+   Safariなどはブラウザ都合でサイトデータを消すことがあるため、保存先を1つに依存しない */
+function idbOpen(){
+  return new Promise((res, rej)=>{
+    if(!window.indexedDB) return rej(new Error("noidb"));
+    const r = indexedDB.open("keyring-db", 1);
+    r.onupgradeneeded = ()=> r.result.createObjectStore("kv");
+    r.onsuccess = ()=> res(r.result);
+    r.onerror = ()=> rej(r.error);
+  });
+}
+async function idbGet(k){
+  try{
+    const db = await idbOpen();
+    const raw = await new Promise((res, rej)=>{
+      const t = db.transaction("kv").objectStore("kv").get(k);
+      t.onsuccess = ()=> res(t.result===undefined ? null : t.result);
+      t.onerror = ()=> rej(t.error);
+    });
+    if(raw===null) return null;
+    // v6④書き込み時刻つきラッパー（旧形式の生値も受け付ける）
+    try{ const o=JSON.parse(raw); if(o && o.__w!==undefined && "v" in o) return o; }catch(e){}
+    return {__w:0, v:raw};
+  }catch(e){ return null; }
+}
+async function idbSet(k, v){
+  try{
+    const db = await idbOpen();
+    await new Promise((res, rej)=>{
+      const t = db.transaction("kv","readwrite");
+      t.objectStore("kv").put(JSON.stringify({__w:Date.now(), v}), k);
+      t.oncomplete = res; t.onerror = ()=> rej(t.error);
+    });
+    idbHealthy = true;
+  }catch(e){ idbHealthy = false; } // v6④握り潰さず状態を記録（updateStatsで表示）
+}
+async function idbDel(k){
+  try{
+    const db = await idbOpen();
+    await new Promise((res, rej)=>{
+      const t = db.transaction("kv","readwrite");
+      t.objectStore("kv").delete(k);
+      t.oncomplete = res; t.onerror = ()=> rej(t.error);
+    });
+  }catch(e){}
+}
+
+async function rawGet(k){
+  if(hasAppStorage){
+    const r = await window.storage.get(k).catch(()=>null);
+    return r && r.value;
+  }
+  if(hasLocalStorage){
+    let v = localStorage.getItem(k);
+    if(v === null){
+      // localStorageが消えていたらIndexedDBから復旧。
+      // v6④ただし予備は古い可能性があるため、いつ時点のコピーかを記録して警告する
+      const w = await idbGet(k);
+      if(w && w.v !== null && w.v !== undefined){
+        v = w.v;
+        try{ localStorage.setItem(k, v); }catch(e){}
+        if(k === KEY) recoveredAt = w.__w || 0;
+      }
+    }
+    return v;
+  }
+  return memMap.has(k) ? memMap.get(k) : null;
+}
+async function rawSet(k, v){
+  if(hasAppStorage){ await window.storage.set(k, v); return; }
+  if(hasLocalStorage){
+    localStorage.setItem(k, v);
+    await idbSet(k, v); // 二重保存
+    return;
+  }
+  memMap.set(k, v);
+}
+async function rawDel(k){
+  if(hasAppStorage){ await window.storage.delete(k).catch(()=>{}); return; }
+  if(hasLocalStorage){ localStorage.removeItem(k); await idbDel(k); return; }
+  memMap.delete(k);
+}
+
+/* ---------------- crypto ---------------- */
+function b64(buf){ let s="",u=new Uint8Array(buf); for(let i=0;i<u.length;i+=0x8000) s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000)); return btoa(s); }
+function unb64(s){ return Uint8Array.from(atob(s), c=>c.charCodeAt(0)); }
+async function deriveKey(pass, salt){
+  const base = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt, iterations:600000, hash:"SHA-256"},
+    base, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+}
+/* --- 二重鍵方式（v3）---
+   最終鍵 = HKDF( PBKDF2(マスターパスワード, salt, 60万回), salt=シークレットキー )
+   ・SKは125bitの乱数なので、SKなしの総当たりは計算量的に不可能
+   ・PBKDF2のsaltはデータごとにランダム（レコード/クラウド/バックアップに同梱） */
+async function stretch(pass, salt){
+  const base = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveBits"]);
+  return crypto.subtle.deriveBits({name:"PBKDF2", salt, iterations:600000, hash:"SHA-256"}, base, 256);
+}
+async function deriveDataKey(pass, salt, sk){
+  const bits = await stretch(pass, salt);
+  const base = await crypto.subtle.importKey("raw", bits, "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name:"HKDF", hash:"SHA-256", salt:enc.encode("SK:"+sk), info:enc.encode("keyring-data-v3")},
+    base, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+}
+/* シークレットキー：Crockford Base32・25文字（=125bit）。O→0, I/L→1 の読み違いを吸収 */
+const CROCK = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+function genSecretKey(){
+  const b = crypto.getRandomValues(new Uint8Array(25));
+  let s = ""; for(const x of b) s += CROCK[x % 32]; // 256/32=8 で割り切れるため偏りなし
+  return s;
+}
+function fmtSK(s){ return "KR-" + String(s).match(/.{1,5}/g).join("-"); }
+/* 文字単位の正規化（O→0, I/L→1, U→V の読み違い吸収。部分入力の照合にも使う） */
+function normSKchars(input){
+  return String(input||"").toUpperCase().replace(/[^0-9A-Z]/g,"")
+    .replace(/O/g,"0").replace(/[IL]/g,"1").replace(/U/g,"V");
+}
+function normSK(input){
+  let s = String(input||"").toUpperCase().replace(/[^0-9A-Z]/g,"");
+  if(s.startsWith("KR")) s = s.slice(2);
+  return normSKchars(s);
+}
+function validSK(s){ return s.length===25 && [...s].every(c=>CROCK.includes(c)); }
+
+/* v5 保管庫レコードの書き込みを一元化。
+   SK秘匿モードではskを端末に書かず、kitPendingは明示クリアまで引き継ぐ */
+async function writeVaultRecord(saltU8, ivU8, ctBuf, opts){
+  let old = null;
+  try{ old = JSON.parse(await rawGet(KEY)); }catch(e){}
+  const rec = {v:3, salt:b64(saltU8), iv:b64(ivU8), ct:b64(ctBuf)};
+  if(skProtected) rec.skProtected = true; else rec.sk = secretKey;
+  if((opts && opts.kitPending) || (old && old.kitPending)) rec.kitPending = true;
+  await rawSet(KEY, JSON.stringify(rec));
+}
+
+async function encryptState(){
+  const rec = JSON.parse(await rawGet(KEY));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, masterKey, enc.encode(JSON.stringify(state)));
+  rec.iv = b64(iv); rec.ct = b64(ct);
+  await rawSet(KEY, JSON.stringify(rec));
+}
+/* 外に出すデータ（クラウド・バックアップ）は必ず MP+SK の二重鍵で暗号化 */
+/* ④skh＝SKのチェック値。復号失敗時に「パスワード違い」と「SK違い」を区別するために同梱する。
+   SHA-256の先頭12文字のみで、125bitのSK本体の探索には実質寄与しない */
+async function skHash(sk){
+  const d = await crypto.subtle.digest("SHA-256", enc.encode("kr-skh:" + sk));
+  return b64(d).slice(0, 12);
+}
+async function encryptPayload(){
+  if(!secretKey) throw new Error("nokey"); // ②SK未設定のまま外部向け暗号化しない（復元不能データを作らない）
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveDataKey(masterPass, salt, secretKey);
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(JSON.stringify(state)));
+  return {enc:2, skh:await skHash(secretKey), salt:b64(salt), iv:b64(iv), data:b64(ct)};
+}
+
+/* ---------------- entry types ---------------- */
+// 各タイプの入力欄定義。key=保存キー, label=表示名, ph=プレースホルダ,
+// mono=等幅で表示, secret=伏せ字対象, copyMain=カード下部の主コピー対象
+const TYPES = {
+  login: { name:"ログイン系", fields:[
+    {key:"loginId", label:"ログインID / メール", ph:"例）sora@example.com", mono:true},
+    {key:"pw",      label:"パスワード", ph:"パスワード", mono:true, secret:true, gen:true, copyMain:true},
+    {key:"url",     label:"URL（任意）", ph:"https://...", link:true},
+  ]},
+  card: { name:"クレジットカード", fields:[
+    {key:"cardNo",  label:"カード番号", ph:"1234 5678 9012 3456", mono:true, secret:true, copyMain:true},
+    {key:"expiry",  label:"有効期限", ph:"MM/YY", mono:true},
+    {key:"pin",     label:"暗証番号", ph:"4桁など", mono:true, secret:true},
+    {key:"holder",  label:"名義（任意）", ph:"TARO YAMADA", mono:true},
+    {key:"brand",   label:"ブランド/会社（任意）", ph:"例）楽天カード VISA"},
+  ]},
+  bank: { name:"銀行口座", fields:[
+    {key:"bankBranch", label:"店番（店舗番号）", ph:"例）001", mono:true},
+    {key:"accountNo",  label:"口座番号", ph:"例）1234567", mono:true, secret:true, copyMain:true},
+    {key:"pin",        label:"暗証番号", ph:"4桁", mono:true, secret:true},
+    {key:"accountType",label:"種別（任意）", ph:"例）普通"},
+  ]},
+  brokerage: { name:"証券口座", fields:[
+    {key:"loginId",   label:"ログインID", ph:"取引用ID", mono:true},
+    {key:"pw",        label:"ログインパスワード", ph:"パスワード", mono:true, secret:true, gen:true, copyMain:true},
+    {key:"tradePw",   label:"取引暗証番号", ph:"取引パスワード", mono:true, secret:true},
+    {key:"accountNo", label:"口座番号（任意）", ph:"", mono:true},
+    {key:"url",       label:"URL（任意）", ph:"https://...", link:true},
+  ]},
+  memo: { name:"その他のメモ", fields:[
+    {key:"loginId", label:"ID / 番号（任意）", ph:"マイナンバー、会員番号など", mono:true, secret:true},
+    {key:"pw",      label:"パスワード / 暗証（任意）", ph:"", mono:true, secret:true},
+  ]},
+};
+const TYPE_ORDER = ["login","card","bank","brokerage","memo"];
+function typeName(t){ return (TYPES[t]||TYPES.login).name; }
+function typeFields(t){ return (TYPES[t]||TYPES.login).fields; }
+// カード一覧で名前の下に出すサブ情報
+function entrySubline(e){
+  if(e.type==="card")   return e.cardNo ? "•••• " + e.cardNo.replace(/\s/g,"").slice(-4) : "（カード番号未登録）";
+  if(e.type==="bank")   return (e.bankBranch?("店番 "+e.bankBranch+" / "):"") + (e.accountNo?("口座 "+e.accountNo):"（口座番号未登録）");
+  if(e.type==="brokerage") return e.loginId || "（ID未登録）";
+  return e.loginId || "（ID未登録）";
+}
+// カード下部の主コピーボタン（対象キーとラベル）
+function entryMainCopy(e){
+  const f = typeFields(e.type||"login").find(x=>x.copyMain);
+  if(!f) return null;
+  const label = {pw:"パスワード", cardNo:"カード番号", accountNo:"口座番号"}[f.key] || "コピー";
+  return { key:f.key, label };
+}
+
+/* ---------------- state helpers ---------------- */
+function defaultState(){
+  return {
+    cats: [
+      {id:"web", name:"Webサービス"},
+      {id:"finance", name:"金融・証券"},
+      {id:"sns", name:"SNS"},
+      {id:"work", name:"仕事"}
+    ],
+    activeCat: "web",
+    entries: [],
+    savedAt: 0,
+    tombstones: [],
+    lastBackupAt: 0
+  };
+}
+function uid(){ return "e" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function nowStamp(){ const n=new Date(); return `${n.getFullYear()}/${n.getMonth()+1}/${n.getDate()} ${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")}`; }
+function esc(s){ return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function escAttr(s){ return esc(s); }
+
+/* ②墓標（削除記録）は「最新100件」ではなく「90日で失効」に。
+   件数上限だと大量削除1回で溢れ、同期先から削除済みデータが復活する。 */
+const TOMB_TTL = 90 * 86400000;
+function gcTomb(list){
+  const cut = Date.now() - TOMB_TTL;
+  return (list||[]).filter(t=>t && t.id && (t.ts||0) > cut);
+}
+
+function sanitize(d){
+  if(!d || typeof d!=="object" || !Array.isArray(d.entries)) return null;
+  if(!Array.isArray(d.cats) || !d.cats.length) d.cats = defaultState().cats;
+  d.cats = d.cats.filter(c=>c&&typeof c==="object").map(c=>({id:c.id||uid(), name:String(c.name||"無題")}));
+  const catIds = new Set(d.cats.map(c=>c.id));
+  const FIELD_KEYS = ["loginId","pw","url","cardNo","expiry","pin","holder","brand","bankBranch","accountNo","accountType","tradePw"];
+  d.entries = d.entries.filter(x=>x&&typeof x==="object").map(x=>{
+    const e = {
+      id: x.id||uid(),
+      type: TYPES[x.type] ? x.type : "login",
+      catId: catIds.has(x.catId) ? x.catId : d.cats[0].id,
+      name: String(x.name||"無題"),
+      note: String(x.note||""),
+      updated: x.updated||null,
+      ts: x.ts||0
+    };
+    for(const k of FIELD_KEYS) e[k] = String(x[k]||"");
+    return e;
+  });
+  d.tombstones = Array.isArray(d.tombstones) ? gcTomb(d.tombstones) : [];
+  d.lastBackupAt = d.lastBackupAt || 0;
+  if(!catIds.has(d.activeCat)) d.activeCat = d.cats[0].id;
+  d.savedAt = d.savedAt || 0;
+  return d;
+}
+
+async function save(silent){
+  try{
+    state.savedAt = Date.now();
+    await encryptState();
+    scheduleCloudPush();
+    return true;
+  }catch(e){
+    if(!silent) toast("保存に失敗しました。バックアップ書き出しをおすすめします", true);
+    return silent ? true : false;
+  }
+}
+
+/* ---------------- lock / setup / unlock ---------------- */
+/* v7.1①マスターパスワードの最低要件（新規設定・変更時のみ。解錠には課さない） */
+const MP_MIN = 12;
+function mpPolicyErr(p){
+  if(String(p||"").length < MP_MIN)
+    return `マスターパスワードは${MP_MIN}文字以上にしてください（「覚えやすい日本語の文＋数字」など長いフレーズがおすすめ）`;
+  return null;
+}
+let localStorageVaultFlag = false;
+
+function showLock(html){
+  document.getElementById("app").style.display = "none";
+  document.getElementById("lockWrap").style.display = "block";
+  document.getElementById("lockCard").innerHTML = html;
+}
+function renderSetup(){
+  showLock(`
+    <svg class="lock-icon" viewBox="0 0 24 24" fill="none"><rect x="4.5" y="10" width="15" height="10" rx="2.5" stroke="#5ed3a8" stroke-width="1.7"/><path d="M8 10V7a4 4 0 018 0v3" stroke="#5ed3a8" stroke-width="1.7"/></svg>
+    <p class="lock-title">マスターパスワードを設定</p>
+    <p class="lock-sub">この1つだけ覚えれば大丈夫。<br>解錠にも、クラウド同期の暗号化にも使います。</p>
+    <input type="password" id="mp1" placeholder="マスターパスワード（12文字以上）" autocomplete="new-password">
+    <input type="password" id="mp2" placeholder="もう一度入力" autocomplete="new-password">
+    <input type="text" id="mpSk" placeholder="シークレットキー（2台目・引き継ぎの時だけ入力）" autocapitalize="characters" autocomplete="off" spellcheck="false">
+    <button class="lock-btn" id="createBtn">はじめる</button>
+    <div class="lock-err" id="setupErr"></div>
+    <p class="lock-hint">🔑 <b>二重鍵方式</b>：暗号化にはマスターパスワードに加えて、端末が自動生成する「シークレットキー」を組み合わせます（1Passwordと同じ方式）。クラウド同期のデータやバックアップファイルが万一第三者の手に渡っても、パスワードとキーの<b>両方</b>が揃わない限り、総当たりでも現実的に解読できません。キーは作成後に「緊急キット」として保存できます。<br><br>※シークレットキーが守るのは、クラウドやバックアップなど「端末の外に出たデータ」です。端末そのものを盗まれた場合の守りはマスターパスワードの強さに依存するため、パスワードは長く複雑に。<br><br>⚠️ マスターパスワードを忘れる、またはパスワードとキーの両方を失うと、中身は二度と取り出せません（復元機能はありません）。緊急キットは印刷するなどして、普段のバックアップとは別の安全な場所に保管してください。</p>
+  `);
+  document.getElementById("createBtn").onclick = createVault;
+  document.getElementById("mp2").addEventListener("keydown", e=>{ if(e.key==="Enter") createVault(); });
+  document.getElementById("mpSk").addEventListener("keydown", e=>{ if(e.key==="Enter") createVault(); });
+}
+async function createVault(){
+  const p1=document.getElementById("mp1").value, p2=document.getElementById("mp2").value;
+  const err=document.getElementById("setupErr");
+  const perr = mpPolicyErr(p1); // v7.1①
+  if(perr){ err.textContent=perr; return; }
+  if(p1!==p2){ err.textContent="パスワードが一致しません"; return; }
+  // シークレットキー：引き継ぎなら入力を検証、新規なら生成
+  const skRaw = document.getElementById("mpSk").value.trim();
+  let sk, generated = false;
+  if(skRaw){
+    sk = normSK(skRaw);
+    if(!validSK(sk)){ err.textContent="シークレットキーの形式が正しくありません（KR-を除いて25文字）"; return; }
+  }else{
+    sk = genSecretKey(); generated = true;
+  }
+  err.textContent = "鍵を生成中…";
+  try{
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const key = await deriveDataKey(p1, salt, sk);
+    state = defaultState();
+    // ⑧新しいレコードを完成させてから一度に書き込む（途中失敗で解錠不能な残骸を作らない）
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(JSON.stringify(state)));
+    await writeVaultRecord(salt, iv, ct, generated ? {kitPending:true} : null);
+    masterKey = key; masterPass = p1; secretKey = sk;
+    showKitAfterEnter = generated;
+    enterApp();
+  }catch(e){
+    err.textContent = "この環境では暗号化を初期化できませんでした";
+  }
+}
+function renderUnlock(){
+  showLock(`
+    <svg class="lock-icon" viewBox="0 0 24 24" fill="none"><rect x="4.5" y="10" width="15" height="10" rx="2.5" stroke="#5ed3a8" stroke-width="1.7"/><path d="M8 10V7a4 4 0 018 0v3" stroke="#5ed3a8" stroke-width="1.7"/></svg>
+    <p class="lock-title">ロック解除</p>
+    <p class="lock-sub">マスターパスワードを入力してください</p>
+    <input type="password" id="unlockPw" placeholder="マスターパスワード" autocomplete="current-password">
+    <button class="lock-btn" id="unlockBtn">解除する</button>
+    <div class="lock-err" id="unlockErr"></div>
+  `);
+  const inp = document.getElementById("unlockPw");
+  document.getElementById("unlockBtn").onclick = doUnlock;
+  inp.addEventListener("keydown", e=>{ if(e.key==="Enter") doUnlock(); });
+  setTimeout(()=>inp.focus(),100);
+  // v5①生体認証が設定済みなら、ワンタップ解錠ボタンを出す
+  (async ()=>{
+    try{
+      const b = await rawGet(BIO_KEY);
+      if(b && bioApiPresent()){
+        const btn = document.createElement("button");
+        btn.className = "lock-btn";
+        btn.style.cssText = "margin-bottom:10px;background:var(--night-2);color:var(--accent);border:1px solid var(--accent-dim)";
+        btn.textContent = "生体認証で解除（Face ID / Touch ID）";
+        btn.onclick = bioUnlock;
+        const anchor = document.getElementById("unlockBtn");
+        if(anchor) anchor.parentNode.insertBefore(btn, anchor);
+      }
+    }catch(e){}
+  })();
+}
+let failCount = 0;
+let unlockBlockedUntil = 0; // ⑤Enterキー経由でもバックオフを素通りできないように時刻で管理
+let unlockBusy = false;
+async function doUnlock(){
+  const err = document.getElementById("unlockErr");
+  const btn = document.getElementById("unlockBtn");
+  if(unlockBusy) return;
+  const remain = unlockBlockedUntil - Date.now();
+  if(remain > 0){
+    err.textContent = `連続して失敗しています（あと${Math.ceil(remain/1000)}秒お待ちください）`;
+    return;
+  }
+  const pass = document.getElementById("unlockPw").value;
+  unlockBusy = true; btn.disabled = true; err.textContent = "確認中…";
+  try{
+    const rec = JSON.parse(await rawGet(KEY));
+    const isV3 = (rec.v===3 && (rec.sk || rec.skProtected));
+    let sk = rec.sk || null;
+    if(isV3 && !sk && rec.skProtected){
+      // v5①SK秘匿モード：端末にSKがないので、緊急キットのキーを入力してもらう
+      // v6⑥モーダル表示中もunlockBusyを維持して再入を防ぐ
+      err.textContent = "";
+      const raw = await askText("シークレットキーを入力", "KR-XXXXX-…（緊急キットに記載）");
+      if(raw===null){ unlockBusy = false; btn.disabled = false; err.textContent = ""; return; }
+      sk = normSK(raw);
+      if(!validSK(sk)){ unlockBusy = false; btn.disabled = false; err.textContent = "キーの形式が正しくありません"; return; }
+      err.textContent = "確認中…";
+    }
+    const key = isV3 ? await deriveDataKey(pass, unb64(rec.salt), sk)
+                     : await deriveKey(pass, unb64(rec.salt));
+    const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:unb64(rec.iv)}, key, unb64(rec.ct));
+    state = sanitize(JSON.parse(dec.decode(pt))) || defaultState();
+    masterKey = key;
+    masterPass = pass;
+    secretKey = isV3 ? sk : null;
+    skProtected = !!(isV3 && rec.skProtected);
+    pendingUpgrade = !isV3; // 旧形式 → 二重鍵に自動アップグレード
+    failCount = 0; unlockBlockedUntil = 0;
+    enterApp();
+  }catch(e){
+    failCount++;
+    // 失敗のたびに待ち時間を増やし、総当たりを現実的でなくする
+    const wait = Math.min(1000 * Math.pow(2, failCount-1), 30000);
+    unlockBlockedUntil = Date.now() + wait;
+    err.textContent = `パスワードが違います（${Math.round(wait/1000)}秒後に再試行できます）`;
+    setTimeout(()=>{ const b=document.getElementById("unlockBtn"); if(b) b.disabled = false; }, wait);
+  }finally{
+    unlockBusy = false;
+    if(unlockBlockedUntil===0){ btn.disabled = false; }
+  }
+}
+function lockNow(){
+  masterKey = null; masterPass = null; state = null; sync = null; secretKey = null; skProtected = false;
+  clearTimeout(pushTimer);
+  clearTimeout(idleTimer);
+  clearTimeout(remaskTimer);
+  shownSecrets = {};
+  // ③クリップボードはここでは消さない。
+  //   「コピー→他アプリに切り替えて貼り付け」が最重要ワークフローであり、
+  //   切り替えの瞬間にvisibilitychangeロックで消えると貼り付け不能になるため。
+  //   コピー時にセットした30秒の自動消去タイマー(clipTimer)はそのまま生かしておく。
+  document.getElementById("app").style.display = "none";
+  hideOverlay("viewer"); hideOverlay("editor");
+  document.getElementById("modalBg").classList.remove("open");
+  renderUnlock();
+}
+
+/* 無操作5分で自動ロック（放置時に他人へ見えないように） */
+const IDLE_MS = 5 * 60 * 1000;
+let idleTimer = null;
+function resetIdle(){
+  if(!masterKey) return; // ロック中は何もしない
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(()=>{ if(masterKey){ lockNow(); toast("しばらく操作がないため自動ロックしました"); } }, IDLE_MS);
+}
+["click","keydown","touchstart","pointerdown"].forEach(ev=>
+  document.addEventListener(ev, resetIdle, {passive:true}));
+// 画面を離れる/バックグラウンドに回ったら即ロック（覗き見・置き忘れ対策）
+// ※クリップボードは消さないので、コピー→切り替え→貼り付けは問題なくできる
+// ①例外：緊急キット表示中と、ファイル保存直後（保存＝画面遷移と誤検知するブラウザがあり、
+//   「キーを保存する」操作自体がロックを誘発してキーを見失う事故になるため）
+document.addEventListener("visibilitychange", ()=>{
+  if(document.hidden && masterKey && !kitOpen && !webauthnBusy && Date.now() > lockGraceUntil) lockNow();
+});
+async function enterApp(){
+  document.getElementById("lockWrap").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  render();
+  resetIdle();
+  clearTimeout(pushTimer); // ②前セッションの自動pushが旧鍵のまま発火しないように必ず破棄
+  // v7.2③ポリシー導入前からの短いパスワード利用者に、締め出さずに変更を促す
+  const mpr = document.getElementById("mpRemind");
+  if(masterPass && masterPass.length < MP_MIN){
+    mpr.style.display = "block";
+    mpr.textContent = `⚠ 現在のマスターパスワードは${masterPass.length}文字です。端末内データの防壁はパスワードの強さに依存するため、「マスターパスワードを変更」から${MP_MIN}文字以上（推奨は16文字以上の覚えやすいフレーズ）への変更をおすすめします。`;
+  }else mpr.style.display = "none";
+  // v6⑦永続ストレージの要求は解錠後に（起動直後の権限プロンプトを避ける）
+  if(!hasAppStorage && persistGranted===false && navigator.storage && navigator.storage.persist){
+    navigator.storage.persist().then(g=>{ persistGranted = g; updateStats(); }).catch(()=>{});
+  }
+  // 同期設定は「今のmasterKey」で復号されるため、鍵を差し替えるアップグレードより先に読む
+  await loadSyncConfig();
+  if(pendingUpgrade){
+    pendingUpgrade = false;
+    try{
+      await upgradeVault();       // SK生成 → v3形式で再暗号化
+      showKitAfterEnter = true;
+    }catch(e){ toast("二重鍵へのアップグレードに失敗しました。次回のロック解除時、または設定の「シークレットキー / 緊急キット」から再試行できます", true); }
+  }
+  // ③鍵が確定したこの時点で、同期設定を現在の鍵で保存し直す
+  //   （旧平文設定の暗号化移行も、アップグレード後の再暗号化もここで一括処理）
+  if(sync) await saveSyncConfig();
+  // ①緊急キットが未確認のまま（前回ロック等で中断）なら再表示する
+  try{
+    const rec = JSON.parse(await rawGet(KEY));
+    if(rec && rec.kitPending && secretKey) showKitAfterEnter = true;
+  }catch(e){}
+  if(showKitAfterEnter){
+    showKitAfterEnter = false;
+    await showEmergencyKit(true);
+  }
+  if(sync && sync.token){ setSyncStatus("同期設定あり・確認中…"); syncNow(); }
+}
+/* 旧形式(v2以前)の保管庫を、解錠済みの状態から二重鍵(v3)に移行する */
+async function upgradeVault(){
+  clearTimeout(pushTimer); // ②鍵差し替え中の自動push禁止
+  const sk = genSecretKey();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await deriveDataKey(masterPass, salt, sk);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(JSON.stringify(state)));
+  masterKey = key; secretKey = sk;
+  await writeVaultRecord(salt, iv, ct, {kitPending:true});
+}
+/* ①緊急キットの「確認済み」を保管庫レコードに記録（確認するまで解錠のたびに再表示） */
+async function clearKitPending(){
+  try{
+    const rec = JSON.parse(await rawGet(KEY));
+    if(rec && rec.kitPending){ delete rec.kitPending; await rawSet(KEY, JSON.stringify(rec)); }
+  }catch(e){}
+}
+/* 緊急キット：シークレットキーの提示と書き出し */
+async function showEmergencyKit(intro){
+  const head = intro
+    ? "🔑 この保管庫は今後、マスターパスワードに加えて下の「シークレットキー」でも暗号化されます（1Passwordと同方式の二重鍵）。\n\n"
+    : "";
+  kitOpen = true; // ①表示中は自動ロックしない（保存操作がロックを誘発してキーを見失わないように）
+  try{
+    while(true){
+      const v = await _modal({
+        title:"緊急キット（必ず保存してください）",
+        msg: head + "シークレットキー：\n" + fmtSK(secretKey) +
+          "\n\n・クラウド同期やバックアップは、マスターパスワード＋このキーの両方がないと復号できません。" +
+          "\n・2台目の端末では、初期設定または設定の「シークレットキー」でこのキーを入力して揃えてください。" +
+          "\n\n⚠ このキーとマスターパスワードの両方を失うと、データは二度と復元できません。印刷するなどして、バックアップとは別の安全な場所に保管を。",
+        buttons:[
+          {label:"緊急キットを保存（テキストファイル）", value:"dl", style:"primary"},
+          {label:"書き留めた／保存した（閉じる）", value:null, style:"ghost"}
+        ]});
+      if(v==="dl"){ downloadKit(); continue; }
+      // ①保存確認を挟む（誤タップで閉じてキー未保存のままになるのを防ぐ）
+      const ok = await askConfirm("保存の確認",
+        "シークレットキーを書き留めるか、緊急キットを保存しましたか？\n保存していないと、端末の故障・紛失時にバックアップやクラウドから復元できなくなります。",
+        "保存した（閉じる）");
+      if(!ok) continue;
+      await clearKitPending();
+      return;
+    }
+  }finally{ kitOpen = false; }
+}
+function downloadKit(){
+  lockGraceUntil = Date.now() + 8000; // ①保存＝画面遷移と誤検知するブラウザでのロックを抑止
+  const n=new Date();
+  const txt = [
+    "Keyring 緊急キット",
+    "作成日: " + nowStamp(),
+    "",
+    "シークレットキー: " + fmtSK(secretKey),
+    (sync&&sync.gistId) ? ("同期ID: " + sync.gistId) : "",
+    "",
+    "・マスターパスワードはここには書かれていません。ご自身で記憶・管理してください。",
+    "・このキットとマスターパスワードの両方が揃うと、バックアップやクラウドから全データを復元できます。",
+    "・【重要】印刷などで控えたら、このファイル自体は削除することを強くおすすめします。",
+    "  （ダウンロードフォルダに残すと、端末内やクラウド同期経由でキーが平文のまま流出する恐れがあります）"
+  ].filter(x=>x!==null).join("\n");
+  const blob=new Blob([txt],{type:"text/plain"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download=`keyring-emergency-kit-${n.getFullYear()}${String(n.getMonth()+1).padStart(2,"0")}${String(n.getDate()).padStart(2,"0")}.txt`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  toast("緊急キットを書き出しました");
+}
+
+/* ---------------- render ---------------- */
+function renderCats(){
+  const row = document.getElementById("catRow");
+  row.innerHTML = "";
+  state.cats.forEach(c=>{
+    const n = state.entries.filter(x=>x.catId===c.id).length;
+    const el = document.createElement("button");
+    el.className = "cat-chip" + (c.id===state.activeCat ? " active" : "");
+    el.innerHTML = `${esc(c.name)} <span style="font-size:11px;opacity:.75">${n}</span>` +
+      (c.id===state.activeCat ? ` <span class="pencil">✎</span>` : "");
+    el.onclick = ()=>{
+      if(c.id===state.activeCat){ editCategory(c.id); return; }
+      state.activeCat = c.id; save(true); render();
+    };
+    row.appendChild(el);
+  });
+  const add = document.createElement("button");
+  add.className = "cat-chip add"; add.textContent = "＋";
+  add.onclick = async ()=>{
+    const name = await askText("カテゴリーを追加", "カテゴリー名（例：買い物）");
+    if(!name) return;
+    const c = {id:uid(), name};
+    state.cats.push(c); state.activeCat = c.id;
+    if(await save()){ render(); toast(`カテゴリー「${name}」を追加しました`); }
+  };
+  row.appendChild(add);
+}
+async function editCategory(catId){
+  const c = state.cats.find(x=>x.id===catId);
+  const inCat = state.entries.filter(x=>x.catId===catId);
+  const action = await _modal({
+    title:`カテゴリー「${c.name}」`, input:true, value:c.name, placeholder:"新しい名前",
+    buttons:[
+      {label:"名前を変更", value:"__INPUT__", style:"primary"},
+      {label:`このカテゴリーを削除（中の${inCat.length}件も消えます）`, value:"__DELETE__", style:"danger"},
+      {label:"キャンセル", value:null}
+    ]
+  });
+  if(action===null || action==="") return;
+  if(action==="__DELETE__"){
+    if(state.cats.length<=1){ toast("最後のカテゴリーは削除できません", true); return; }
+    const ok = await askConfirm("カテゴリーの削除", `「${c.name}」と、中の登録${inCat.length}件をすべて削除します。取り消せません。`, "削除する", true);
+    if(!ok) return;
+    if(inCat.length) exportBackup();
+    const now = Date.now();
+    state.tombstones = gcTomb((state.tombstones||[]).concat([{id:"cat:"+catId, ts:now}], inCat.map(x=>({id:x.id, ts:now}))));
+    state.entries = state.entries.filter(x=>x.catId!==catId);
+    state.cats = state.cats.filter(x=>x.id!==catId);
+    state.activeCat = state.cats[0].id;
+    if(await save()){ toast(`「${c.name}」を削除しました`); render(); }
+    return;
+  }
+  c.name = action;
+  if(await save()) render();
+}
+function render(){
+  renderCats();
+  const list = document.getElementById("docList");
+  list.innerHTML = "";
+  const q = query.toLowerCase();
+  let entries = state.entries.filter(e=>e.catId===state.activeCat);
+  if(q) entries = state.entries.filter(e=>
+    [e.name, e.loginId, e.brand, e.accountType, typeName(e.type)]
+      .some(v => (v||"").toLowerCase().includes(q)));
+  entries = entries.sort((a,b)=>a.name.localeCompare(b.name,'ja'));
+
+  if(!entries.length){
+    list.innerHTML = `<div class="empty-note">${q ? "該当する登録がありません。" : "このカテゴリーはまだ空です。<br>下の「＋登録を追加」から作れます。"}</div>`;
+  }
+  entries.forEach(e=>{
+    const i = state.entries.indexOf(e);
+    const initial = (e.name||"?").trim().charAt(0).toUpperCase();
+    const main = entryMainCopy(e);
+    const badge = (e.type&&e.type!=="login") ? `<span class="type-badge">${esc(typeName(e.type))}</span>` : "";
+    const el = document.createElement("div");
+    el.className = "entry-card";
+    el.innerHTML = `
+      <button class="ec-main">
+        <div class="avatar">${esc(initial)}</div>
+        <div style="flex:1;min-width:0">
+          <div class="ec-name">${esc(e.name)}${badge}</div>
+          <div class="ec-id">${esc(entrySubline(e))}</div>
+        </div>
+      </button>
+      <div class="ec-actions">
+        <button class="ec-act copy-id">詳細を開く</button>
+        ${main ? `<button class="ec-act copy-pw">${esc(main.label)}</button>` : ""}
+      </div>`;
+    el.querySelector(".ec-main").onclick = ()=> openDoc(i);
+    el.querySelector(".copy-id").onclick = ()=> openDoc(i);
+    if(main) el.querySelector(".copy-pw").onclick = ()=> copyField(i, main.key);
+    list.appendChild(el);
+  });
+  updateStats();
+}
+function updateStats(){
+  const mb = JSON.stringify(state).length/1024/1024;
+  const store = hasAppStorage ? "アプリ内ストレージ"
+    : hasLocalStorage ? ((idbHealthy ? "二重保存(localStorage＋IndexedDB)" : "⚠ 予備保存(IndexedDB)が機能していません。バックアップを必ず書き出してください") +
+        "・永続化" + (persistGranted===true ? "承認済み" : persistGranted===false ? "未承認（ブラウザ都合で消える可能性あり。バックアップ必須）" : "不明"))
+    : "メモリのみ（保存されません）";
+  document.getElementById("statsInfo").textContent =
+    `登録 ${state.entries.length}件（容量の目安 ${mb<0.01?"0.01未満":mb.toFixed(2)}MB） ／ 保存先: ${store}`;
+  const remind = document.getElementById("backupRemind");
+  const hasData = state.entries.length>0;
+  const days = state.lastBackupAt ? Math.floor((Date.now()-state.lastBackupAt)/86400000) : null;
+  if(hasData && (days===null || days>=30)){
+    remind.style.display = "block";
+    remind.textContent = days===null
+      ? "⚠ まだ一度もバックアップを書き出していません。マスターパスワードを忘れると復元できないため、月1回の書き出しを習慣に。"
+      : `⚠ 最終バックアップから${days}日が経過しています。「全データを書き出し」をおすすめします。`;
+  }else remind.style.display = "none";
+}
+
+/* ---------------- copy ---------------- */
+let clipTimer = null;
+async function copyText(text, okMsg, autoClear){
+  // ※iOS Safariでは readText に許可が要るため、自動消去は「試みる」動作。
+  //   確実性がないので文言も断定を避ける。
+  try{ await navigator.clipboard.writeText(text); toast(okMsg + (autoClear?"（30秒後に消去を試みます）":"")); }
+  catch(e){
+    const ta=document.createElement("textarea"); ta.value=text; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); toast(okMsg); }catch(e2){ toast("コピーできませんでした", true); }
+    document.body.removeChild(ta);
+  }
+  if(autoClear){
+    clearTimeout(clipTimer);
+    clipTimer = setTimeout(async ()=>{
+      try{
+        // コピーした中身がまだ残っている時だけ消す（別のものをコピーしていたら消さない）
+        const cur = await navigator.clipboard.readText();
+        if(cur === text) await navigator.clipboard.writeText("");
+      }catch(e){ /* 読めない環境では何もしない */ }
+    }, 30000);
+  }
+}
+const FIELD_LABELS = {loginId:"ID", pw:"パスワード", url:"URL", cardNo:"カード番号", expiry:"有効期限", pin:"暗証番号", holder:"名義", brand:"ブランド", bankBranch:"店番", accountNo:"口座番号", accountType:"種別", tradePw:"取引暗証番号", note:"メモ"};
+function copyField(i, field){
+  const e = state.entries[i];
+  const val = e[field];
+  const label = FIELD_LABELS[field] || "内容";
+  if(!val){ toast(`${label}は未登録です`, true); return; }
+  // 秘匿性の高い欄はクリップボード自動消去の対象にする
+  const sensitive = ["pw","pin","cardNo","accountNo","tradePw","loginId"].includes(field);
+  copyText(val, `${label}をコピーしました`, sensitive);
+}
+
+/* ---------------- viewer ---------------- */
+// ④http/https以外（javascript:等）はリンク化しない
+function isSafeUrl(u){ return /^https?:\/\//i.test(String(u||"")); }
+let shownSecrets = {}; // key -> bool (このエントリで表示中の伏せ字欄)
+
+/* v6⑧画面録画・覗き見対策（正直な前提：Webページから録画や盗撮を「検知」する方法は存在しない。
+   だから検知ではなく「画面に映る時間の最小化」で対抗する）
+   ・表示した秘密は10秒で自動的に再び伏せ字に戻す
+   ・ウィンドウのフォーカスが外れた瞬間（画面共有の切替・他アプリ操作など）に即伏せ字に戻す
+   ・そもそもコピー中心の運用なら、秘密は一度も画面に映らない */
+const REMASK_MS = 10000;
+function anySecretsShown(){ return Object.keys(shownSecrets).some(k=>shownSecrets[k]); }
+function remaskNow(){
+  if(!anySecretsShown()) return;
+  shownSecrets = {};
+  if(document.getElementById("viewer").classList.contains("open") && state && current!==null && state.entries[current]) renderDetail();
+}
+function scheduleRemask(){
+  clearTimeout(remaskTimer);
+  if(anySecretsShown()) remaskTimer = setTimeout(remaskNow, REMASK_MS);
+}
+window.addEventListener("blur", ()=>{ if(masterKey) remaskNow(); });
+
+function openDoc(i){
+  current = i; shownSecrets = {};
+  const e = state.entries[i];
+  document.getElementById("vTitle").textContent = e.name;
+  document.getElementById("vMeta").textContent = `${typeName(e.type)} ／ 更新 ${e.updated||"—"}`;
+  // フッターの主コピーボタン
+  const main = entryMainCopy(e);
+  const foot = document.getElementById("viewerFoot");
+  foot.innerHTML = main
+    ? `<button class="big-btn ghost" id="vCopyId">全部見る</button><button class="big-btn accent" id="vCopyMain">${esc(main.label)}をコピー</button>`
+    : `<button class="big-btn accent" id="vCopyId" style="flex:1">閉じる</button>`;
+  if(main){
+    document.getElementById("vCopyMain").onclick = ()=> copyField(current, main.key);
+    document.getElementById("vCopyId").onclick = ()=>{ shownSecrets = {all:true}; renderDetail(); scheduleRemask(); };
+  }else{
+    document.getElementById("vCopyId").onclick = ()=> hideOverlay("viewer");
+  }
+  renderDetail();
+  showOverlay("viewer");
+}
+function renderDetail(){
+  const e = state.entries[current];
+  const box = document.getElementById("vDetail");
+  let html = "";
+  // v5②フィッシング対策：登録済みURLがあれば「コピーして正しいサイトを開く」を最上部に。
+  //   メールやSMSのリンクからではなく、保管庫に登録したURLから開く習慣をつくる
+  const mainCp = entryMainCopy(e);
+  const safeOpen = mainCp && e.url && isSafeUrl(e.url);
+  if(safeOpen){
+    html += `<button class="gen-btn" id="openSafe" style="margin-bottom:6px">🛡 ${esc(FIELD_LABELS[mainCp.key]||"内容")}をコピーして、登録済みのサイトを開く</button>` +
+      `<div class="field-label" style="margin-bottom:14px">メールやSMSのリンクからは開かず、ここから開くのが偽サイト対策として安全です</div>`;
+  }
+  for(const f of typeFields(e.type||"login")){
+    const val = e[f.key];
+    if(!val) continue;
+    if(f.link && isSafeUrl(val)){
+      html += `<div class="detail-row"><span class="dr-label">${esc(f.label)}</span><span class="dr-val"><a class="url-link" href="${escAttr(val)}" target="_blank" rel="noopener">${esc(val)}</a></span></div>`;
+      continue;
+    }
+    const show = !f.secret || shownSecrets.all || shownSecrets[f.key];
+    const disp = show ? esc(val) : "••••••••";
+    const valClass = "dr-val" + (f.mono?"":"") ;
+    html += `<div class="detail-row"><span class="dr-label">${esc(f.label.replace(/（.*?）/g,""))}</span><span class="${valClass}">${disp}</span>` +
+      (f.secret ? `<button class="dr-btn" data-tog="${f.key}">${show?"隠す":"表示"}</button>` : "") +
+      `<button class="dr-btn accent" data-copy="${f.key}">コピー</button></div>`;
+  }
+  if(!html) html = `<div class="empty-note">内容が未登録です。「編集」から入力できます。</div>`;
+  if(e.note) html += `<div class="detail-row" style="align-items:flex-start"><span class="dr-label">メモ</span><span class="dr-val" style="font-family:var(--sans);white-space:pre-wrap">${esc(e.note)}</span><button class="dr-btn" data-copy="note">コピー</button></div>`;
+  box.innerHTML = html;
+  box.querySelectorAll("[data-copy]").forEach(b=> b.onclick=()=> copyField(current, b.dataset.copy));
+  box.querySelectorAll("[data-tog]").forEach(b=> b.onclick=()=>{ const k=b.dataset.tog; shownSecrets[k]=!shownSecrets[k]; renderDetail(); scheduleRemask(); });
+  const os = document.getElementById("openSafe");
+  if(os) os.onclick = ()=>{
+    // v6①iOS Safariはユーザー操作と同じ処理内でないとwindow.openをブロックするため、
+    //   setTimeoutを挟まず同期で開く（コピーは非同期に進行するが同一ジェスチャ内で開始済み）
+    copyField(current, mainCp.key);
+    window.open(e.url, "_blank", "noopener");
+  };
+}
+
+/* ---------------- editor ---------------- */
+let editDraft = {}; // 種類を切り替えても入力途中を保持する下書き
+function openEditor(isNew){
+  const e = isNew ? null : state.entries[current];
+  document.getElementById("eTitle").textContent = isNew ? "新規登録" : "編集";
+  document.getElementById("eDelete").style.display = isNew ? "none" : "block";
+  document.getElementById("eName").value = e ? e.name : "";
+  document.getElementById("eNote").value = e ? e.note : "";
+  // 種類セレクト
+  const tsel = document.getElementById("eTypeSelect");
+  tsel.innerHTML = "";
+  TYPE_ORDER.forEach(t=> tsel.add(new Option(typeName(t), t)));
+  tsel.value = e ? (e.type||"login") : "login";
+  // カテゴリー
+  const csel = document.getElementById("eCatSelect");
+  csel.innerHTML = "";
+  state.cats.forEach(c=> csel.add(new Option("カテゴリー：" + c.name, c.id)));
+  csel.value = e ? e.catId : state.activeCat;
+  // 下書きを初期化
+  editDraft = {};
+  const allKeys = ["loginId","pw","url","cardNo","expiry","pin","holder","brand","bankBranch","accountNo","accountType","tradePw"];
+  for(const k of allKeys) editDraft[k] = e ? (e[k]||"") : "";
+  buildDynFields();
+  hideOverlay("viewer");
+  showOverlay("editor");
+  setTimeout(()=>document.getElementById("eName").focus(),100);
+}
+function collectDynFields(){
+  // 現在表示中の欄の値を下書きに退避（種類切替や保存の前に呼ぶ）
+  document.querySelectorAll("#eDynFields [data-fkey]").forEach(inp=>{
+    editDraft[inp.dataset.fkey] = inp.value;
+  });
+}
+function buildDynFields(){
+  const t = document.getElementById("eTypeSelect").value;
+  const box = document.getElementById("eDynFields");
+  box.innerHTML = "";
+  for(const f of typeFields(t)){
+    const wrap = document.createElement("div");
+    const lbl = document.createElement("div");
+    lbl.className = "field-label"; lbl.textContent = f.label;
+    const inp = document.createElement("input");
+    inp.className = "title-input";
+    inp.dataset.fkey = f.key;
+    inp.placeholder = f.ph || "";
+    inp.value = editDraft[f.key] || "";
+    inp.autocapitalize = "off"; inp.autocomplete = "off";
+    if(f.secret) inp.type = "text"; // 見えた方が入力しやすい（表示は伏せ字にできる）
+    wrap.appendChild(lbl); wrap.appendChild(inp);
+    if(f.gen){
+      inp.style.marginBottom = "6px";
+      const st = document.createElement("div");
+      st.className = "pw-strength"; st.id = "genStrength_"+f.key;
+      wrap.appendChild(st);
+      const gb = document.createElement("button");
+      gb.className = "gen-btn"; gb.textContent = "強力なパスワードを生成";
+      gb.onclick = ()=>{ inp.value = makePw(); editDraft[f.key]=inp.value; updateGenStrength(f.key, inp.value); toast("16文字のパスワードを生成しました"); };
+      wrap.appendChild(gb);
+      inp.addEventListener("input", ()=> updateGenStrength(f.key, inp.value));
+      setTimeout(()=>updateGenStrength(f.key, inp.value),0);
+    }
+    box.appendChild(wrap);
+  }
+}
+function updateGenStrength(key, val){
+  const el = document.getElementById("genStrength_"+key);
+  if(!el) return;
+  const r = pwStrength(val);
+  el.textContent = r.t; el.style.color = r.c;
+}
+function pwStrength(pw){
+  if(!pw) return {t:"", c:"var(--ink-dim)"};
+  let s=0;
+  if(pw.length>=8) s++; if(pw.length>=12) s++;
+  if(/[a-z]/.test(pw)&&/[A-Z]/.test(pw)) s++;
+  if(/\d/.test(pw)) s++;
+  if(/[^A-Za-z0-9]/.test(pw)) s++;
+  if(s<=2) return {t:"強度：弱い", c:"#c96a6a"};
+  if(s<=3) return {t:"強度：普通", c:"#e2b25a"};
+  return {t:"強度：強い", c:"#5ed3a8"};
+}
+function makePw(){
+  const sets="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*?";
+  let out=""; const arr=crypto.getRandomValues(new Uint32Array(16));
+  for(let i=0;i<16;i++) out+=sets[arr[i]%sets.length];
+  return out;
+}
+let lastChange = null; // {id, before|null}
+let undoTimer = null;
+async function saveEditor(){
+  const name = document.getElementById("eName").value.trim();
+  if(!name){ toast("名前を入力してください", true); return; }
+  collectDynFields();
+  const isNew = (document.getElementById("eTitle").textContent==="新規登録");
+  const allKeys = ["loginId","pw","url","cardNo","expiry","pin","holder","brand","bankBranch","accountNo","accountType","tradePw"];
+  const data = {
+    name,
+    type: document.getElementById("eTypeSelect").value,
+    catId: document.getElementById("eCatSelect").value,
+    note: document.getElementById("eNote").value.trim()
+  };
+  for(const k of allKeys) data[k] = (editDraft[k]||"").trim();
+  // ④URLの正規化：スキームなしは https:// を補完、http/https以外は拒否
+  if(data.url){
+    if(!/^[a-z][a-z0-9+.\-]*:/i.test(data.url)){
+      data.url = "https://" + data.url;
+    }else if(!isSafeUrl(data.url)){
+      toast("URLは http:// または https:// のみ登録できます", true);
+      return;
+    }
+  }
+  if(isNew){
+    const e = Object.assign({id:uid(), updated:nowStamp(), ts:Date.now()}, data);
+    state.entries.push(e);
+    lastChange = {id:e.id, before:null};
+    current = state.entries.indexOf(e);
+  }else{
+    const e = state.entries[current];
+    lastChange = {id:e.id, before:JSON.parse(JSON.stringify(e))};
+    Object.assign(e, data, {updated:nowStamp(), ts:Date.now()});
+  }
+  if(await save()){
+    toast("保存しました");
+    showUndoBar(`${name}を保存しました`);
+    hideOverlay("editor");
+    render();
+  }
+}
+async function deleteDoc(){
+  const e = state.entries[current];
+  const ok = await askConfirm("削除の確認", `「${e.name}」を削除しますか？この操作は取り消せます（10秒間）。`, "削除する", true);
+  if(!ok) return;
+  lastChange = {id:e.id, before:JSON.parse(JSON.stringify(e)), deleted:true};
+  state.tombstones = gcTomb((state.tombstones||[]).concat([{id:e.id, ts:Date.now()}]));
+  state.entries.splice(current,1);
+  if(await save()){
+    toast(`${e.name}を削除しました`);
+    showUndoBar(`${e.name}を削除しました`);
+    hideOverlay("editor");
+    render();
+  }
+}
+function showUndoBar(msg){
+  document.getElementById("undoText").textContent = msg;
+  document.getElementById("undoBar").classList.add("show");
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(()=> document.getElementById("undoBar").classList.remove("show"), 10000);
+}
+async function undoLast(){
+  if(!lastChange){ document.getElementById("undoBar").classList.remove("show"); return; }
+  const {id, before, deleted} = lastChange;
+  if(deleted){
+    state.entries.push(before);
+    state.tombstones = (state.tombstones||[]).filter(t=>t.id!==id);
+  }else if(before===null){
+    state.entries = state.entries.filter(e=>e.id!==id); // was new → remove
+  }else{
+    const i = state.entries.findIndex(e=>e.id===id);
+    if(i!==-1) state.entries[i] = before; else state.entries.push(before);
+  }
+  const nm = before ? before.name : "";
+  lastChange = null;
+  document.getElementById("undoBar").classList.remove("show");
+  if(await save()){ render(); toast(nm?`${nm}を元に戻しました`:"元に戻しました"); }
+}
+
+/* ---------------- backup ---------------- */
+async function exportBackup(){
+  try{
+    lockGraceUntil = Date.now() + 8000; // ①保存＝画面遷移と誤検知するブラウザでのロックを抑止
+    // 中身は必ず「マスターパスワード＋シークレットキー」の二重鍵で暗号化して書き出す。
+    // ファイルが盗まれても、両方が揃わない限り総当たりでも復号できない。
+    const payload = await encryptPayload();
+    const out = Object.assign({keyring:1}, payload, {
+      syncHint: (sync&&sync.gistId)?{gistId:sync.gistId}:undefined
+    });
+    const blob = new Blob([JSON.stringify(out,null,2)], {type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    const n=new Date();
+    a.download=`keyring-encrypted-${n.getFullYear()}${String(n.getMonth()+1).padStart(2,"0")}${String(n.getDate()).padStart(2,"0")}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    state.lastBackupAt = Date.now(); save(true);
+    toast("暗号化バックアップを書き出しました");
+  }catch(e){
+    if(e && e.message==="nokey") toast("まだ二重鍵化されていないため書き出せません。設定の「シークレットキー / 緊急キット」から二重鍵化してください", true);
+    else toast("書き出しに失敗しました", true);
+  }
+}
+function importBackup(file){
+  const r=new FileReader();
+  r.onload=async ()=>{
+    // ⑨エラー原因を切り分けて正しいメッセージを出す
+    let parsed;
+    try{ parsed=JSON.parse(r.result); }
+    catch(e){ toast("JSONファイルとして読み込めませんでした", true); return; }
+    const hint = parsed && parsed.syncHint && parsed.syncHint.gistId;
+    let loaded;
+    if(parsed && parsed.enc){
+      let salt, iv, data;
+      try{ salt=unb64(parsed.salt); iv=unb64(parsed.iv); data=unb64(parsed.data); }
+      catch(e){ toast("バックアップファイルが壊れています（形式エラー）", true); return; }
+      // ④SKチェック値で「シークレットキー違い」を先に判定
+      if(parsed.enc===2 && parsed.skh){
+        if(!secretKey || (await skHash(secretKey)) !== parsed.skh){
+          toast("シークレットキーが一致しません。設定の「シークレットキー / 緊急キット」で、このバックアップを作った端末のキーに揃えてください", true);
+          return;
+        }
+      }
+      try{
+        const key = parsed.enc===2
+          ? await deriveDataKey(masterPass, salt, secretKey)  // 二重鍵バックアップ
+          : await deriveKey(masterPass, salt);                // 旧形式（パスワードのみ）
+        const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, data);
+        loaded = sanitize(JSON.parse(dec.decode(pt)));
+      }catch(e){
+        toast("復号できません。このバックアップは別のマスターパスワードで作られています", true);
+        return;
+      }
+    }else{
+      // 旧形式（生JSON）も読み込めるようにしておく（移行用）
+      loaded = sanitize(parsed);
+    }
+    if(!loaded){ toast("読み込めませんでした。ファイルを確認してください", true); return; }
+    const doMerge = confirm("復元方法を選んでください。\n\n[OK] 統合：いまのデータとバックアップを合体（同じ登録は新しい方を採用。おすすめ）\n[キャンセル] 置き換え：いまのデータを消してバックアップだけにする");
+    if(doMerge){ state = sanitize(mergeStates(state,loaded)) || state; }
+    else{
+      if(!confirm("いまのデータは消えて、バックアップの内容だけになります。本当に置き換えますか？")) return;
+      state = loaded;
+    }
+    if(await save()){
+      toast(doMerge?"統合して復元しました":"置き換えて復元しました");
+      render();
+      if(hint && (!sync || !sync.gistId)) setTimeout(()=>alert("このバックアップにはクラウド同期のID（同期ID）が含まれていました：\n\n"+hint+"\n\n新しい端末で同期を再開する場合は「同期の設定」でこのIDを入力してください。"),300);
+    }
+  };
+  r.readAsText(file);
+}
+
+/* ---------------- change master password ---------------- */
+async function changeMaster(){
+  // ⑧現在のパスワードを確認（自動ロックまでの放置時間に他人が変更できないように）
+  const cur = await askPassword("マスターパスワードの変更", "本人確認のため、現在のマスターパスワードを入力してください");
+  if(cur===null) return;
+  if(!(await verifyMaster(cur))){ toast("現在のパスワードが違います", true); return; }
+
+  const p1 = await askPassword("新しいマスターパスワード", "解錠とクラウド同期の両方に使います（12文字以上・長いフレーズ推奨）");
+  if(p1===null) return;
+  const perr = mpPolicyErr(p1); // v7.1①
+  if(perr){ toast(perr, true); return; }
+  const p2 = await askPassword("確認", "新しいパスワードをもう一度入力してください");
+  if(p2===null) return;
+  if(p1!==p2){ toast("パスワードが一致しません", true); return; }
+
+  try{
+    clearTimeout(pushTimer); // ②鍵差し替え中の自動push禁止
+    // ⑧新レコードを完全に組み立ててから1回で書き込む
+    //   （旧実装は「salt書き込み→暗号化」の2段階で、途中失敗すると空のctが残り次回解錠不能だった）
+    //   シークレットキーは変更しない（1Passwordと同じ運用：SKは据え置き、MPだけ変える）
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const key = await deriveDataKey(p1, salt, secretKey);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(JSON.stringify(state)));
+    masterKey = key;
+    masterPass = p1;
+    await writeVaultRecord(salt, iv, ct);
+  }catch(e){ toast("変更に失敗しました（元のパスワードのまま使えます）", true); return; }
+  await refreshBioWrap(); // v5①生体認証を使っている場合、包んだパスワードを更新（失敗時は自動解除）
+
+  if(sync && sync.token){
+    await saveSyncConfig(); // 同期設定を新しい鍵で保存し直す
+    // ①クラウドはまだ旧パスワードで暗号化されている。
+    //   pull（syncNow）すると復号できず同期が永久に失敗するため、pullせず強制上書きpushする。
+    setSyncStatus("パスワード変更をクラウドに反映中…");
+    try{
+      await pushCloud();
+      syncOkStatus("(パスワード変更を反映)");
+      toast("マスターパスワードを変更し、クラウドにも反映しました。他の端末でも同じ新パスワードに変更してください");
+    }catch(e){
+      setSyncStatus(syncErrMsg(e), true);
+      toast("パスワードは変更しました。クラウド反映に失敗したので、通信後に「マスターパスワードを変更」で同じパスワードを再設定するか、下の同期エラーを確認してください", true);
+    }
+  }else{
+    toast("マスターパスワードを変更しました");
+  }
+}
+
+/* 現在のマスターパスワードを保管庫レコードに対して検証する */
+async function verifyMaster(pass){
+  try{
+    const rec = JSON.parse(await rawGet(KEY));
+    const k = (rec.v===3 && (rec.sk || rec.skProtected))
+      ? await deriveDataKey(pass, unb64(rec.salt), rec.sk || secretKey) // 秘匿モードでは解錠済みのSKを使う
+      : await deriveKey(pass, unb64(rec.salt));
+    await crypto.subtle.decrypt({name:"AES-GCM", iv:unb64(rec.iv)}, k, unb64(rec.ct));
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---------------- secret key management ---------------- */
+async function manageSecretKey(){
+  // 覗き見・放置対策：表示にもパスワード確認を要求
+  const cur = await askPassword("シークレットキー / 緊急キット", "本人確認のため、現在のマスターパスワードを入力してください");
+  if(cur===null) return;
+  if(!(await verifyMaster(cur))){ toast("パスワードが違います", true); return; }
+  // ⑦アップグレードが失敗したままの保管庫は、ここから手動で二重鍵化できる
+  if(!secretKey){
+    const ok = await askConfirm("二重鍵化",
+      "この保管庫はまだ二重鍵化されていません。今すぐシークレットキーを生成して二重鍵化しますか？",
+      "二重鍵化する");
+    if(!ok) return;
+    try{
+      await upgradeVault();
+      if(sync) await saveSyncConfig();
+      await showEmergencyKit(true);
+      if(sync && sync.token) syncNow();
+    }catch(e){ toast("二重鍵化に失敗しました", true); }
+    return;
+  }
+  const v = await _modal({
+    title:"シークレットキー",
+    msg:"現在のキー：\n" + fmtSK(secretKey) +
+      "\n\n・緊急キット＝このキーの控え。マスターパスワードと合わせて、バックアップやクラウドからの復元に必須です。" +
+      "\n・2台目にデータを引き継ぐ時は、その端末の初期設定でこのキーを入力して揃えます。",
+    buttons:[
+      {label:"緊急キットを保存（テキストファイル）", value:"dl", style:"primary"},
+      {label:"別のキーに変更（他端末のキーを入力して揃える）", value:"chg", style:"ghost"},
+      {label:"閉じる", value:null, style:"ghost"}
+    ]});
+  if(v==="dl"){ downloadKit(); return; }
+  if(v!=="chg") return;
+  const raw = await askText("シークレットキーを入力", "KR-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX");
+  if(!raw) return;
+  const sk = normSK(raw);
+  if(!validSK(sk)){ toast("キーの形式が正しくありません（KR-を除いて25文字）", true); return; }
+  if(sk===secretKey){ toast("現在と同じキーです", true); return; }
+  try{
+    clearTimeout(pushTimer); // ②鍵差し替え中の自動push禁止
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const key = await deriveDataKey(cur, salt, sk); // curは検証済みの現パスワード
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(JSON.stringify(state)));
+    masterKey = key; secretKey = sk;
+    await writeVaultRecord(salt, iv, ct);
+    await saveSyncConfig(); // 同期設定も新しい鍵で保存し直す
+    await refreshBioWrap(); // v5①生体認証にも新しいキーを反映（失敗時は自動解除）
+    toast("シークレットキーを変更しました");
+    if(sync && sync.token) syncNow(); // キーが揃っていればここで同期が通るようになる
+  }catch(e){ toast("変更に失敗しました（元のキーのまま使えます）", true); }
+}
+
+/* ---------------- biometric unlock (WebAuthn PRF) ---------------- */
+/* v5① Face ID / Touch ID による解錠。
+   パスキーのPRF拡張から得た32バイトをAES鍵にして {マスターパスワード, SK} を包んで保存。
+   復号にはOSの生体認証チップを通す必要があるため、保存領域を読めるだけの攻撃者では取り出せない。
+   さらに「SK秘匿モード」では保管庫レコードからskを取り除き、
+   SKの置き場所を生体認証チップの向こう側＋緊急キットだけにする。 */
+const BIO_KEY = "keyring-bio-v1";
+const PRF_INPUT = enc.encode("keyring-prf-v1");
+function bioApiPresent(){ return !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.create); }
+async function bioAssert(credIdU8){
+  const a = await navigator.credentials.get({publicKey:{
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    allowCredentials: [{type:"public-key", id: credIdU8}],
+    userVerification: "required",
+    timeout: 60000,
+    extensions: {prf:{eval:{first: PRF_INPUT}}}
+  }});
+  const ext = a.getClientExtensionResults();
+  const out = ext && ext.prf && ext.prf.results && ext.prf.results.first;
+  if(!out) throw new Error("noprf");
+  return new Uint8Array(out);
+}
+async function bioKeyFrom(prfOut){
+  return crypto.subtle.importKey("raw", prfOut, {name:"AES-GCM"}, false, ["encrypt","decrypt"]);
+}
+async function bioWrapAndStore(credIdB64, prfOut){
+  // v6②途中でロックされた等でmp/skが失われた状態では絶対にラップしない（毒データ防止）
+  if(!masterPass || !secretKey) throw new Error("novalue");
+  const key = await bioKeyFrom(prfOut);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key,
+    enc.encode(JSON.stringify({mp: masterPass, sk: secretKey})));
+  await rawSet(BIO_KEY, JSON.stringify({credId: credIdB64, iv: b64(iv), ct: b64(ct)}));
+}
+async function manageBio(){
+  if(!bioApiPresent()){ toast("この環境では生体認証を利用できません（Safari等で直接開くと使える場合があります）", true); return; }
+  const cur = await askPassword("生体認証", "本人確認のため、現在のマスターパスワードを入力してください");
+  if(cur===null) return;
+  if(!(await verifyMaster(cur))){ toast("パスワードが違います", true); return; }
+  // v6⑤二重鍵化が済んでいない保管庫では設定不可（sk:nullの毒ラップ防止）
+  if(!secretKey){ toast("先に二重鍵化が必要です。「シークレットキー / 緊急キット」から実行してください", true); return; }
+  const existing = await rawGet(BIO_KEY);
+  if(existing){
+    const v = await _modal({title:"生体認証",
+      msg:"生体認証は設定済みです。" + (skProtected ? "\n（SK秘匿モード：シークレットキーは端末の保存領域に置いていません）" : ""),
+      buttons:[
+        {label:"生体認証を解除する", value:"off", style:"danger"},
+        {label:"閉じる", value:null, style:"ghost"}
+      ]});
+    if(v!=="off") return;
+    await rawDel(BIO_KEY);
+    if(skProtected){
+      // SKの置き場所がなくなるので、保管庫レコードに書き戻す（締め出し防止）
+      skProtected = false;
+      await rewriteSkField();
+    }
+    toast("生体認証を解除しました（端末のパスキー自体はOSの設定から削除できます）");
+    return;
+  }
+  // 新規設定（v6②Face IDシート表示による自動ロックを抑止し、途中破壊を防ぐ）
+  webauthnBusy = true;
+  try{
+    const cred = await navigator.credentials.create({publicKey:{
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: {name: "Keyring"},
+      user: {id: crypto.getRandomValues(new Uint8Array(16)), name: "keyring", displayName: "Keyring 保管庫"},
+      pubKeyCredParams: [{type:"public-key", alg:-7},{type:"public-key", alg:-257}],
+      authenticatorSelection: {authenticatorAttachment:"platform", userVerification:"required", residentKey:"preferred"},
+      timeout: 60000,
+      extensions: {prf:{eval:{first: PRF_INPUT}}}
+    }});
+    const credId = b64(cred.rawId);
+    let out = null;
+    const ext = cred.getClientExtensionResults();
+    if(ext && ext.prf && ext.prf.results && ext.prf.results.first) out = new Uint8Array(ext.prf.results.first);
+    if(!out) out = await bioAssert(new Uint8Array(cred.rawId)); // 作成時にPRFを返さない環境では続けて認証（Face IDが2回出るのは正常）
+    await bioWrapAndStore(credId, out);
+    toast("生体認証を設定しました");
+    // SK秘匿モードの提案：端末の保存領域からSKを取り除く
+    const protect = await askConfirm("SK秘匿モード（推奨）",
+      "シークレットキーを端末の保存領域から取り除き、生体認証チップの向こう側と緊急キットだけに置きますか？\n\n" +
+      "・端末を盗まれても、保存領域からキーを読み取られなくなります\n" +
+      "・生体認証が使えない時（パスキー消失・ブラウザ変更・OSリセット等）にパスワードで解除するには、緊急キットのキー入力が必須になります",
+      "秘匿する");
+    if(protect){
+      // v6③緊急キットが「実在する」ことを、キー末尾5文字の入力で検証してから有効化
+      const chk = await askText("緊急キットの実在確認", "緊急キット（控え）を見て、キーの末尾5文字を入力");
+      if(chk===null){ toast("SK秘匿モードは有効化しませんでした（生体認証は設定済み）"); return; }
+      if(normSKchars(chk).slice(-5) !== secretKey.slice(-5)){
+        toast("一致しません。緊急キットを保存・確認してから、もう一度有効化してください", true);
+        return;
+      }
+      if(!masterKey || !secretKey){ toast("状態が変わったため中断しました", true); return; }
+      skProtected = true;
+      await rewriteSkField();
+      toast("SK秘匿モードを有効にしました");
+    }
+  }catch(e){
+    toast("生体認証を設定できませんでした（この表示環境では使えない場合があります）", true);
+  }finally{ webauthnBusy = false; }
+}
+/* ctを変えずにsk/skProtectedフィールドだけ書き換える */
+async function rewriteSkField(){
+  try{
+    const rec = JSON.parse(await rawGet(KEY));
+    if(skProtected){ delete rec.sk; rec.skProtected = true; }
+    else { rec.sk = secretKey; delete rec.skProtected; }
+    await rawSet(KEY, JSON.stringify(rec));
+  }catch(e){}
+}
+/* MP/SKが変わった時に、生体認証で包んだ内容を更新する。
+   更新には生体認証プロンプトが1回出る。失敗したら締め出し防止のため生体認証を解除し、SKを書き戻す */
+async function refreshBioWrap(){
+  let raw = null;
+  try{ raw = await rawGet(BIO_KEY); }catch(e){}
+  if(!raw) return;
+  webauthnBusy = true; // v6②Face IDシート表示による自動ロックを抑止
+  try{
+    const blob = JSON.parse(raw);
+    toast("生体認証の登録内容を更新します");
+    const out = await bioAssert(unb64(blob.credId));
+    await bioWrapAndStore(blob.credId, out);
+  }catch(e){
+    await rawDel(BIO_KEY);
+    if(skProtected){ skProtected = false; await rewriteSkField(); }
+    toast("生体認証を更新できなかったため解除しました。設定から再登録してください", true);
+  }finally{ webauthnBusy = false; }
+}
+async function bioUnlock(){
+  const err = document.getElementById("unlockErr");
+  try{
+    const blob = JSON.parse(await rawGet(BIO_KEY));
+    err.textContent = "生体認証を待っています…";
+    const out = await bioAssert(unb64(blob.credId));
+    const key = await bioKeyFrom(out);
+    const pt = JSON.parse(dec.decode(await crypto.subtle.decrypt(
+      {name:"AES-GCM", iv:unb64(blob.iv)}, key, unb64(blob.ct))));
+    const rec = JSON.parse(await rawGet(KEY));
+    const isV3 = (rec.v===3 && (rec.sk || rec.skProtected));
+    const k = isV3 ? await deriveDataKey(pt.mp, unb64(rec.salt), pt.sk)
+                   : await deriveKey(pt.mp, unb64(rec.salt));
+    const st = await crypto.subtle.decrypt({name:"AES-GCM", iv:unb64(rec.iv)}, k, unb64(rec.ct));
+    state = sanitize(JSON.parse(dec.decode(st))) || defaultState();
+    masterKey = k; masterPass = pt.mp; secretKey = pt.sk || null;
+    skProtected = !!(isV3 && rec.skProtected);
+    pendingUpgrade = !isV3;
+    failCount = 0; unlockBlockedUntil = 0;
+    enterApp();
+  }catch(e){
+    err.textContent = "生体認証での解除に失敗しました。マスターパスワードで解除してください";
+  }
+}
+
+/* ---------------- modal ---------------- */
+function _modal(opts){
+  return new Promise(resolve=>{
+    const bg=document.getElementById("modalBg"), inp=document.getElementById("mInput"),
+          msg=document.getElementById("mMsg"), btns=document.getElementById("mBtns");
+    document.getElementById("mTitle").textContent = opts.title||"";
+    msg.style.display = opts.msg?"block":"none"; msg.textContent = opts.msg||"";
+    inp.style.display = opts.input?"block":"none";
+    inp.type = opts.inputType || "text"; // ⑧パスワード入力に対応
+    inp.value = opts.value||""; inp.placeholder = opts.placeholder||"";
+    inp.autocomplete = opts.inputType==="password" ? "new-password" : "off";
+    btns.innerHTML = "";
+    // パスワードは前後の空白も文字の一部なのでtrimしない
+    const inputVal = ()=> opts.inputType==="password" ? inp.value : inp.value.trim();
+    const done=(v)=>{ bg.classList.remove("open"); inp.type="text"; resolve(v); };
+    for(const b of opts.buttons){
+      const el=document.createElement("button");
+      el.className="m-btn "+(b.style||"ghost"); el.textContent=b.label;
+      el.onclick=()=> done(b.value==="__INPUT__"?inputVal():b.value);
+      btns.appendChild(el);
+    }
+    inp.onkeydown=(ev)=>{ if(ev.key==="Enter"){ ev.preventDefault(); done(inputVal()); } };
+    bg.classList.add("open");
+    if(opts.input) setTimeout(()=>inp.focus(),80);
+  });
+}
+function askText(title, placeholder, value){ return _modal({title,input:true,placeholder,value,buttons:[{label:"OK",value:"__INPUT__",style:"primary"},{label:"キャンセル",value:null}]}); }
+function askConfirm(title,msg,okLabel,danger){ return _modal({title,msg,buttons:[{label:okLabel||"OK",value:true,style:danger?"danger":"primary"},{label:"キャンセル",value:false}]}); }
+function askPassword(title,msg){ return _modal({title,msg,input:true,inputType:"password",buttons:[{label:"OK",value:"__INPUT__",style:"primary"},{label:"キャンセル",value:null}]}); }
+
+/* ---------------- misc ---------------- */
+function showOverlay(id){ document.getElementById(id).classList.add("open"); }
+function hideOverlay(id){ document.getElementById(id).classList.remove("open"); }
+let toastTimer;
+function toast(msg, err){
+  const t=document.getElementById("toast");
+  t.textContent=msg; t.className="toast show"+(err?" err":"");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.className="toast",2200);
+}
+
+/* ---------------- events ---------------- */
+document.getElementById("lockBtn").onclick = lockNow;
+document.getElementById("search").addEventListener("input", function(){ query=this.value; render(); });
+document.getElementById("addDoc").onclick = ()=>{ current=null; openEditor(true); };
+document.getElementById("vBack").onclick = ()=> hideOverlay("viewer");
+document.getElementById("vEdit").onclick = ()=> openEditor(false);
+document.getElementById("eCancel").onclick = ()=> hideOverlay("editor");
+document.getElementById("eCancel2").onclick = ()=> hideOverlay("editor");
+document.getElementById("eSave").onclick = saveEditor;
+document.getElementById("eDelete").onclick = deleteDoc;
+document.getElementById("eTypeSelect").onchange = ()=>{ collectDynFields(); buildDynFields(); };
+document.getElementById("undoBtn").onclick = undoLast;
+document.getElementById("exportBtn").onclick = exportBackup;
+document.getElementById("importBtn").onclick = ()=> document.getElementById("importFile").click();
+document.getElementById("importFile").onchange = (ev)=>{ const f=ev.target.files[0]; if(f) importBackup(f); ev.target.value=""; };
+document.getElementById("changeMasterBtn").onclick = changeMaster;
+document.getElementById("secretKeyBtn").onclick = manageSecretKey;
+document.getElementById("bioBtn").onclick = manageBio;
+document.getElementById("attackTestBtn").onclick = runAttackTests;
+
+/* ---------------- cloud sync (GitHub Gist, encrypted with master password) ---------------- */
+const SYNC_KEY = "keyring-sync-v1";
+const GIST_FILE = "keyring-vault.json";
+let sync = null;   // {token, gistId, lastAt}  (暗号化パスワード = masterPass に統一)
+let pushTimer = null;
+let syncBusy = false;
+
+async function encryptForCloud(){
+  // 常に二重鍵(enc:2)で書き出す。旧形式(enc:1)は読み込みのみ対応（自然に移行される）
+  return JSON.stringify(await encryptPayload());
+}
+async function decryptFromCloud(text){
+  const obj = JSON.parse(text);
+  if(!obj || !obj.enc) return obj;
+  // ④SKチェック値で「シークレットキー違い」を先に判定（パスワード違いと区別する）
+  if(obj.enc===2 && obj.skh){
+    if(!secretKey || (await skHash(secretKey)) !== obj.skh) throw new Error("sk");
+  }
+  try{
+    const key = obj.enc===2
+      ? await deriveDataKey(masterPass, unb64(obj.salt), secretKey)  // 二重鍵
+      : await deriveKey(masterPass, unb64(obj.salt));                // 旧形式（パスワードのみ）
+    const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:unb64(obj.iv)}, key, unb64(obj.data));
+    return JSON.parse(dec.decode(pt));
+  }catch(e){ throw new Error("pass"); }
+}
+function mergeStates(a,b){
+  const tomb=Object.create(null);
+  for(const t of [...(a.tombstones||[]),...(b.tombstones||[])]) if(t&&t.id&&(!tomb[t.id]||t.ts>tomb[t.id])) tomb[t.id]=t.ts||0;
+  const cats=[...(a.cats||[])];
+  for(const c of (b.cats||[])) if(!cats.find(x=>x.id===c.id)) cats.push(c);
+  const liveCats=cats.filter(c=>!(("cat:"+c.id) in tomb));
+  const map=Object.create(null);
+  for(const e of (a.entries||[])) map[e.id]=e;
+  for(const e of (b.entries||[])){ const x=map[e.id]; if(!x||(e.ts||0)>(x.ts||0)) map[e.id]=e; }
+  const catOk=new Set(liveCats.map(c=>c.id));
+  const entries=[];
+  for(const id of Object.keys(map)){
+    const e=map[id];
+    if(tomb[e.id]>(e.ts||0)) continue;
+    if(catOk.has(e.catId)){ entries.push(e); continue; }
+    const ct=tomb["cat:"+e.catId];
+    if(ct!==undefined && (e.ts||0)>ct && liveCats.length){ e.catId=liveCats[0].id; entries.push(e); }
+  }
+  return {
+    cats: liveCats.length?liveCats:(a.cats||[]),
+    activeCat: a.activeCat,
+    entries,
+    savedAt: Math.max(a.savedAt||0,b.savedAt||0),
+    tombstones: gcTomb(Object.entries(tomb).map(([id,ts])=>({id,ts}))), // ②期限制でGC
+    lastBackupAt: Math.max(a.lastBackupAt||0,b.lastBackupAt||0)
+  };
+}
+function setSyncStatus(msg,err){ const el=document.getElementById("syncStatus"); el.textContent=msg; el.style.color=err?"#e2b25a":""; }
+function syncOkStatus(extra){ const n=new Date(); setSyncStatus(`🔒暗号化して同期済み ${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")}${extra||""} ／ 同期ID: ${sync.gistId}`); }
+
+/* ⑦同期設定（GitHubトークンを含む）はマスターキーで暗号化して保存する。
+   旧形式（平文）を見つけたら読み込んだうえで暗号化形式に移行する。 */
+async function loadSyncConfig(){
+  try{
+    const raw = await rawGet(SYNC_KEY);
+    if(!raw){ sync = null; return; }
+    const parsed = JSON.parse(raw);
+    if(parsed && parsed.v===2 && parsed.ct){
+      const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:unb64(parsed.iv)}, masterKey, unb64(parsed.ct));
+      sync = JSON.parse(dec.decode(pt));
+    }else if(parsed && parsed.token){
+      sync = parsed;            // 旧形式（平文）
+      await saveSyncConfig();   // すぐ暗号化して保存し直す
+    }
+  }catch(e){
+    // 旧マスターキーで暗号化された設定など、読めない場合は再設定してもらう
+    sync = null;
+    setSyncStatus("⚠ 同期設定を読み込めませんでした。「同期の設定」からもう一度設定してください", true);
+  }
+}
+async function saveSyncConfig(){
+  try{
+    if(!sync){ await rawDel(SYNC_KEY); return; }
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, masterKey, enc.encode(JSON.stringify(sync)));
+    await rawSet(SYNC_KEY, JSON.stringify({v:2, iv:b64(iv), ct:b64(ct)}));
+  }catch(e){}
+}
+function gistHeaders(){ return {"Authorization":"Bearer "+sync.token,"Accept":"application/vnd.github+json","Content-Type":"application/json"}; }
+async function pullCloud(){
+  const r=await fetch("https://api.github.com/gists/"+sync.gistId,{headers:gistHeaders()});
+  if(r.status===404) throw new Error("notfound");
+  if(r.status===401||r.status===403) throw new Error("auth");
+  if(!r.ok) throw new Error("http"+r.status);
+  const g=await r.json(); const f=g.files&&g.files[GIST_FILE];
+  if(!f) return null;
+  let text=f.content;
+  if(f.truncated){
+    // v7.2②保管庫が大きくなるとcontentが切り詰められ、raw_urlから全文を取る必要がある。
+    //   ここが失敗したら（CSP・ネットワーク・GitHub側の変更）原因を分類して伝える
+    try{
+      const rr=await fetch(f.raw_url);
+      if(!rr.ok) throw 0;
+      text=await rr.text();
+    }catch(e2){ throw new Error("rawfetch"); }
+  }
+  return await decryptFromCloud(text);
+}
+async function pushCloud(){
+  const payload={description:"Keyring 同期データ（暗号化済み）", files:{[GIST_FILE]:{content:await encryptForCloud()}}};
+  let r;
+  if(sync.gistId) r=await fetch("https://api.github.com/gists/"+sync.gistId,{method:"PATCH",headers:gistHeaders(),body:JSON.stringify(payload)});
+  else{ payload.public=false; r=await fetch("https://api.github.com/gists",{method:"POST",headers:gistHeaders(),body:JSON.stringify(payload)}); }
+  if(r.status===401||r.status===403) throw new Error("auth");
+  if(r.status===404) throw new Error("notfound");
+  if(!r.ok) throw new Error("http"+r.status);
+  const g=await r.json(); sync.gistId=g.id; sync.lastAt=Date.now(); await saveSyncConfig();
+}
+function syncErrMsg(e){
+  if(e&&e.message==="rawfetch") return "⚠ 同期データが大きく、全文の取得がブロックまたは失敗しました。通信環境を確認して再試行してください（続く場合は不要な登録の整理か、バックアップ書き出し→再設定を）";
+  if(e&&e.message==="sk") return "⚠ シークレットキーが一致しません。設定の「シークレットキー / 緊急キット」→「別のキーに変更」で、データを作った端末のキー（緊急キットに記載）を入力して揃えてください";
+  if(e&&e.message==="pass") return "⚠ マスターパスワードが一致しません。全端末で「マスターパスワードを変更」から同じパスワードに揃えてください";
+  if(e&&e.message==="nokey") return "⚠ この端末はまだ二重鍵化されていません。設定の「シークレットキー / 緊急キット」から二重鍵化してください";
+  if(e&&e.message==="auth") return "⚠ トークンが無効です（gist権限つきで作り直してください）";
+  if(e&&e.message==="notfound") return "⚠ 同期IDが見つかりません（IDを確認してください）";
+  return "⚠ 同期に失敗しました（通信を確認して「今すぐ同期」を）";
+}
+function scheduleCloudPush(){
+  if(!sync||!sync.token||syncBusy) return;
+  clearTimeout(pushTimer);
+  pushTimer=setTimeout(async ()=>{ try{ await pushCloud(); syncOkStatus("(自動)"); }catch(e){ setSyncStatus(syncErrMsg(e),true); } },3000);
+}
+async function syncNow(){
+  if(!sync||!sync.token){ toast("先に「同期の設定」を行ってください", true); return; }
+  if(syncBusy) return;
+  syncBusy=true; setSyncStatus("同期中…");
+  try{
+    if(sync.gistId){
+      const remote=await pullCloud();
+      if(remote){ const rs=sanitize(remote); if(rs) state=sanitize(mergeStates(state,rs))||state; }
+    }
+    await save(true);
+    await pushCloud();
+    render(); syncOkStatus();
+  }catch(e){ setSyncStatus(syncErrMsg(e),true); }
+  finally{ syncBusy=false; }
+}
+async function setupSync(){
+  const t=prompt("GitHubトークンを入力\n（github.com → Settings → Developer settings → Personal access tokens → gist権限のみでOK）。\n同期を解除する場合は「解除」と入力", sync?sync.token:"");
+  if(t===null) return;
+  if(t.trim()==="解除"){
+    sync=null; try{ await rawDel(SYNC_KEY); }catch(e){}
+    setSyncStatus("同期は解除されました（クラウド上のデータは残っています）"); return;
+  }
+  const g=prompt("同期ID（2台目の設定なら、1台目に表示されているIDを入力。1台目・初回は空欄のままでOK）", sync?(sync.gistId||""):"");
+  if(g===null) return;
+  sync={token:t.trim(), gistId:(g||"").trim(), lastAt:0};
+  await saveSyncConfig();
+  setSyncStatus("暗号化にはマスターパスワードを使います。同期を開始します…");
+  syncNow();
+}
+document.getElementById("syncSetupBtn").onclick = setupSync;
+document.getElementById("syncNowBtn").onclick = syncNow;
+
+/* ---------------- attack test suite ---------------- */
+/* この開発過程の敵対的テストで実際に見つかった欠陥を、攻撃シナリオとして再現する。
+   すべて実コード（mergeStates / decryptFromCloud / encryptPayload 等）に対して実行し、
+   実データには一切触れない（グローバルは退避し、テスト中は自動pushも停止）。 */
+async function attackTestCore(){
+  const lines = [];
+  let pass = 0, total = 0;
+  const snap = {mp: masterPass, sk: secretKey};
+  const syncWas = syncBusy;
+  syncBusy = true;              // テスト中に自動同期が動かないように
+  clearTimeout(pushTimer);      // 予約済みの自動pushも破棄
+  const assert = (c, msg)=>{ if(!c) throw new Error(msg || "assertion failed"); };
+  const T = async (name, fn)=>{
+    total++;
+    if(!masterKey){ lines.push("⏹ " + name + "（ロックされたため中断）"); return; }
+    try{ await fn(); pass++; lines.push("✅ " + name); }
+    catch(e){ lines.push("❌ " + name + "\n　→ " + (e && e.message || e)); }
+    finally{ if(masterKey){ masterPass = snap.mp; secretKey = snap.sk; } }
+  };
+  const t0 = Date.now();
+
+  await T("【v2-②】150件削除→同期しても1件も復活しない（墓標100件上限バグの再現）", async ()=>{
+    const now = Date.now();
+    const cats = [{id:"c1", name:"c"}];
+    const killed = []; for(let i=0;i<150;i++) killed.push({id:"kill"+i, catId:"c1", name:"n"+i, ts: now-1000000});
+    const A = {cats, activeCat:"c1", entries:[], savedAt:now, tombstones: killed.map(e=>({id:e.id, ts:now})), lastBackupAt:0};
+    const B = {cats, activeCat:"c1", entries: killed, savedAt:now-500000, tombstones:[], lastBackupAt:0};
+    const m = mergeStates(A, B);
+    assert(m.entries.length===0, "削除済み" + m.entries.length + "件が同期で復活した");
+    assert(m.tombstones.length===150, "墓標が欠落（" + m.tombstones.length + "/150）");
+  });
+
+  await T("【v3運用】墓標は91日で失効し、昨日の分は保持される", async ()=>{
+    const g = gcTomb([{id:"old", ts:Date.now()-91*86400000}, {id:"fresh", ts:Date.now()-86400000}]);
+    assert(g.length===1 && g[0].id==="fresh", "GC結果: " + JSON.stringify(g.map(x=>x.id)));
+  });
+
+  await T("【v2運用】カテゴリ削除の墓標は同期先でも効き、削除後に作った新規エントリは救済される", async ()=>{
+    const now = Date.now();
+    const A = {cats:[{id:"c2",name:"keep"}], activeCat:"c2", entries:[], savedAt:now, tombstones:[{id:"cat:c1", ts:now-1000}], lastBackupAt:0};
+    const B = {cats:[{id:"c1",name:"dead"},{id:"c2",name:"keep"}], activeCat:"c1", entries:[{id:"e1", catId:"c1", name:"newer", ts:now}], savedAt:now, tombstones:[], lastBackupAt:0};
+    const m = mergeStates(A, B);
+    assert(!m.cats.find(c=>c.id==="c1"), "削除済みカテゴリが復活した");
+    assert(m.entries.length===1 && m.entries[0].catId==="c2", "削除後の新規エントリが救済されない");
+  });
+
+  await T("【v2-④】javascript:等の危険URLをリンク化しない（大文字・data:・プロトコル相対含む）", async ()=>{
+    for(const bad of ["javascript:alert(1)", "JaVaScRiPt:alert(1)", "data:text/html,x", "vbscript:x", "//evil.example", "ftp://x", ""])
+      assert(!isSafeUrl(bad), "危険URLが通過: " + bad);
+    for(const ok of ["https://example.com", "http://example.com/a?b=c"])
+      assert(isSafeUrl(ok), "正常URLが拒否: " + ok);
+  });
+
+  // --- 二重鍵の攻撃分類（実際の decryptFromCloud を叩く） ---
+  const MPA = "attack-test-pass-A";
+  const SK1 = genSecretKey(), SK2 = genSecretKey();
+  let payload2 = null;
+
+  await T("【核心】正しいMP+SKの組でのみ復号できる", async ()=>{
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await deriveDataKey(MPA, salt, SK1);
+    const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(JSON.stringify({probe:42})));
+    payload2 = JSON.stringify({enc:2, skh: await skHash(SK1), salt:b64(salt), iv:b64(iv), data:b64(ct)});
+    masterPass = MPA; secretKey = SK1;
+    const got = await decryptFromCloud(payload2);
+    assert(got && got.probe===42, "正しい組で復号できない");
+  });
+
+  await T("【v3-①系】パスワード違いは復号拒否され、原因が『pass』と正しく分類される", async ()=>{
+    assert(payload2, "前提テスト未完了");
+    masterPass = "wrong-password"; secretKey = SK1;
+    try{ await decryptFromCloud(payload2); assert(false, "誤ったパスワードで復号できてしまった"); }
+    catch(e){ assert(e.message==="pass", "分類が不正: " + e.message); }
+  });
+
+  await T("【v5-④】SK違いは復号拒否され、原因が『sk』と正しく分類される（延々ハマるバグの再現）", async ()=>{
+    assert(payload2, "前提テスト未完了");
+    masterPass = MPA; secretKey = SK2;
+    try{ await decryptFromCloud(payload2); assert(false, "誤ったSKで復号できてしまった"); }
+    catch(e){ assert(e.message==="sk", "分類が不正: " + e.message); }
+  });
+
+  await T("【v5-②系】SK未設定では外部向け暗号化が拒否される（SK:nullの復元不能クラウドを作らない）", async ()=>{
+    masterPass = MPA; secretKey = null;
+    try{ await encryptPayload(); assert(false, "SKなしで外部向け暗号化が通ってしまった"); }
+    catch(e){ assert(e.message==="nokey", "分類が不正: " + e.message); }
+  });
+
+  await T("【v6-②】mp/sk欠損状態での生体認証ラップは拒否される（毒ラップ防止）", async ()=>{
+    masterPass = null; secretKey = SK1;
+    try{ await bioWrapAndStore("dummy", crypto.getRandomValues(new Uint8Array(32))); assert(false, "空のパスワードをラップできてしまった"); }
+    catch(e){ assert(e.message==="novalue", "分類が不正: " + e.message); }
+  });
+
+  await T("【互換】旧形式(enc:1)のクラウド/バックアップはパスワードのみで読める", async ()=>{
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await deriveKey("legacy-pass", salt);
+    const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(JSON.stringify({probe:7})));
+    masterPass = "legacy-pass"; secretKey = genSecretKey(); // SKに依存せず読めること
+    const got = await decryptFromCloud(JSON.stringify({enc:1, salt:b64(salt), iv:b64(iv), data:b64(ct)}));
+    assert(got && got.probe===7, "旧形式が読めない");
+  });
+
+  await T("【v5意地悪-⑩】SK生成の前提（32文字セット＝偏りゼロ）と品質", async ()=>{
+    assert(CROCK.length===32, "文字セットが" + CROCK.length + "文字（256÷32の割り切りが崩れ、偏りが生じる）");
+    const seen = new Set();
+    for(let i=0;i<500;i++){ const s = genSecretKey(); assert(validSK(s), "不正なSKを生成: " + s); seen.add(s); }
+    assert(seen.size===500, "SKが衝突（乱数品質異常）");
+  });
+
+  await T("【運用】キーの読み違い（O/0・I/L/1・U/V・小文字・区切り）を正規化で吸収", async ()=>{
+    const sk = genSecretKey();
+    assert(normSK(fmtSK(sk).toLowerCase())===sk, "表示形式の往復が崩れる");
+    assert(normSKchars("OIL-u").length===4 && normSKchars("OILu")==="0" + "11" + "V", "読み違い吸収の不備: " + normSKchars("OILu"));
+  });
+
+  await T("【堅牢性】壊れたデータのサニタイズとXSSエスケープ", async ()=>{
+    assert(sanitize(null)===null && sanitize({})===null && sanitize({entries:"x"})===null, "壊れた構造を受け入れた");
+    const d = sanitize({entries:[{name:"<img src=x onerror=alert(1)>", type:"evil", catId:"nope"}]});
+    assert(d && d.entries[0].type==="login", "不正typeが補正されない");
+    assert(d.cats.some(c=>c.id===d.entries[0].catId), "孤児catIdが補正されない");
+    assert(esc('<b>&"')==="&lt;b&gt;&amp;&quot;", "エスケープ不備: " + esc('<b>&"'));
+  });
+
+  await T("【v7.1-①】マスターパスワードの最低長ポリシー（12文字未満は新規設定・変更で拒否）", async ()=>{
+    assert(mpPolicyErr("")!==null && mpPolicyErr("pass")!==null && mpPolicyErr("12345678901")!==null, "短いMPが通ってしまう");
+    assert(mpPolicyErr("123456789012")===null, "12文字ちょうどが拒否される");
+    assert(mpPolicyErr(null)!==null, "null入力で例外/素通り");
+  });
+
+  await T("【v7.1-②/v7.2-①】CSPが存在し、通信先が'self'とGitHub系のみに制限されている", async ()=>{
+    if(!document.querySelector) throw new Error("この環境ではDOM検証不可（実ブラウザで実行してください）");
+    const m = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+    assert(m, "CSPメタタグが存在しない（このファイルは改変されている可能性）");
+    const c = m.getAttribute("content")||"";
+    assert(/default-src 'none'/.test(c), "default-srcが'none'でない");
+    assert(/connect-src[^;]*'self'/.test(c), "connect-srcに'self'がない");
+    assert(/connect-src[^;]*https:\/\/api\.github\.com/.test(c), "connect-srcの制限がない");
+    assert(/connect-src[^;]*githubusercontent\.com/.test(c), "raw_url取得先の許可がない（大容量同期が死ぬ）");
+    assert(!/unsafe-eval/.test(c), "unsafe-evalが許可されている");
+  });
+
+  await T("【v7.2-②】大容量同期データの取得失敗が専用メッセージに分類される（無言死防止）", async ()=>{
+    const msg = syncErrMsg(new Error("rawfetch"));
+    assert(/取得|ブロック/.test(msg), "rawfetchの分類がない: " + msg);
+  });
+
+  await T("【基盤】バイナリ境界値のb64往復と起動セルフテスト", async ()=>{
+    const bytes = new Uint8Array([0,1,127,128,255,0,0,255]);
+    assert(Array.from(unb64(b64(bytes))).join()===Array.from(bytes).join(), "b64往復が崩れる");
+    assert(await selfTest(), "起動セルフテスト失敗");
+  });
+
+  syncBusy = syncWas;
+  return {lines, pass, total, ms: Date.now()-t0};
+}
+async function runAttackTests(){
+  const btn = document.getElementById("attackTestBtn");
+  btn.disabled = true; btn.textContent = "攻撃テスト実行中…（数秒かかります）";
+  try{
+    const r = await attackTestCore();
+    const head = (r.pass===r.total ? "🛡 全攻撃を防御 " : "⚠ 防御に失敗あり ") + `${r.pass}/${r.total} 合格（${(r.ms/1000).toFixed(1)}秒）\n\n`;
+    await _modal({title:"攻撃テスト結果", msg: head + r.lines.join("\n"),
+      buttons:[{label:"閉じる", value:null, style: r.pass===r.total ? "primary" : "danger"}]});
+  }catch(e){
+    toast("テストの実行に失敗しました", true);
+  }finally{
+    btn.disabled = false; btn.textContent = "攻撃テストを実行（過去の全欠陥を再現）";
+  }
+}
+
+/* ---------------- boot ---------------- */
+/* v5④起動時セルフテスト：暗号の往復・エンコード・SK生成を毎回検証。
+   壊れた環境（改造・非対応ブラウザ等）で気づかず使い続けるのを防ぐ */
+async function selfTest(){
+  try{
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const base = await crypto.subtle.importKey("raw", enc.encode("test"), "PBKDF2", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits({name:"PBKDF2", salt, iterations:1000, hash:"SHA-256"}, base, 256);
+    const hk = await crypto.subtle.importKey("raw", bits, "HKDF", false, ["deriveKey"]);
+    const key = await crypto.subtle.deriveKey(
+      {name:"HKDF", hash:"SHA-256", salt:enc.encode("s"), info:enc.encode("i")},
+      hk, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode("keyring-selftest"));
+    if(dec.decode(await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct)) !== "keyring-selftest") return false;
+    if(Array.from(unb64(b64(new Uint8Array([0,1,127,255])))).join() !== "0,1,127,255") return false;
+    if(!validSK(genSecretKey())) return false;
+    if(normSK("kr-abcde-fghjk-mnpqr-stvwx-yz012".toUpperCase()).length !== 25) return false;
+    return true;
+  }catch(e){ return false; }
+}
+(async function(){
+  // ⑥暗号化APIが使えない環境（file://直開き等のinsecure context）は明示的に止める
+  if(!(window.crypto && crypto.subtle)){
+    document.getElementById("loading").style.display="none";
+    const w=document.getElementById("storageWarn");
+    w.innerHTML="⚠ この環境では暗号化機能（crypto.subtle）が使えないため起動できません。<br>https:// のURL、または localhost で開いてください。file:// で直接開くと動かないブラウザがあります。";
+    w.style.display="block";
+    return;
+  }
+  // v5④セルフテスト
+  if(!(await selfTest())){
+    document.getElementById("loading").style.display="none";
+    const w=document.getElementById("storageWarn");
+    w.innerHTML="⚠ 起動時の暗号セルフテストに失敗しました。この環境での使用を中止してください。<br>（ブラウザが改造されているか、暗号機能が正しく動作していません）";
+    w.style.display="block";
+    return;
+  }
+  // v5③永続ストレージ：起動時は状態確認のみ（プロンプトが出得るpersist()要求は解錠後に行う）
+  if(!hasAppStorage && navigator.storage && navigator.storage.persisted){
+    try{ persistGranted = await navigator.storage.persisted(); }catch(e){ persistGranted = null; }
+  }
+  if(memoryOnly) document.getElementById("storageWarn").style.display="block";
+  try{
+    const raw = await rawGet(KEY);
+    localStorageVaultFlag = !!raw;
+  }catch(e){}
+  // v6④予備コピーからの復旧を検知したら、時点を明示して警告（サイレント・ロールバック防止）
+  if(recoveredAt !== undefined){
+    const w = document.getElementById("storageWarn");
+    const when = recoveredAt ? new Date(recoveredAt).toLocaleString("ja-JP") : "時刻不明";
+    w.innerHTML = "⚠ メインの保存データが見つからなかったため、予備コピー（" + when + " 時点）から復旧しました。<br>それ以降の変更は失われている可能性があります。手元のバックアップファイルと突き合わせて確認してください。";
+    w.style.display = "block";
+  }
+  document.getElementById("loading").style.display="none";
+  if(localStorageVaultFlag) renderUnlock(); else renderSetup();
+})();
+</script>
+</body>
+</html>
