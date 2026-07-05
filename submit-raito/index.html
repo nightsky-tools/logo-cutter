@@ -177,6 +177,8 @@
   .compile-box .cl .b{color:var(--danger)}
   .compile-box summary.warn{color:#e2a25a;border-color:#8a5a3a}
   .compile-box summary.bad{color:var(--danger);border-color:#5a3040}
+  .compile-box .cl del{color:var(--danger);text-decoration:line-through;background:rgba(201,106,106,.14);padding:0 2px;border-radius:2px}
+  .compile-box .cl ins{color:var(--ok);text-decoration:none;background:rgba(126,201,162,.14);padding:0 2px;border-radius:2px}
 
   textarea.editor{
     width:100%;min-height:55vh;background:var(--night-2);border:1px solid var(--card-edge);
@@ -444,13 +446,15 @@ function analyzeBody(body, signId){
   return { match, detected, month };
 }
 
-/* ==== NYUKO_START 入稿マシン同等の整形・分割(保管庫内蔵版・改善版) ==== */
+/* ==== NYUKO_START 入稿マシン同等の整形・分割(保管庫内蔵版・差分記録つき) ==== */
 /* ★設定ブロック:価格改定・文言変更はここを編集。
-   同時に更新する場所(計4箇所):①ここ ②検品前スキャナのDICT.FIXED_2 ③入稿マシンのFIXED2 ④生成命令書v10.2の固定文言② */
+   同時に更新する場所(計4箇所):①ここ ②検品前スキャナのDICT.FIXED_2 ③入稿マシンのFIXED2(使用時) ④生成命令書v10.2の固定文言② */
 const NY_FIXED2='この一冊には、3,000円以上の価値があると自負しています。それでも、価格を理由にあなたがこの1ヶ月を逃すことがないように。毎月15日までは、コーヒー1杯分の「500円」で。16日からは「1,000円」でお届けしています。';
 const NY_FIXED2KEY='毎月15日までは、コーヒー1杯分の「500円」で。16日からは「1,000円」でお届けしています。';
 const NY_GUIDE='この先、有料エリアに入る前に、まずは【第1章】を無料で公開します。中身を確かめてみてください。';
+const NY_PRICES=(NY_FIXED2.match(/「[0-9,，]+円」/g)||[]).join("・");
 /* ★設定ブロックここまで */
+function cfgFp(str){let h=5381;for(let i=0;i<str.length;i++){h=((h<<5)+h+str.charCodeAt(i))>>>0;}return h.toString(16);}
 function nyLineIndexOf(text,key,from){
   const re=new RegExp('^'+key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'m');
   const m=text.slice(from||0).match(re);return m?(from||0)+m.index:-1;
@@ -462,19 +466,21 @@ function nyBlock(text,startKey,endKeys){
   return {s:st,e,body:text.slice(st,e)};
 }
 function nyBullets(body){return (body.match(/^\s*・.+$/gm)||[]).length;}
-// 本文 → {ok, problems[], warnings[], changes[], title, partA, partB}
-// 保存された本文には手を加えず、コピー時に毎回この整形を通した結果を返す
+// 本文 → {ok, problems[], warnings[], changes[], diffs[], title, partA, partB}
+// diffs=[{label, del, ins, b(前文脈), a(後文脈)}] 保存本文は無変更・コピー時に毎回この整形を適用
 function compileParts(src){
   let text=(src||'').replace(/\r\n?/g,'\n');
-  const problems=[], warnings=[], changes=[];
-  // 行の除去(コードブロック記号・進行フレーズ)
+  const problems=[], warnings=[], changes=[], diffs=[];
+  const tr=(x,n)=>x.length>n?x.slice(0,n)+'…':x;
+  const dctx=(t,pos,len)=>({b:t.slice(Math.max(0,pos-14),pos), a:t.slice(pos+len,pos+len+14)});
+  // 行の除去
   {const lines=text.split('\n');const keep=[];let rm=0;
    for(const l of lines){const t=l.trim();
-     if(/^```/.test(t)||/^続けてよろしいですか[？?]$/.test(t)){rm++;continue;}
+     if(/^```/.test(t)||/^続けてよろしいですか[？?]$/.test(t)){rm++;diffs.push({label:'行の除去',del:tr(l,60),ins:'',b:'',a:''});continue;}
      keep.push(l);}
    text=keep.join('\n');
    if(rm)changes.push('進行フレーズ・コード記号の行を除去:'+rm+'行');}
-  // タイトル行の分離(定型が崩れていても【〇月限定】始まりなら拾う)
+  // タイトル行の分離
   let title='';
   let tm=text.match(/^【[0-9０-９]{1,2}月限定】[^\n]*【保存版】[^\n]*$/m);
   let titleLoose=false;
@@ -483,34 +489,47 @@ function compileParts(src){
     title=tm[0].trim();
     text=(text.slice(0,tm.index)+text.slice(tm.index+tm[0].length)).replace(/^\n+/,'');
     changes.push('タイトル行を分離');
+    diffs.push({label:'タイトル行を分離(タイトル欄へ移動)',del:tr(title,60),ins:'',b:'',a:''});
     if(titleLoose)warnings.push('タイトル行が定型と不一致(末尾「1ヶ月【保存版】」を確認)');
   }else{
     warnings.push('タイトル行なし([タイトル]は空振りします。タイトルごと格納すると使えます)');
   }
   // 半角?!の全角化
-  {const n=(text.match(/[?!]/g)||[]).length;
-   if(n){text=text.replace(/\?/g,'？').replace(/!/g,'！');changes.push('半角?!を全角化:'+n+'件');}}
+  {const ps=[];for(let i=0;i<text.length&&ps.length<8;i++){if(text[i]==='?'||text[i]==='!')ps.push(i);}
+   const n=(text.match(/[?!]/g)||[]).length;
+   if(n){
+     ps.forEach(p=>{const c=dctx(text,p,1);diffs.push({label:'半角記号の全角化',del:text[p],ins:text[p]==='?'?'？':'！',b:c.b,a:c.a});});
+     text=text.replace(/\?/g,'？').replace(/!/g,'！');changes.push('半角?!を全角化:'+n+'件');}}
   // 日本語間の半角スペース除去
   {const JPC='[\\u3040-\\u30FF\\u4E00-\\u9FFF、。，「」『』（）【】？！・…]';
+   const exRe=new RegExp('('+JPC+')( +)(?='+JPC+')','g');
+   let em,ec=0;
+   while((em=exRe.exec(text))!==null&&ec<8){const p=em.index+em[1].length;const c=dctx(text,p,em[2].length);
+     diffs.push({label:'日本語間の半角スペース除去',del:'␣',ins:'',b:c.b,a:c.a});ec++;}
    const spRe=new RegExp('('+JPC+')[ \\t]+(?='+JPC+')','g');
    let n=0,prevT;
    do{prevT=text;text=text.replace(spRe,(mm,p1)=>{n++;return p1;});}while(text!==prevT);
    if(n)changes.push('日本語間の半角スペース除去:'+n+'件');}
   // 強調記号の除去
-  {const n=(text.match(/\*\*/g)||[]).length;
-   if(n){text=text.replace(/\*\*/g,'');changes.push('強調記号**を除去:'+n+'件');}}
+  {const ps=[];let ix=text.indexOf('**');while(ix!==-1&&ps.length<8){ps.push(ix);ix=text.indexOf('**',ix+2);}
+   const n=(text.match(/\*\*/g)||[]).length;
+   if(n){ps.forEach(p=>{const c=dctx(text,p,2);diffs.push({label:'強調記号の除去',del:'**',ins:'',b:c.b,a:c.a});});
+     text=text.replace(/\*\*/g,'');changes.push('強調記号**を除去:'+n+'件');}}
   // 第8章見出しの「対 」スペース復元
-  {const n=(text.match(/【対(?=[火地風水]の星座)/g)||[]).length;
-   if(n){text=text.replace(/【対(?=[火地風水]の星座)/g,'【対 ');changes.push('第8章見出しのスペース復元:'+n+'件');}}
-  // 構造の確認(導入+第1〜9章・各ちょうど1回)
+  {const re=/【対(?=[火地風水]の星座)/g;let m8;const ps=[];
+   while((m8=re.exec(text))!==null&&ps.length<8)ps.push(m8.index);
+   const n=(text.match(/【対(?=[火地風水]の星座)/g)||[]).length;
+   if(n){ps.forEach(p=>{const c=dctx(text,p,2);diffs.push({label:'第8章見出しのスペース補正',del:'【対',ins:'【対 ',b:c.b,a:c.a});});
+     text=text.replace(/【対(?=[火地風水]の星座)/g,'【対 ');changes.push('第8章見出しのスペース復元:'+n+'件');}}
+  // 構造の確認
   const need=['【はじめに'];for(let i=1;i<=9;i++)need.push('【第'+i+'章】');
   for(const k of need){
     const c=(text.match(new RegExp('^'+k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'mg'))||[]).length;
     if(c===0)problems.push(k.replace(/[【】]/g,'')+'が見つかりません');
     else if(c>1)problems.push(k.replace(/[【】]/g,'')+'が'+c+'回(複数バージョン混在?)');
   }
-  if(problems.length)return {ok:false,problems,warnings,changes,title};
-  // 数の照合(入稿マシンと同一・警告のみでコピーは止めない)
+  if(problems.length)return {ok:false,problems,warnings,changes,diffs,title};
+  // 数の照合(警告のみ)
   {const CH=[];for(let i=1;i<=9;i++)CH.push('【第'+i+'章】');
    for(let i=1;i<=6;i++){
      const b=nyBlock(text,'【第'+i+'章】',CH.filter(k=>k!=='【第'+i+'章】'));
@@ -535,7 +554,7 @@ function compileParts(src){
       const rel=nyBlock(b9.body,'【満月の手放しワーク】',['【ワークの進め方】'])||nyBlock(b9.body,'【新月前の手放しの問い】',['【ワークの進め方】']);
       if(rel){const n=nyBullets(rel.body);if(n<2||n>3)warnings.push('第9章の問いかけが'+n+'件(正:2〜3)');}
     }}}
-  // 価格段落(固定文言②):なければ旧段落を置換、それもなければ挿入
+  // 価格段落(固定文言②)
   if(text.indexOf(NY_FIXED2KEY)===-1){
     const introEnd=text.indexOf('【第1章】');
     let found=null;
@@ -550,30 +569,32 @@ function compileParts(src){
     if(found){
       text=text.slice(0,found.at)+NY_FIXED2+text.slice(found.at+found.p.length);
       changes.push('旧価格段落を固定文言②へ置換');
+      diffs.push({label:'価格段落を固定文言②へ置換',del:tr(found.p,80),ins:tr(NY_FIXED2,80),b:'',a:''});
     }else{
       const anchor=text.search(/\n準備はいいですか/);
-      if(anchor!==-1){ text=text.slice(0,anchor+1)+NY_FIXED2+'\n\n'+text.slice(anchor+1); changes.push('価格段落(固定文言②)を挿入'); }
-      else{ return {ok:false,problems:['価格段落の挿入位置(「準備はいいですか」)が見つかりません'],warnings,changes,title}; }
+      if(anchor!==-1){ text=text.slice(0,anchor+1)+NY_FIXED2+'\n\n'+text.slice(anchor+1); changes.push('価格段落(固定文言②)を挿入'); diffs.push({label:'価格段落(固定文言②)を挿入',del:'',ins:tr(NY_FIXED2,80),b:'',a:'準備はいいですかの直前'}); }
+      else{ return {ok:false,problems:['価格段落の挿入位置(「準備はいいですか」)が見つかりません'],warnings,changes,diffs,title}; }
     }
   }
-  // 「第1章無料」誘導の挿入
+  // 誘導文
   if(text.indexOf(NY_GUIDE)===-1){
     const c1=nyLineIndexOf(text,'【第1章】',0);
     const pos=text.slice(0,c1).replace(/\n*$/,'').length;
     text=text.slice(0,pos)+'\n\n'+NY_GUIDE+'\n'+text.slice(pos);
     changes.push('「第1章無料」誘導を挿入');
+    diffs.push({label:'「第1章無料」誘導を挿入',del:'',ins:NY_GUIDE,b:'',a:'【第1章】の直前'});
   }
-  // 末尾「画像特典」
-  if(!/画像特典\s*$/.test(text)){ text=text.replace(/\s+$/,'')+'\n\n画像特典'; changes.push('末尾「画像特典」を付与'); }
-  // A/B分割(Bは第2章から)
+  // 画像特典
+  if(!/画像特典\s*$/.test(text)){ text=text.replace(/\s+$/,'')+'\n\n画像特典'; changes.push('末尾「画像特典」を付与'); diffs.push({label:'末尾「画像特典」を付与',del:'',ins:'画像特典',b:'本文末尾に',a:''}); }
+  // A/B分割
   const c2=nyLineIndexOf(text,'【第2章】',0);
   return {
-    ok:true, problems, warnings, changes, title,
+    ok:true, problems, warnings, changes, diffs, title,
     partA:text.slice(0,c2).replace(/\s+$/,''),
     partB:text.slice(c2).replace(/\s+$/,'')
   };
 }
-// カード表示用の軽量チェック(整形はしない・分割可否とタイトル有無だけ)
+// カード表示用の軽量チェック
 function quickSplitCheck(body){
   const t=(body||'');
   const hasTitle=/^【[0-9０-９]{1,2}月限定】[^\n]+$/m.test(t);
@@ -679,7 +700,27 @@ async function load(){
   if(sync){
     setSyncStatus(`同期ID: ${sync.gistId} ／ 確認中…`);
     syncNow(false); // 起動時に自動同期(新しい方を採用)
+  }else{
+    // 同期未設定:直近30日バックアップがなければ促す(ブラウザ保存は消えることがあるため)
+    const last = state.lastExportAt || 0;
+    if(Date.now() - last > 30*24*3600*1000){
+      setSyncStatus("⚠ 同期未設定・直近30日のバックアップなし。ブラウザ保存は消えることがあります。「同期を設定」か「全データを書き出し」を", true);
+    }
   }
+  // ブラウザに保存領域の永続化を要求(Safariの自動削除への抵抗)
+  try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+  // 設定指紋:スキャナと固定文言②が一致しているかを照合(価格改定の反映漏れ検出)
+  try{
+    if(hasLocalStorage){
+      const fp = cfgFp(NY_FIXED2);
+      let reg = {}; try{ reg = JSON.parse(localStorage.getItem("hoshino-config-fp")||"{}"); }catch(e2){}
+      reg.vault = { fp, ts: Date.now() };
+      localStorage.setItem("hoshino-config-fp", JSON.stringify(reg));
+      if(reg.scanner && reg.scanner.fp !== fp){
+        toast("⚠ スキャナと固定文言②が不一致(価格改定の反映漏れ?)両ツールの設定を確認", true);
+      }
+    }
+  }catch(e){}
 }
 async function save(silent){
   try{
@@ -797,6 +838,11 @@ async function pasteAndSave(id){
   }
   if(!text || !text.trim()){
     toast("クリップボードが空です。本文をコピーしてからタップしてください", true);
+    return;
+  }
+  if(signs[id] && signs[id].body === text){
+    toast("同じ内容が既に格納済みです(変更なし)");
+    openSign(id);
     return;
   }
   if(signs[id] && signs[id].body){
@@ -923,6 +969,14 @@ function openSign(id){
     r.problems.forEach(x=> rows.push('<div class="b">✕ ' + esc(x) + '</div>'));
     r.warnings.forEach(x=> rows.push('<div class="w">⚠ ' + esc(x) + '</div>'));
     r.changes.forEach(x=> rows.push('<div>・' + esc(x) + '</div>'));
+    if(r.diffs && r.diffs.length){
+      rows.push('<div style="margin:8px 0 2px;color:var(--gold-soft)">— 変更差分(コピー時に適用・保存本文は無変更) —</div>');
+      r.diffs.forEach(dd=>{
+        const del = dd.del ? ('<del>' + esc(dd.del) + '</del>') : '';
+        const ins = dd.ins ? ('<ins>' + esc(dd.ins) + '</ins>') : '';
+        rows.push('<div><span style="color:var(--gold-soft);font-size:11px">' + esc(dd.label) + '</span><br><span style="opacity:.55">…' + esc(dd.b||'') + '</span>' + del + ins + '<span style="opacity:.55">' + esc(dd.a||'') + '…</span></div>');
+      });
+    }
     if(!rows.length) rows.push('<div>コピー時に適用される変更はありません(誘導・特典・価格段落はすべて格納済みの本文に含まれています)</div>');
     list.innerHTML = rows.join('');
     document.getElementById("vCompile").style.display = "block";
@@ -1074,6 +1128,7 @@ function exportBackup(){
     a.download = `article-vault-${n.getFullYear()}${String(n.getMonth()+1).padStart(2,"0")}${String(n.getDate()).padStart(2,"0")}.json`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+    state.lastExportAt = Date.now(); save(true);
     toast("バックアップを書き出しました");
   }catch(e){
     toast("書き出しに失敗しました", true);
@@ -1343,7 +1398,7 @@ function updateStats(){
   const st = storageStats();
   const mb = (JSON.stringify(state).length / 1024 / 1024);
   document.getElementById("statsInfo").textContent =
-    `現在:${st.months}ヶ月分・${st.articles}記事・約${st.chars.toLocaleString()}字(容量の目安 ${mb < 0.01 ? "0.01未満" : mb.toFixed(2)}MB ／ 上限約5MB)`;
+    `現在:${st.months}ヶ月分・${st.articles}記事・約${st.chars.toLocaleString()}字(容量の目安 ${mb < 0.01 ? "0.01未満" : mb.toFixed(2)}MB ／ 上限約5MB) ／ 設定中の価格:${NY_PRICES}`;
 }
 function countMonthArticles(key){
   const s = (state.months[key]||{}).signs || {};
