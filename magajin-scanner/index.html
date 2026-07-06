@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>マガジン記事スキャナ v1.1</title>
+<style>
+  :root {
+    --night: #0c0f22; --panel: #14182f; --panel-edge: #232849;
+    --moonlight: #e9e7f2; --dim: #8e8aa8;
+    --ok: #9fd8b4; --ng: #e8938f; --warn: #f0d9a0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--night); color: var(--moonlight);
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", sans-serif;
+    min-height: 100vh; padding: 28px 16px 64px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 24px; }
+  h1 {
+    font-family: "Hiragino Mincho ProN", "Yu Mincho", serif;
+    font-weight: 600; font-size: 1.4rem; letter-spacing: .14em;
+  }
+  .sub { color: var(--dim); font-size: .76rem; letter-spacing: .2em; margin-top: 8px; }
+  label { display: block; color: var(--dim); font-size: .78rem; letter-spacing: .14em; margin: 18px 0 8px; }
+  textarea {
+    width: 100%; min-height: 170px; resize: vertical;
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    color: var(--moonlight); border-radius: 12px; padding: 14px;
+    font-size: .85rem; line-height: 1.7; font-family: inherit;
+  }
+  textarea:focus-visible { outline: 2px solid #a9c5e2; outline-offset: 2px; }
+  .run-btn {
+    display: block; width: 100%; margin-top: 20px;
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    color: var(--moonlight); border-radius: 12px; padding: 14px;
+    font-size: .95rem; font-family: inherit; letter-spacing: .12em; cursor: pointer;
+    transition: border-color .2s;
+  }
+  .run-btn:hover, .run-btn:focus-visible { border-color: var(--dim); }
+  #report { margin-top: 26px; display: none; }
+  .verdict {
+    text-align: center; font-family: "Hiragino Mincho ProN", "Yu Mincho", serif;
+    font-size: 1.25rem; letter-spacing: .2em; padding: 16px;
+    border-radius: 12px; border: 1px solid var(--panel-edge); margin-bottom: 18px;
+  }
+  .verdict.pass { color: var(--ok); border-color: rgba(159,216,180,.4); }
+  .verdict.fail { color: var(--ng); border-color: rgba(232,147,143,.4); }
+  .verdict.cond { color: var(--warn); border-color: rgba(240,217,160,.4); }
+  .section {
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
+  }
+  .section h2 {
+    font-size: .8rem; color: var(--dim); letter-spacing: .16em;
+    font-weight: normal; margin-bottom: 10px;
+  }
+  .item { font-size: .84rem; line-height: 1.8; padding-left: 1.4em; text-indent: -1.4em; }
+  .item .mark { display: inline-block; width: 1.4em; text-indent: 0; }
+  .ok { color: var(--ok); } .ng { color: var(--ng); } .wa { color: var(--warn); }
+  .copy-btn {
+    display: block; width: 100%; margin-top: 6px;
+    background: transparent; border: 1px solid var(--panel-edge);
+    color: var(--moonlight); border-radius: 10px; padding: 12px;
+    font-size: .9rem; font-family: inherit; letter-spacing: .1em; cursor: pointer;
+  }
+  .copy-btn:hover { border-color: var(--dim); }
+  .copy-btn.done { border-color: var(--ok); color: var(--ok); }
+  footer { text-align: center; color: var(--dim); font-size: .68rem; letter-spacing: .12em; margin-top: 32px; line-height: 1.9; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>マガジン記事スキャナ</h1>
+    <div class="sub">検品命令書 v1.0 準拠 ・ A〜C機械判定 / D〜F注意検出 ・ v1.1(新月・満月記事専用)</div>
+  </header>
+
+  <label for="tableIn">① ジェネレーター出力のMarkdown表(v1.4形式)</label>
+  <textarea id="tableIn" placeholder="| 項目 | 内容 | から始まる表を貼り付け"></textarea>
+
+  <label for="articleIn">② 記事全文(メタブロック・タイトル・画像プロンプト込み)</label>
+  <textarea id="articleIn" placeholder="<!-- 種別: ... --> から末尾まで全文を貼り付け"></textarea>
+
+  <button class="run-btn" id="runBtn">スキャンする</button>
+
+  <div id="report">
+    <div class="verdict" id="verdict"></div>
+    <div id="sections"></div>
+    <button class="copy-btn" id="copyReport">検品レポートをコピー</button>
+  </div>
+
+  <footer>
+    このスキャナは機械判定(A天文照合・B字数構成・C形式)と語彙ベースの注意検出(D〜F)のみを行う。<br>
+    D〜Fの最終判断とE(食・可視性)の文脈判定は検品AIまたは人間が行うこと。
+  </footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const strip = s => s.replace(/[\s\u3000]/g, "");
+const normHM = s => s.replace(/^0(\d:)/, "$1");
+const z2h = s => s.replace(/[０-９：]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+
+// ---------- ジェネレーター表のパース ----------
+function parseTable(src) {
+  src = z2h(src);
+  const rows = {};
+  src.split("\n").forEach(line => {
+    const m = line.match(/^\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$/);
+    if (m && m[1] !== "項目" && !/^-+$/.test(m[1].replace(/[|:\s]/g, "-"))) rows[m[1]] = m[2];
+  });
+  const t = {};
+  t.kind = rows["種別"] || null;
+  t.eclipse = (rows["食"] && rows["食"] !== "なし") ? rows["食"] : null;
+  t.visibility = rows["食の日本からの可視性"] || null;
+  t.datetime = rows["日時(JST・分単位)"] || rows["日時（JST・分単位）"] || null;
+  t.signdeg = rows["起こる星座と度数"] || null;
+  t.retro = (rows["逆行中の天体"] && rows["逆行中の天体"] !== "なし")
+    ? rows["逆行中の天体"].split("、") : [];
+  const stKey = Object.keys(rows).find(k => k.startsWith("±3日以内の留"));
+  t.stations = [];
+  if (stKey && rows[stKey] !== "なし") {
+    const re = /(\S+?)が(逆行開始|順行再開)\((\d+月\d+日 \d+:\d+)\)/g;
+    let m; while ((m = re.exec(rows[stKey]))) t.stations.push({ body: m[1], type: m[2], date: m[3] });
+  }
+  const aKey = Object.keys(rows).find(k => k.startsWith("同時期の主要アスペクト"));
+  t.aspects = [];
+  if (aKey && !/アスペクトなし/.test(rows[aKey])) {
+    const re = /([^\s、]+?)と([^\s、]+?)の(コンジャンクション\(合\)|セクスタイル|スクエア|トライン|オポジション)\((\d+月\d+日 \d+:\d+)\)/g;
+    let m; while ((m = re.exec(rows[aKey]))) t.aspects.push({ a: m[1], b: m[2], type: m[3], date: m[4] });
+  }
+  t.prev = rows["直前の対になる月相"] || null;
+  t.next = rows["直後の対になる月相"] || null;
+  return t;
+}
+
+// ---------- 記事のパース ----------
+function parseArticle(src) {
+  src = z2h(src);
+  const art = { raw: src };
+  const meta = src.match(/<!--([\s\S]*?)-->/);
+  art.meta = meta ? meta[1] : null;
+  if (art.meta) {
+    art.metaKind = (art.meta.match(/種別[::]\s*([^\/\n]+)/) || [])[1]?.trim().replace(/\(.+\)/, "") || null;
+    art.metaEclipse = (art.meta.match(/食[::]\s*([^\/\n]+)/) || [])[1]?.trim() || null;
+    art.metaChars = (art.meta.match(/文字数[::]\s*[約]?([\d,]+)/) || [])[1]?.replace(/,/g, "") || null;
+  }
+  art.title = (src.match(/note記事タイトル\s*[::]\s*(.+)/) || src.match(/タイトル\s*[::]\s*(【.+)/) || [])[1]?.trim() || null;
+  const pm = src.match(/■\s*タイトル画像プロンプト\s*\n([\s\S]*?)(?=\n■|\n━|$)/) ||
+             src.match(/タイトル画像プロンプト\s*[::]?\s*\n?([A-Za-z][\s\S]*?)(?=\n■|\n━|$)/);
+  art.prompt = pm ? pm[1].trim() : null;
+  // 章分割(画像プロンプト見出しを除く■行)
+  const body = src.replace(/<!--[\s\S]*?-->/, "").replace(/■\s*タイトル画像プロンプト[\s\S]*?(?=\n■|\n━|$)/, "");
+  const parts = body.split(/\n(?=■)/).filter(p => p.trim().startsWith("■"));
+  art.chapters = parts.map(p => {
+    const lines = p.split("\n");
+    return { heading: lines[0].replace(/^■\s*/, "").trim(),
+             text: lines.slice(1).join("\n"),
+             chars: strip(lines.slice(1).join("\n").replace(/【固定文言M】/g, "")).length };
+  });
+  art.bodyChars = art.chapters.reduce((s, c) => s + c.chars, 0);
+  return art;
+}
+
+// ---------- 判定 ----------
+const SEASON_WORDS = ["春めい","夏らし","秋めい","冬の","新緑","紅葉","梅雨","桜","初雪","猛暑","残暑","初詣","クリスマス","お盆","年末年始","七夕","花火大会","衣替え"];
+const ASSERT_WORDS = ["必ず叶","絶対に叶","が起こります","起きます。"];
+const FEAR_WORDS = ["危険", "凶", "災い", "不吉", "祟り"];
+const ASPECT_SYN = [
+  [/コンジャンクション|(?:^|[^重])合(?![唱奏体])/, "コンジャンクション(合)"],
+  [/重な/, "コンジャンクション(合)"],
+  [/セクスタイル/, "セクスタイル"], [/スクエア/, "スクエア"],
+  [/トライン/, "トライン"], [/オポジション|向き合/, "オポジション"]];
+const PLANETS = ["太陽","水星","金星","火星","木星","土星","天王星","海王星","冥王星"];
+const RANGES_5 = [[150,250],[800,1200],[1200,1800],[720,1080],[200,400]];
+const SIGNS = ["牡羊座","牡牛座","双子座","蟹座","獅子座","乙女座","天秤座","蠍座","射手座","山羊座","水瓶座","魚座"];
+const SIGN_EN = {"牡羊座":"Aries","牡牛座":"Taurus","双子座":"Gemini","蟹座":"Cancer","獅子座":"Leo","乙女座":"Virgo","天秤座":"Libra","蠍座":"Scorpio","射手座":"Sagittarius","山羊座":"Capricorn","水瓶座":"Aquarius","魚座":"Pisces"};
+
+function addHours48(dt) {
+  const m = dt.match(/(\d+)年(\d+)月(\d+)日 (\d+):(\d+)/);
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]);
+  d.setHours(d.getHours() + 48);
+  return { md: `${d.getMonth()+1}月${d.getDate()}日`,
+           hm: `${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}` };
+}
+
+function scan(t, art) {
+  const R = { A: [], B: [], C: [], D: [], E: [], F: [] };
+  const push = (sec, id, ok, msg) => R[sec].push({ id, ok, msg }); // ok: true/false/"warn"
+  const raw = z2h(art.raw);
+  const normRaw = raw.replace(/(\d+)時(\d+)分/g, "$1:$2");
+
+  // ===== A. 天文照合 =====
+  if (!t.datetime) { push("A","A-1",false,"表に日時がない(表の貼り付けを確認)"); }
+  else {
+    push("A","A-1", normRaw.includes(t.datetime.replace(/^\d+年/,"")) || normRaw.includes(t.datetime),
+      `日時 表:${t.datetime}` + (normRaw.includes(t.datetime.replace(/^\d+年/,"")) ? "" : " → 記事内に一致なし"));
+  }
+  if (t.signdeg) {
+    const sd = t.signdeg.replace(/\(.+\)/, "").trim().replace(/\s+/g, "");
+    push("A","A-2", strip(normRaw).includes(sd), `星座度数 表:${sd}` + (strip(normRaw).includes(sd) ? "" : " → 記事内に一致なし"));
+  }
+  const eclWords = raw.match(/(皆既|金環|部分|半影)?(日食|月食)/g) || [];
+  if (!t.eclipse) {
+    push("A","A-3", eclWords.length ? "warn" : true,
+      eclWords.length ? `表は食なしだが記事に食の語(${[...new Set(eclWords)].join("、")})。次月相への言及なら可、文脈確認` : "食なし・記事にも食の記述なし");
+  } else {
+    push("A","A-3", raw.includes(t.eclipse), `食 表:${t.eclipse}` + (raw.includes(t.eclipse) ? "" : " → 記事に種別名の明示なし"));
+  }
+  // A-4 アスペクト
+  const sentences = raw.split(/[。\n]/);
+  let aspIssues = [], aspFound = 0;
+  sentences.forEach(s => {
+    ASPECT_SYN.forEach(([re, type]) => {
+      if (re.test(s)) {
+        const pl = PLANETS.filter(p => s.includes(p));
+        if (pl.length >= 2) {
+          aspFound++;
+          const hit = t.aspects.some(a => pl.includes(a.a) && pl.includes(a.b) && a.type === type);
+          if (!hit) aspIssues.push(`「${s.trim().slice(0,40)}…」(${pl.join("・")}の${type})が表に見つからない`);
+        }
+      }
+    });
+  });
+  push("A","A-4", aspIssues.length ? false : true,
+    aspIssues.length ? aspIssues.join(" / ") : `アスペクト言及${aspFound}件、すべて表と一致(または言及なし)`);
+  // A-5 逆行・留
+  let retroIssues = [];
+  PLANETS.forEach(p => {
+    const re = new RegExp(p + "[^。]{0,12}逆行|逆行[^。]{0,8}" + p);
+    if (re.test(raw) && !t.retro.includes(p) && !t.stations.some(s => s.body === p))
+      retroIssues.push(`${p}の逆行に言及しているが表の逆行欄・留欄にない`);
+  });
+  push("A","A-5", retroIssues.length ? false : true, retroIssues.length ? retroIssues.join(" / ") : "逆行・留の言及は表と整合(または言及なし)");
+  // A-6/A-7/A-8 日付・時刻・度数の照合
+  const allowedMD = new Set(), allowedHM = new Set(), allowedDeg = new Set();
+  const addDT = s => { if (!s) return;
+    (s.match(/\d+月\d+日/g) || []).forEach(x => allowedMD.add(x));
+    (s.match(/\d+:\d+/g) || []).forEach(x => allowedHM.add(normHM(x))); };
+  addDT(t.datetime); addDT(t.prev); addDT(t.next);
+  t.aspects.forEach(a => addDT(a.date)); t.stations.forEach(s => addDT(s.date));
+  const h48 = t.datetime ? addHours48(t.datetime) : null;
+  if (h48) { allowedMD.add(h48.md); allowedHM.add(normHM(h48.hm)); }
+  [t.signdeg, t.prev, t.next].forEach(s => (String(s).match(/\d+度(\d+分)?/g) || []).forEach(d => allowedDeg.add(d)));
+  const badMD = [...new Set((normRaw.match(/\d+月\d+日/g) || []))].filter(x => !allowedMD.has(x));
+  const badHM = [...new Set((normRaw.match(/\d+:\d+/g) || []).map(normHM))].filter(x => !allowedHM.has(x));
+  const badDeg = [...new Set((normRaw.match(/\d+度\d+分|\d+度(?![\d分])/g) || []))].filter(x => !allowedDeg.has(x));
+  push("A","A-6/7", (badMD.length || badHM.length) ? false : true,
+    (badMD.length || badHM.length)
+      ? `表から導出できない日付・時刻: ${[...badMD, ...badHM].join("、")}(48時間期限含め許容集合と不一致)`
+      : "記事内の全日付・時刻が表+48時間期限の許容集合内");
+  push("A","A-8", badDeg.length ? "warn" : true,
+    badDeg.length ? `表にない度数表記: ${badDeg.join("、")}(導出可能か文脈確認)` : "度数の捏造なし");
+
+  // ===== B. 字数・構成 =====
+  const isCalendar = /カレンダー/.test(art.metaKind || "") || /カレンダー/.test(art.title || "");
+  const needCh = isCalendar ? 3 : 5;
+  push("B","B-1/B-6", art.chapters.length === needCh,
+    `章数 ${art.chapters.length}/${needCh}` + (art.chapters.length < needCh ? "(不足・途中切れの可能性)" : art.chapters.length > needCh ? "(過剰)" : ""));
+  if (!isCalendar) {
+    art.chapters.slice(0, 5).forEach((c, i) => {
+      if (!RANGES_5[i]) return;
+      const [lo, hi] = RANGES_5[i];
+      push("B", `B-2 第${i+1}章`, c.chars >= lo && c.chars <= hi, `${c.chars}字(規定${lo}〜${hi})`);
+    });
+    const [tlo, thi] = [3500, 5000];
+    push("B","B-3", art.bodyChars >= tlo && art.bodyChars <= thi, `合計実測${art.bodyChars}字(規定${tlo}〜${thi})`);
+  } else {
+    push("B","B-3", art.bodyChars >= 2000 && art.bodyChars <= 3000, `合計実測${art.bodyChars}字(規定2,000〜3,000)`);
+  }
+  if (art.metaChars) {
+    const claim = +art.metaChars, real = art.bodyChars;
+    const dev = real ? Math.abs(claim - real) / real * 100 : 999;
+    push("B","B-4", dev <= 10, `メタ申告${claim}字 / 実測${real}字 / 乖離${dev.toFixed(1)}%`);
+  } else push("B","B-4", false, "メタブロックに文字数申告がない");
+  if (!isCalendar && art.chapters[3]) {
+    const ch4 = art.chapters[3].text;
+    const missing = SIGNS.filter(s => !ch4.includes(s));
+    let sizeBad = [];
+    const idx = SIGNS.map(s => ({ s, i: ch4.indexOf(s) }))
+      .filter(o => o.i >= 0).sort((a, b) => a.i - b.i);
+    idx.forEach((o, k) => {
+      const end = k + 1 < idx.length ? idx[k+1].i : ch4.length;
+      let seg = ch4.slice(o.i, end);
+      // 星座区間の末尾にある章の締め文(全星座への一文)は最後の星座に混ざるので緩衝: 段落区切り以降を除外
+      if (k === idx.length - 1) seg = seg.split(/\n\s*\n/)[0];
+      const n = strip(seg).length;
+      if (n < 60 || n > 90) sizeBad.push(`${o.s}${n}字`);
+    });
+    push("B","B-5", (missing.length || sizeBad.length) ? false : true,
+      missing.length ? `欠落星座: ${missing.join("、")}` :
+      sizeBad.length ? `規定(60〜90字)外: ${sizeBad.join("、")}` : "12星座すべて60〜90字");
+  }
+
+  // ===== C. 形式 =====
+  push("C","C-1", !!(art.meta && art.metaKind && art.metaChars), art.meta ? "メタブロックあり" : "メタブロックなし");
+  if (art.title) {
+    const tm = art.title.match(/^【(\d+\/\d+)\s*(.+?)(新月|満月)(・(皆既|金環|部分|半影)?(日食|月食))?】(.+)$/);
+    let ok = !!tm, msg = "";
+    if (!tm) msg = `命名規則不一致: ${art.title}`;
+    else {
+      const benefit = tm[7].trim();
+      if (strip(benefit).length > 20) { ok = false; msg = `ベネフィット文${strip(benefit).length}字(20字以内)`; }
+      else if (t.eclipse && !tm[4]) { ok = false; msg = "食なのにタイトルに食種別がない"; }
+      else msg = `${art.title}(ベネフィット${strip(benefit).length}字)`;
+    }
+    push("C","C-2", ok, msg);
+  } else push("C","C-2", false, "タイトル行が見つからない");
+  if (art.prompt) {
+    const p = art.prompt;
+    push("C","C-3", /watercolor art style/i.test(p) && /8k/i.test(p),
+      `watercolor:${/watercolor art style/i.test(p)?"○":"×"} / 8k:${/8k/i.test(p)?"○":"×"}`);
+    const neg = p.match(/\bno\s+\w+|\bwithout\s+\w+|\bnot\s+\w+/gi);
+    push("C","C-4", neg ? false : true, neg ? `否定形表現: ${neg.join(", ")}` : "否定形なし");
+    const sign = t.signdeg ? SIGNS.find(s => t.signdeg.includes(s)) : null;
+    if (sign) push("C","C-5", new RegExp(SIGN_EN[sign], "i").test(p),
+      `${sign}(${SIGN_EN[sign]})` + (new RegExp(SIGN_EN[sign],"i").test(p) ? " をプロンプトに含む" : " がプロンプトにない"));
+  } else { push("C","C-3", false, "画像プロンプトが見つからない"); }
+  push("C","C-6", raw.includes("固定文言M") || /月感謝価格|定期購読/.test(raw), raw.includes("固定文言M") ? "【固定文言M】あり" : (/月感謝価格|定期購読/.test(raw) ? "固定文言らしき記述あり(確定版か確認)" : "【固定文言M】がない"));
+  push("C","C-7", art.chapters.length > 0 && art.chapters.every(c => c.heading.length > 0), "■見出し形式");
+
+  // ===== D〜F. 注意検出(語彙ベース) =====
+  SEASON_WORDS.forEach(w => { if (raw.includes(w)) push("D","D-2","warn",`季節語の可能性: 「${w}」`); });
+  ASSERT_WORDS.forEach(w => { if (raw.includes(w)) push("D","D-5","warn",`断定表現の可能性: 「${w}」`); });
+  if (t.eclipse) FEAR_WORDS.forEach(w => { if (raw.includes(w)) push("E","E-3","warn",`恐怖訴求の可能性: 「${w}」`); });
+  if (t.eclipse && t.visibility) {
+    const promotes = /見上げ|観測しま|空を眺め/.test(raw);
+    if (promotes && /見えない/.test(t.visibility) && !/見える/.test(t.visibility))
+      push("E","E-5", false, "可視性が「見えない」なのに観測を促す表現がある");
+    else if (promotes && /国内に(皆既|金環)食が見える地域あり/.test(t.visibility))
+      push("E","E-5","warn","国内一部可視の食で観測表現あり。地域差の併記を文脈確認");
+  }
+  // F-1 逆行整合
+  const ch2text = art.chapters[1] ? art.chapters[1].text : "";
+  t.retro.forEach(p => {
+    if (ch2text.includes(p) && !raw.includes("逆行"))
+      push("F","F-1","warn",`${p}は逆行中(表)だが記事に逆行への言及がない。テーマに使う場合は整合確認`);
+  });
+  if (R.D.length === 0) push("D","D","warn0","語彙検出での指摘なし(文脈判定は検品AI/人間が実施)");
+  if (R.E.length === 0 && t.eclipse) push("E","E","warn0","語彙検出での指摘なし(文脈判定は検品AI/人間が実施)");
+  if (R.F.length === 0) push("F","F","warn0","指摘なし");
+  return R;
+}
+
+// ---------- レポート描画 ----------
+function render(R) {
+  const secNames = { A: "A. 天文照合", B: "B. 字数・構成", C: "C. 形式",
+                     D: "D. 禁止事項(注意検出)", E: "E. 食・可視性(注意検出)", F: "F. 整合性(注意検出)" };
+  let anyFail = false, anyWarn = false, textLines = [];
+  const box = $("sections"); box.innerHTML = "";
+  Object.keys(secNames).forEach(k => {
+    if (!R[k].length) return;
+    const sec = document.createElement("div");
+    sec.className = "section";
+    sec.innerHTML = `<h2>${secNames[k]}</h2>`;
+    textLines.push(`■ ${secNames[k]}`);
+    R[k].forEach(it => {
+      const mark = it.ok === true ? "○" : it.ok === false ? "×" : "⚠";
+      const cls = it.ok === true ? "ok" : it.ok === false ? "ng" : "wa";
+      if (it.ok === false) anyFail = true;
+      if (it.ok === "warn") anyWarn = true;
+      const div = document.createElement("div");
+      div.className = "item";
+      div.innerHTML = `<span class="mark ${cls}">${mark}</span>${it.id === "D" || it.id === "E" || it.id === "F" ? "" : it.id + " "}${it.msg}`;
+      sec.appendChild(div);
+      textLines.push(`${mark} ${it.id} ${it.msg}`);
+    });
+    box.appendChild(sec);
+    textLines.push("");
+  });
+  const v = $("verdict");
+  let verdict;
+  if (anyFail) { verdict = "差し戻し"; v.className = "verdict fail"; }
+  else if (anyWarn) { verdict = "条件付き合格(注意項目の文脈判定へ)"; v.className = "verdict cond"; }
+  else { verdict = "機械判定 全項目クリア(D〜Fの文脈判定へ)"; v.className = "verdict pass"; }
+  v.textContent = "【検品結果】" + verdict;
+  textLines.unshift(`【検品結果】${verdict}`, "");
+  $("report").style.display = "block";
+  return textLines.join("\n");
+}
+
+let lastReport = "";
+$("runBtn").addEventListener("click", () => {
+  const tSrc = $("tableIn").value.trim(), aSrc = $("articleIn").value.trim();
+  if (!tSrc || !aSrc) {
+    alert("入力不備: ジェネレーター表と記事全文の2点セットが必須です(検品命令書§1)");
+    return;
+  }
+  if (/カレンダー/.test(aSrc.slice(0, 400))) {
+    alert("月初カレンダー記事はv1.1では非対応です(複数イベントの表照合が必要なため)。新月・満月記事のみスキャンできます");
+    return;
+  }
+  const t = parseTable(tSrc);
+  if (!t.datetime || !t.kind) {
+    alert("表のパースに失敗しました。ジェネレーターv1.4の「Markdownをコピー」の出力をそのまま貼ってください");
+    return;
+  }
+  lastReport = render(scan(t, parseArticle(aSrc)));
+  $("report").scrollIntoView({ behavior: "smooth" });
+});
+
+$("copyReport").addEventListener("click", e => {
+  const btn = e.currentTarget;
+  const done = () => { btn.classList.add("done"); btn.textContent = "コピーしました";
+    setTimeout(() => { btn.classList.remove("done"); btn.textContent = "検品レポートをコピー"; }, 1800); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(lastReport).then(done).catch(() => {});
+  } else {
+    const ta = document.createElement("textarea");
+    ta.value = lastReport; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); done(); } catch(err) {}
+    document.body.removeChild(ta);
+  }
+});
+</script>
+</body>
+</html>
