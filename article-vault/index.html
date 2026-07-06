@@ -96,6 +96,7 @@
   }
   .sc-act:active{background:var(--night)}
   .sc-act.paste{color:var(--gold);border-color:var(--gold-dim)}
+  .sc-act .cc{color:var(--ok);font-weight:600;margin-left:4px}
   .sign-card .vf{font-size:9px;letter-spacing:.03em}
   .sign-card .vf.ok{color:var(--ok)}
   .sign-card .vf.warn{color:#e2a25a;font-weight:600}
@@ -109,6 +110,10 @@
   .sign-card.filled::after{
     content:"";position:absolute;top:8px;right:9px;width:6px;height:6px;border-radius:50%;
     background:var(--gold);box-shadow:0 0 8px var(--gold);
+  }
+  /* コピー済み(1回以上)は右上の点が緑に変わる */
+  .sign-card.copied::after{
+    background:var(--ok);box-shadow:0 0 8px var(--ok);
   }
   .sign-card.filled .st{color:var(--ok)}
 
@@ -158,6 +163,19 @@
     white-space:pre-wrap;word-break:break-word;color:var(--ink);
   }
   .meta-line{font-size:11px;color:var(--ink-dim);margin-bottom:16px;letter-spacing:.05em}
+  .count-adjust{
+    display:none;align-items:center;gap:10px;margin:-6px 0 18px;
+    font-size:11px;color:var(--ink-dim);letter-spacing:.05em;
+  }
+  .count-adjust.show{display:flex}
+  .count-adjust b{color:var(--ok);font-size:16px;min-width:24px;text-align:center;font-family:var(--sans)}
+  .ca-btn{
+    width:38px;height:38px;border-radius:10px;background:var(--night-2);
+    border:1px solid var(--card-edge);color:var(--ink);font-size:17px;
+    cursor:pointer;font-family:var(--sans);line-height:1;
+  }
+  .ca-btn:active{background:var(--card)}
+  .ca-hint{font-size:10px}
 
   textarea.editor{
     width:100%;min-height:55vh;background:var(--night-2);border:1px solid var(--card-edge);
@@ -259,6 +277,9 @@
   <div class="backup-row" style="margin-top:8px">
     <button class="tool-btn" id="clearPrevBtn">「前の版」をまとめて削除して軽量化</button>
   </div>
+  <div class="backup-row" style="margin-top:8px">
+    <button class="tool-btn" id="resetCountBtn">この月のコピー回数をリセット</button>
+  </div>
   <div class="empty-note" id="statsInfo" style="text-align:left;padding:8px 4px;font-size:12px"></div>
 </div>
 
@@ -271,6 +292,13 @@
   </div>
   <div class="ov-body">
     <div class="meta-line" id="vMeta"></div>
+    <div class="count-adjust" id="vCountRow">
+      <span>コピー回数</span>
+      <button class="ca-btn" id="vMinus" aria-label="コピー回数を1減らす">−</button>
+      <b id="vCount">0</b>
+      <button class="ca-btn" id="vPlus" aria-label="コピー回数を1増やす">＋</button>
+      <span class="ca-hint">数え間違いはここで修正できます</span>
+    </div>
     <div class="article-text" id="vText"></div>
   </div>
   <div class="ov-foot">
@@ -527,6 +555,7 @@ function render(){
     const d = signs[s.id];
     const a = (d && d.body) ? analyzeBody(d.body, s.id) : null;
     const month = d ? (a && a.month ? a.month : (d.month || "")) : "";
+    const cnt = (d && d.copyCount) || 0; // この記事をコピーした回数
     let vf = "";
     if(a){
       if(a.match === "ok") vf = `<span class="vf ok">✓ ${s.nm}の内容</span>`;
@@ -539,6 +568,7 @@ function render(){
     const el = document.createElement("div");
     el.className = "sign-card"
       + (d && d.body ? " filled" : "")
+      + (cnt > 0 ? " copied" : "")
       + (a && (a.match === "mismatch" || (a.month && a.month !== boardMonth)) ? " mismatch" : "");
     el.innerHTML = `
       <button class="sc-main">
@@ -546,7 +576,7 @@ function render(){
         <span class="st">${d && d.body ? (month ? month+" ／ " : "") + d.body.length.toLocaleString()+"字" : "未格納"}</span>${vf}
       </button>
       <div class="sc-actions">
-        <button class="sc-act copy">コピー</button>
+        <button class="sc-act copy">コピー${cnt ? `<span class="cc">${cnt}</span>` : ""}</button>
         <button class="sc-act paste">ペースト</button>
       </div>`;
     el.querySelector(".sc-main").onclick = ()=> openSign(s.id);
@@ -562,7 +592,8 @@ function render(){
   state.extras.forEach((x,i)=>{
     const el = document.createElement("button");
     el.className = "extra-item";
-    el.innerHTML = `<span class="t">${esc(x.title||"無題")}</span><span class="c">${x.month ? esc(x.month)+" ／ " : ""}${(x.body||"").length.toLocaleString()}字</span>`;
+    const xc = x.copyCount ? ` ／ コピー${x.copyCount}回` : "";
+    el.innerHTML = `<span class="t">${esc(x.title||"無題")}</span><span class="c">${x.month ? esc(x.month)+" ／ " : ""}${(x.body||"").length.toLocaleString()}字${xc}</span>`;
     el.onclick = ()=> openExtra(i);
     list.appendChild(el);
   });
@@ -575,24 +606,53 @@ function nowStamp(){
 }
 
 // ---- ワンタップ貼り付け保存 ----
+// コピーに成功したら true を返す(コピー回数のカウントに使う)
 async function copyText(text, okMsg){
   try{
     await navigator.clipboard.writeText(text);
     toast(okMsg);
+    return true;
   }catch(e){
     const ta = document.createElement("textarea");
     ta.value = text; document.body.appendChild(ta); ta.select();
-    try{ document.execCommand("copy"); toast(okMsg); }
-    catch(e2){ toast("コピーできませんでした", true); }
+    let ok = false;
+    try{ ok = document.execCommand("copy"); }catch(e2){ ok = false; }
     document.body.removeChild(ta);
+    if(ok) toast(okMsg);
+    else toast("コピーできませんでした", true);
+    return ok;
   }
 }
+// コピーに成功したら回数を1増やして保存・表示に反映
+async function bumpCopyCount(obj){
+  obj.copyCount = (obj.copyCount||0) + 1;
+  obj.countAt = Date.now(); // 回数を最後に変更した時刻(同期の勝敗判定に使う)
+  await save(true); // 回数の記録だけなので失敗しても操作は止めない
+  render();
+  return obj.copyCount;
+}
+// 「コピー→ペーストで1回」の判定:
+// アプリを離れずに同じ記事をコピーし直しても回数は増やさない(ダブルタップ対策)。
+// 一度アプリを離れて(=ペーストしに行って)戻ってきたら、次のコピーは新しい1回と数える。
+let lastCopy = { key:null, left:false };
+window.addEventListener("blur", ()=>{ lastCopy.left = true; });
+document.addEventListener("visibilitychange", ()=>{ if(document.hidden) lastCopy.left = true; });
+function isRepeatCopy(key){ return lastCopy.key === key && !lastCopy.left; }
+function markCopied(key){ lastCopy = { key, left:false }; }
 async function copySign(id){
   const s = SIGNS.find(x=>x.id===id);
   const d = getSigns()[id];
   if(!d || !d.body){ toast(`${labelOf(state.current)}の${s.nm}は未格納です`, true); return; }
   current = {kind:"sign", id};
-  await copyText(d.body, `${s.nm}の本文をコピーしました(${d.body.length.toLocaleString()}字)`);
+  const key = "sign/" + state.current + "/" + id;
+  const repeat = isRepeatCopy(key); // ペーストしに行く前のコピーし直しは数えない
+  const msg = repeat
+    ? `${s.nm}をコピーし直しました(回数はそのまま${d.copyCount||0}回)`
+    : `${s.nm}の本文をコピーしました(${(d.copyCount||0)+1}回目・${d.body.length.toLocaleString()}字)`;
+  if(await copyText(d.body, msg)){
+    if(!repeat) await bumpCopyCount(d);
+    markCopied(key);
+  }
 }
 async function pasteAndSave(id){
   const s = SIGNS.find(x=>x.id===id);
@@ -625,7 +685,8 @@ async function pasteAndSave(id){
     signId: id,
     before: old ? JSON.parse(JSON.stringify(old)) : null
   };
-  signs[id] = { body:text, month: a.month ? a.month+"号" : labelOf(state.current), updated: nowStamp(), prev };
+  // 新しい本文で上書きしたらコピー回数は0から数え直し(countAtで「0にした」ことも記録)
+  signs[id] = { body:text, month: a.month ? a.month+"号" : labelOf(state.current), updated: nowStamp(), prev, countAt: Date.now() };
   if(await save()){
     const boardMonth = shortOf(state.current);
     if(a.match === "mismatch") toast(`保存しましたが ⚠ ${a.detected.nm}の内容かもしれません`, true);
@@ -685,6 +746,8 @@ function openSign(id){
   else check = " ／ ⚠ 本文に星座名なし";
   if(a.month && a.month !== boardMonth) check += ` ／ ⚠ ${a.month}の記事の可能性`;
   document.getElementById("vMeta").textContent = `${month} ／ ${d.body.length.toLocaleString()}字 ／ 更新 ${d.updated||"—"}${check}`;
+  document.getElementById("vCount").textContent = d.copyCount||0;
+  document.getElementById("vCountRow").classList.add("show");
   document.getElementById("vText").textContent = d.body;
   document.getElementById("vRevert").style.display = (d.prev && d.prev.body) ? "block" : "none";
   showOverlay("viewer");
@@ -694,6 +757,8 @@ function openExtra(i){
   const x = state.extras[i];
   document.getElementById("vTitle").textContent = x.title || "無題";
   document.getElementById("vMeta").textContent = `${x.month ? x.month+" ／ " : ""}${(x.body||"").length.toLocaleString()}字 ／ 更新 ${x.updated||"—"}`;
+  document.getElementById("vCount").textContent = x.copyCount||0;
+  document.getElementById("vCountRow").classList.toggle("show", !!(x.body));
   document.getElementById("vText").textContent = x.body || "";
   document.getElementById("vRevert").style.display = (x.prev && x.prev.body) ? "block" : "none";
   showOverlay("viewer");
@@ -737,7 +802,8 @@ async function saveEditor(){
       const prev = (old && old.body && old.body !== body)
         ? { body:old.body, month:old.month, updated:old.updated }
         : (old ? old.prev : undefined);
-      signs[current.id] = {body, month, updated:stamp, prev};
+      // 手直し(編集)ではコピー回数と回数変更時刻を引き継ぐ
+      signs[current.id] = {body, month, updated:stamp, prev, copyCount:(old && old.copyCount) || 0, countAt:(old && old.countAt) || 0};
     }
     else delete signs[current.id];
   }else{
@@ -750,7 +816,7 @@ async function saveEditor(){
       const prev = (old && old.body && old.body !== body)
         ? { body:old.body, month:old.month, updated:old.updated }
         : (old ? old.prev : undefined);
-      state.extras[current.index] = {title, body, month, updated:stamp, prev};
+      state.extras[current.index] = {title, body, month, updated:stamp, prev, copyCount:(old && old.copyCount) || 0, countAt:(old && old.countAt) || 0};
     }
   }
   if(await save()){
@@ -772,11 +838,40 @@ async function deleteCurrent(){
 
 // ---- copy ----
 async function copyBody(){
-  let text = "";
-  if(current.kind==="sign") text = (getSigns()[current.id]||{}).body||"";
-  else text = (state.extras[current.index]||{}).body||"";
+  const obj = current.kind==="sign" ? getSigns()[current.id] : state.extras[current.index];
+  const text = (obj && obj.body) || "";
   if(!text){ toast("本文がありません", true); return; }
-  await copyText(text, "コピーしました");
+  const key = current.kind==="sign" ? ("sign/" + state.current + "/" + current.id) : ("extra/" + current.index);
+  const repeat = isRepeatCopy(key); // ペーストしに行く前のコピーし直しは数えない
+  const msg = repeat
+    ? `コピーし直しました(回数はそのまま${obj.copyCount||0}回)`
+    : `コピーしました(${(obj.copyCount||0)+1}回目)`;
+  if(await copyText(text, msg)){
+    if(!repeat){
+      await bumpCopyCount(obj);
+      // 閲覧画面のメタ情報(コピー回数)も更新
+      if(current.kind==="sign") openSign(current.id); else openExtra(current.index);
+    }
+    markCopied(key);
+  }
+}
+
+// ---- コピー回数の手動修正(−/＋)----
+function curObj(){
+  return current && current.kind==="sign" ? getSigns()[current.id] : (current ? state.extras[current.index] : null);
+}
+async function adjustCount(delta){
+  const obj = curObj();
+  if(!obj) return;
+  const now = obj.copyCount||0;
+  const v = Math.max(0, now + delta);
+  if(v === now){ if(delta < 0) toast("0回より下にはできません", true); return; }
+  obj.copyCount = v;
+  obj.countAt = Date.now(); // 手動修正も「最後に回数を触った」扱いにして同期で消えないようにする
+  lastCopy = { key:null, left:false }; // 修正後の次のコピーは必ず新しい1回として数える
+  document.getElementById("vCount").textContent = v;
+  await save(true);
+  render();
 }
 
 // ---- 前の版に戻す(現在の版と入れ替え。もう一度押せば戻せる)----
@@ -792,6 +887,24 @@ async function revertCurrent(){
     render();
     if(current.kind==="sign") openSign(current.id); else openExtra(current.index);
   }
+}
+
+// ---- コピー回数のリセット(月替わりの作業前などに)----
+async function resetMonthCounts(){
+  const signs = getSigns();
+  let n = 0;
+  for(const id in signs){ if(signs[id] && signs[id].copyCount){ n++; } }
+  if(n === 0){ toast(`${labelOf(state.current)}にリセットできるコピー回数はありません`, true); return; }
+  if(!confirm(`${labelOf(state.current)}の${n}記事のコピー回数を0に戻します。\n(本文はそのまま残ります)\nよろしいですか?`)) return;
+  const stamp = Date.now();
+  for(const id in signs){
+    if(signs[id]){
+      delete signs[id].copyCount;
+      signs[id].countAt = stamp; // 「0にした」も最新の変更として記録(同期で古い回数が復活しないように)
+    }
+  }
+  lastCopy = { key:null, left:false }; // リセット直後のコピーは必ず1回目として数える
+  if(await save()){ toast(`${labelOf(state.current)}のコピー回数をリセットしました`); render(); }
 }
 
 // ---- バックアップ書き出し・復元 ----
@@ -895,16 +1008,25 @@ function mergeStates(a, b){
     const merged = {};
     for(const id of new Set([...Object.keys(sa), ...Object.keys(sb)])){
       const x = sa[id], y = sb[id];
-      if(x && y) merged[id] = parseUpd(y.updated) > parseUpd(x.updated) ? y : x;
+      if(x && y){
+        // 本文は新しい方を採用。コピー回数は「最後に回数を変更した方」を採用
+        // (max方式だとリセットが同期で打ち消されるため、時刻で勝敗を決める)
+        const win = parseUpd(y.updated) > parseUpd(x.updated) ? y : x;
+        const cw = (y.countAt||0) >= (x.countAt||0) ? y : x;
+        merged[id] = Object.assign({}, win, { copyCount: cw.copyCount||0, countAt: Math.max(x.countAt||0, y.countAt||0) });
+      }
       else merged[id] = x || y;
     }
     if(Object.keys(merged).length) out.months[k] = { signs: merged };
   }
-  const seen = new Set();
+  // その他テキスト:同じ内容は1つにまとめ、コピー回数を最後に触った方を残す
+  const map = new Map();
   for(const x of [...(a.extras||[]), ...(b.extras||[])]){
     const sig = (x.title||"") + "\u0000" + (x.body||"");
-    if(!seen.has(sig)){ seen.add(sig); out.extras.push(x); }
+    const p = map.get(sig);
+    if(!p || (x.countAt||0) > (p.countAt||0)) map.set(sig, x);
   }
+  out.extras = [...map.values()];
   return out;
 }
 
@@ -1136,6 +1258,8 @@ document.getElementById("vBack").onclick = ()=> hideOverlay("viewer");
 document.getElementById("vEdit").onclick = openEditor;
 document.getElementById("vCopy").onclick = copyBody;
 document.getElementById("vRevert").onclick = revertCurrent;
+document.getElementById("vMinus").onclick = ()=> adjustCount(-1);
+document.getElementById("vPlus").onclick = ()=> adjustCount(+1);
 document.getElementById("eCancel").onclick = ()=>{ quickPaste = false; hideOverlay("editor"); render(); };
 document.getElementById("eCancel2").onclick = ()=>{ quickPaste = false; hideOverlay("editor"); render(); };
 document.getElementById("eSave").onclick = saveEditor;
@@ -1170,6 +1294,7 @@ document.getElementById("syncNowBtn").onclick = ()=> syncNow(true);
 document.getElementById("clearMonthBtn").onclick = clearCurrentMonth;
 document.getElementById("clearOldBtn").onclick = clearOldMonths;
 document.getElementById("clearPrevBtn").onclick = clearAllPrev;
+document.getElementById("resetCountBtn").onclick = resetMonthCounts;
 document.getElementById("importFile").onchange = (ev)=>{
   const f = ev.target.files[0];
   if(f) importBackup(f);
