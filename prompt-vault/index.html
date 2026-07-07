@@ -408,8 +408,9 @@
   </div>
   <div class="ov-body">
     <div class="fill-note" id="bfNote"></div>
-    <div class="ff-head"><span class="ff-label">対象の目印を絞るワード(空欄=全項目)</span></div>
-    <input class="title-input" id="bfFilter" placeholder="例:星データ / 🥳1 / 前回記事" autocomplete="off">
+    <div class="ff-head"><span class="ff-label">対象の項目をタップで選ぶ(または下にワードを打ち込み)</span></div>
+    <div class="cat-row" id="bfChips" style="padding:2px 2px 10px"></div>
+    <input class="title-input" id="bfFilter" placeholder="ワードで絞る場合はここに(例:星データ / 前回記事)空欄=全項目" autocomplete="off">
     <div class="empty-note" id="bfPreview" style="text-align:left;padding:4px 2px 14px;font-size:12px;line-height:2"></div>
     <div class="ff-head"><span class="ff-label">差し込む共通の文</span><button class="hist-btn" id="bfPaste">貼り付け</button></div>
     <textarea class="editor" id="bfText" style="min-height:30vh" placeholder="ここに共通の文を入力(または貼り付け)"></textarea>
@@ -1564,15 +1565,49 @@ document.getElementById("selCopyBtn").onclick = async ()=>{
   setSelectMode(false);
 };
 // ---- まとめて差し込み(選択した複数の命令書の下書きへ、同じ文を一括で入れる)----
+let bfSelectedName = null; // チップで選んだ項目名(選択時は名前の完全一致で対象を決める)
 function bfMatch(d, f, q){
+  if(bfSelectedName !== null) return f.name === bfSelectedName;
   if(!q) return true;
   return (f.name + " " + fieldContext(d.body, f)).toLowerCase().includes(q.toLowerCase());
 }
 function bfTargets(){
   return state.docs.filter(d=> selectedIds.has(d.id) && d.body && d.body.trim());
 }
+// 選択中の命令書に含まれる項目名を集めてチップとして表示(タップで選択/解除)
+function bfRenderChips(){
+  const row = document.getElementById("bfChips");
+  row.innerHTML = "";
+  const counts = Object.create(null);
+  for(const d of bfTargets()){
+    const seen = new Set();
+    for(const f of detectFields(d.body)){
+      if(seen.has(f.name)) continue;
+      seen.add(f.name);
+      counts[f.name] = (counts[f.name] || 0) + 1;
+    }
+  }
+  const names = Object.keys(counts).sort((a, b)=> counts[b] - counts[a] || a.localeCompare(b, "ja"));
+  if(!names.length){
+    row.innerHTML = `<div class="empty-note" style="padding:4px;font-size:12px;text-align:left">選択中の命令書に差し込み項目がありません</div>`;
+    return;
+  }
+  names.forEach(nm=>{
+    const el = document.createElement("button");
+    el.className = "cat-chip" + (bfSelectedName === nm ? " active" : "");
+    el.textContent = `${nm}(${counts[nm]}冊)`;
+    el.onclick = ()=>{
+      bfSelectedName = (bfSelectedName === nm) ? null : nm; // 再タップで解除
+      if(bfSelectedName !== null) document.getElementById("bfFilter").value = "";
+      bfRenderChips();
+      bfRenderPreview();
+    };
+    row.appendChild(el);
+  });
+}
 function bfRenderPreview(){
   const q = document.getElementById("bfFilter").value.trim();
+  const label = bfSelectedName !== null ? bfSelectedName : q;
   const pv = document.getElementById("bfPreview");
   const lines = [];
   let totalDocs = 0, totalFields = 0;
@@ -1580,7 +1615,7 @@ function bfRenderPreview(){
     const fields = detectFields(d.body);
     if(!fields.length){ lines.push(`✕ ${d.name}:差し込み項目なし`); continue; }
     const n = fields.filter(f=> bfMatch(d, f, q)).length;
-    if(!n){ lines.push(`⚠ ${d.name}:「${q}」に該当する項目なし`); continue; }
+    if(!n){ lines.push(`⚠ ${d.name}:「${label}」に該当する項目なし`); continue; }
     lines.push(`✔ ${d.name}:${n}項目に差し込み`);
     totalDocs++; totalFields += n;
   }
@@ -1595,13 +1630,18 @@ function openBulkFill(){
     "選択した命令書の本文そのものは変更しません。共通の文を、各命令書の「差し込み」の下書きとして一括保存します。あとは各命令書を開いて「差し込み」→「完成文をコピー」を押すだけで、埋め込み済みの全文がコピーできます。絞り込みワードは、目印の名前と目印の前後の本文の両方から探します。";
   document.getElementById("bfFilter").value = "";
   document.getElementById("bfText").value = "";
+  bfSelectedName = null;
+  bfRenderChips();
   bfRenderPreview();
   showOverlay("bulkfill");
 }
 document.getElementById("selFillBtn").onclick = openBulkFill;
 document.getElementById("bfBack").onclick = ()=> hideOverlay("bulkfill");
 document.getElementById("bfCancel").onclick = ()=> hideOverlay("bulkfill");
-document.getElementById("bfFilter").addEventListener("input", bfRenderPreview);
+document.getElementById("bfFilter").addEventListener("input", ()=>{
+  if(bfSelectedName !== null){ bfSelectedName = null; bfRenderChips(); } // 打ち込みを始めたらチップ選択は解除
+  bfRenderPreview();
+});
 document.getElementById("bfPaste").onclick = async ()=>{
   try{
     const t = await navigator.clipboard.readText();
