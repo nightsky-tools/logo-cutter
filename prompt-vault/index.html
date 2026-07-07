@@ -236,6 +236,25 @@
     background:var(--night-2);border:1px dashed var(--card-edge);border-radius:10px;
     padding:12px 14px;font-size:12px;line-height:1.9;color:var(--ink-dim);margin-bottom:18px;
   }
+  /* 差し込み画面のワード検索 */
+  .fill-search{
+    position:sticky;top:0;z-index:5;background:var(--night);
+    padding:8px 0 12px;
+  }
+  .fill-search .fs-row{display:flex;gap:8px;align-items:center}
+  .fill-search input{
+    flex:1;min-width:0;background:var(--night-2);border:1px solid var(--card-edge);border-radius:10px;
+    color:var(--ink);font-size:14px;padding:11px 13px;font-family:var(--sans);
+    -webkit-appearance:none;
+  }
+  .fill-search input:focus{outline:2px solid var(--accent-dim);outline-offset:1px}
+  .fs-count{font-size:12px;color:var(--ink-dim);white-space:nowrap;min-width:36px;text-align:center}
+  .fill-field.hit{outline:2px solid var(--accent);outline-offset:4px;border-radius:8px}
+  .ff-ctx{
+    font-size:11px;color:var(--ink-dim);line-height:1.7;margin:-2px 0 8px;padding-left:2px;
+    overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  }
+  .ff-ctx b{color:var(--accent-dim);font-weight:400}
   /* まとめてコピー(命令書一覧の複数選択) */
   .dc-sel{width:22px;height:22px;accent-color:var(--accent);flex-shrink:0;margin:0;pointer-events:none}
   .doc-card.selected{border-color:var(--accent);background:#20304e}
@@ -1079,6 +1098,17 @@ function captureDraft(){
 }
 
 // ---- 差し込み画面 ----
+// 目印の前後の本文を抜き出す(項目がどこに入るかの手がかり・検索対象にもなる)
+function fieldContext(body, f){
+  let tok;
+  if(f.type === "tag") tok = (f.raws && f.raws[0]) || f.name;
+  else tok = (f.fmt === "dia") ? ("◆◆" + f.name + "ここから◆◆") : ("=====" + f.name + "_START=====");
+  const pos = (body || "").indexOf(tok);
+  if(pos === -1) return "";
+  const pre = body.slice(Math.max(0, pos - 150), pos).replace(/\s+/g, " ").trim();
+  const post = body.slice(pos + tok.length, pos + tok.length + 80).replace(/\s+/g, " ").trim();
+  return (pre ? "…" + pre.slice(-70) : "") + " ▶ここ◀ " + (post ? post.slice(0, 40) + "…" : "");
+}
 let fillerFields = [];
 function openFiller(i){
   current = i;
@@ -1096,6 +1126,46 @@ function openFiller(i){
   note.textContent = "保存されている命令書は変更しません。下の項目を埋めて「完成文をコピー」を押すと、埋め込んだ状態の全文がコピーされます。空欄にした項目は元の記載のまま残ります。入力途中の内容は下書きとして自動保存され、閉じても消えません(完成文をコピーすると下書きは消えます)。";
   box.appendChild(note);
   const multi = fillerFields.length > 1;
+  // ---- ワード検索(目印名+前後の本文を検索して該当欄へジャンプ)----
+  if(multi){
+    const search = document.createElement("div");
+    search.className = "fill-search";
+    search.innerHTML = `
+      <div class="fs-row">
+        <input type="search" class="fs-input" placeholder="🔍 ワードで項目を探す(目印名・前後の文)" autocomplete="off">
+        <span class="fs-count"></span>
+        <button class="hist-btn fs-next">次へ</button>
+      </div>`;
+    box.appendChild(search);
+    let hits = [], hitIdx = 0;
+    const fsInput = search.querySelector(".fs-input");
+    const fsCount = search.querySelector(".fs-count");
+    const jumpTo = (k)=>{
+      box.querySelectorAll(".fill-field.hit").forEach(w=> w.classList.remove("hit"));
+      if(!hits.length){
+        fsCount.textContent = fsInput.value.trim() ? "0件" : "";
+        return;
+      }
+      hitIdx = ((k % hits.length) + hits.length) % hits.length;
+      const w = hits[hitIdx];
+      w.classList.add("hit");
+      w.scrollIntoView({behavior:"smooth", block:"center"});
+      fsCount.textContent = (hitIdx + 1) + "/" + hits.length;
+    };
+    const runSearch = ()=>{
+      const q = fsInput.value.trim().toLowerCase();
+      hits = [];
+      if(q){
+        box.querySelectorAll(".fill-field[data-search]").forEach(w=>{
+          if(w.dataset.search.includes(q)) hits.push(w);
+        });
+      }
+      jumpTo(0);
+    };
+    fsInput.addEventListener("input", runSearch);
+    fsInput.addEventListener("keydown", (ev)=>{ if(ev.key === "Enter"){ ev.preventDefault(); jumpTo(hitIdx + 1); } });
+    search.querySelector(".fs-next").onclick = ()=>{ if(hits.length) jumpTo(hitIdx + 1); else runSearch(); };
+  }
   // ---- まとめて差し込み(チェックした複数の欄に同じ文を一括で入れる)----
   if(multi){
     const bulk = document.createElement("div");
@@ -1144,6 +1214,7 @@ function openFiller(i){
   fillerFields.forEach((f)=>{
     const wrap = document.createElement("div");
     wrap.className = "fill-field";
+    const ctx = fieldContext(d.body, f);
     wrap.innerHTML = `
       <div class="ff-head">
         ${multi ? `<input type="checkbox" class="ff-sel" title="まとめて差し込みの対象にする">` : ``}
@@ -1151,8 +1222,11 @@ function openFiller(i){
         <button class="hist-btn ff-clear">空にする</button>
         <button class="hist-btn ff-paste">貼り付け</button>
       </div>
+      ${ctx ? `<div class="ff-ctx"></div>` : ``}
       <textarea class="editor ff-text" style="min-height:110px" placeholder="ここに入力(または貼り付け)"></textarea>`;
     wrap.querySelector(".ff-label").textContent = f.name;
+    if(ctx) wrap.querySelector(".ff-ctx").textContent = ctx;
+    wrap.dataset.search = (f.name + " " + ctx).toLowerCase();
     const draft = fillDrafts[d.id];
     if(draft && Array.isArray(draft.names)){
       const di = draft.names.indexOf(f.name);
