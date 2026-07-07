@@ -236,6 +236,27 @@
     background:var(--night-2);border:1px dashed var(--card-edge);border-radius:10px;
     padding:12px 14px;font-size:12px;line-height:1.9;color:var(--ink-dim);margin-bottom:18px;
   }
+  /* まとめてコピー(命令書一覧の複数選択) */
+  .dc-sel{width:22px;height:22px;accent-color:var(--accent);flex-shrink:0;margin:0;pointer-events:none}
+  .doc-card.selected{border-color:var(--accent);background:#20304e}
+  .sel-bar{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+    background:var(--card);border:1px solid var(--accent-dim);border-radius:999px;
+    display:none;align-items:center;gap:8px;padding:8px;
+    z-index:21;box-shadow:0 4px 20px rgba(0,0,0,.5);max-width:94vw;
+  }
+  .sel-bar.show{display:flex}
+  .sel-btn{border:none;border-radius:999px;padding:11px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);white-space:nowrap}
+  .sel-btn.accent{background:var(--accent);color:#0e1626}
+  .sel-btn.ghost{background:var(--night-2);color:var(--ink);border:1px solid var(--card-edge)}
+  /* まとめて差し込み */
+  .ff-sel{width:20px;height:20px;accent-color:var(--ok);flex-shrink:0;margin:0}
+  .bulk-box{
+    background:var(--night-2);border:1px solid #3a5a4a;border-radius:12px;
+    padding:12px;margin-bottom:22px;
+  }
+  .bulk-box .ff-label{color:var(--ok)}
+  .bulk-box .ff-label::before{content:"✦ ";color:#3a5a4a}
 </style>
 </head>
 <body>
@@ -256,6 +277,10 @@
   </header>
 
   <div class="cat-row" id="catRow"></div>
+
+  <div style="display:flex;justify-content:flex-end;margin:-6px 0 12px">
+    <button class="tool-btn" id="multiCopyBtn" style="flex:0 0 auto;padding:9px 16px;font-size:12px">☑ まとめてコピー</button>
+  </div>
 
   <div class="doc-list" id="docList"></div>
   <button class="add-doc" id="addDoc">＋ 命令書の枠を追加</button>
@@ -363,6 +388,12 @@
     <input type="text" id="mInput" style="display:none">
     <div class="m-btns" id="mBtns"></div>
   </div>
+</div>
+
+<div class="sel-bar" id="selBar">
+  <button class="sel-btn ghost" id="selAllBtn">全選択</button>
+  <button class="sel-btn accent" id="selCopyBtn">選択した0件をコピー</button>
+  <button class="sel-btn ghost" id="selCancelBtn">✕</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -711,6 +742,26 @@ function render(){
     const el = document.createElement("div");
     el.className = "doc-card" + (filled ? " filled" : "");
     const verBadge = d.ver ? `<span class="dc-ver">${esc(d.ver)}</span>` : (filled ? `<span class="dc-ver" style="color:var(--ink-dim);border-color:var(--card-edge)">版不明</span>` : "");
+    // ---- まとめてコピーの選択モード:カードはチェック切替専用になる ----
+    if(selectMode){
+      if(selectedIds.has(d.id)) el.className += " selected";
+      el.innerHTML = `
+        <button class="dc-main" style="padding-bottom:0">
+          <input type="checkbox" class="dc-sel" ${selectedIds.has(d.id) ? "checked" : ""} ${filled ? "" : "disabled"}>
+          <span class="dc-name" style="${filled ? "" : "opacity:.4"}">${esc(d.name)}</span>
+          ${verBadge}
+        </button>
+        <div class="dc-meta" style="padding:8px 0 0 32px">${filled ? `${d.body.length.toLocaleString()}字` : "未格納(コピー対象外)"}</div>`;
+      el.querySelector(".dc-main").onclick = ()=>{
+        if(!filled){ toast("未格納の枠はコピーできません", true); return; }
+        if(selectedIds.has(d.id)) selectedIds.delete(d.id);
+        else selectedIds.add(d.id);
+        updateSelBar();
+        render();
+      };
+      list.appendChild(el);
+      return;
+    }
     const fields = filled ? detectFields(d.body) : [];
     const hasFields = fields.length > 0;
     const hasBlocks = fields.some(f=>f.type==="block");
@@ -1044,11 +1095,58 @@ function openFiller(i){
   note.className = "fill-note";
   note.textContent = "保存されている命令書は変更しません。下の項目を埋めて「完成文をコピー」を押すと、埋め込んだ状態の全文がコピーされます。空欄にした項目は元の記載のまま残ります。入力途中の内容は下書きとして自動保存され、閉じても消えません(完成文をコピーすると下書きは消えます)。";
   box.appendChild(note);
+  const multi = fillerFields.length > 1;
+  // ---- まとめて差し込み(チェックした複数の欄に同じ文を一括で入れる)----
+  if(multi){
+    const bulk = document.createElement("div");
+    bulk.className = "bulk-box";
+    bulk.innerHTML = `
+      <div class="ff-head">
+        <span class="ff-label">まとめて差し込み(同じ文を複数の欄へ)</span>
+        <button class="hist-btn bk-all">全選択</button>
+        <button class="hist-btn bk-paste">貼り付け</button>
+      </div>
+      <textarea class="editor bk-text" style="min-height:90px" placeholder="ここに共通の文を入力し、下の各項目の□にチェックを入れて反映"></textarea>
+      <button class="dc-act fill bk-apply" style="width:100%;margin-top:10px;padding:13px">✔ チェックした欄にこの文を入れる</button>`;
+    bulk.querySelector(".bk-all").onclick = ()=>{
+      const cbs = Array.from(box.querySelectorAll(".ff-sel"));
+      const allOn = cbs.length && cbs.every(c=>c.checked);
+      cbs.forEach(c=>{ c.checked = !allOn; });
+      toast(allOn ? "全チェックを外しました" : `全${cbs.length}項目にチェックを入れました`);
+    };
+    bulk.querySelector(".bk-paste").onclick = async ()=>{
+      try{
+        const t = await navigator.clipboard.readText();
+        if(t && t.trim()){
+          bulk.querySelector(".bk-text").value = t;
+          toast(`貼り付けました(${t.length.toLocaleString()}字)`);
+        }else{
+          toast("クリップボードが空です", true);
+        }
+      }catch(e){
+        toast("読み取れません。欄を長押し→ペーストしてください", true);
+      }
+    };
+    bulk.querySelector(".bk-apply").onclick = ()=>{
+      const t = bulk.querySelector(".bk-text").value;
+      if(!t.trim()){ toast("先に共通の文を入力(または貼り付け)してください", true); return; }
+      const sel = Array.from(box.querySelectorAll(".fill-field"))
+        .filter(w=> w.querySelector(".ff-sel") && w.querySelector(".ff-sel").checked);
+      if(!sel.length){ toast("入れたい項目の□にチェックを入れてください", true); return; }
+      const overwrite = sel.filter(w=> w.querySelector(".ff-text").value.trim());
+      if(overwrite.length && !confirm(`チェックした中に入力済みの欄が${overwrite.length}個あります。上書きしますか?`)) return;
+      sel.forEach(w=>{ w.querySelector(".ff-text").value = t; });
+      captureDraft();
+      toast(`${sel.length}個の欄に同じ文を入れました`);
+    };
+    box.appendChild(bulk);
+  }
   fillerFields.forEach((f)=>{
     const wrap = document.createElement("div");
     wrap.className = "fill-field";
     wrap.innerHTML = `
       <div class="ff-head">
+        ${multi ? `<input type="checkbox" class="ff-sel" title="まとめて差し込みの対象にする">` : ``}
         <span class="ff-label"></span>
         <button class="hist-btn ff-clear">空にする</button>
         <button class="hist-btn ff-paste">貼り付け</button>
@@ -1328,6 +1426,47 @@ document.getElementById("ePasteBtn").onclick = async ()=>{
   }catch(e){
     toast("読み取れません。本文欄を長押し→ペーストしてください", true);
   }
+};
+// ---- まとめてコピー(複数の命令書本文を選択 or 全選択で一括コピー)----
+let selectMode = false;
+let selectedIds = new Set();
+function updateSelBar(){
+  document.getElementById("selCopyBtn").textContent = `選択した${selectedIds.size}件をコピー`;
+}
+function setSelectMode(on){
+  selectMode = on;
+  if(!on) selectedIds.clear();
+  document.getElementById("multiCopyBtn").textContent = on ? "✕ 選択をやめる" : "☑ まとめてコピー";
+  document.getElementById("selBar").classList.toggle("show", on);
+  updateSelBar();
+  render();
+  if(on) toast("コピーしたい命令書をタップして選んでください(下の「全選択」で全部)");
+}
+document.getElementById("multiCopyBtn").onclick = ()=> setSelectMode(!selectMode);
+document.getElementById("selCancelBtn").onclick = ()=> setSelectMode(false);
+document.getElementById("selAllBtn").onclick = ()=>{
+  const docs = state.docs.filter(d=>d.catId===state.activeCat && d.body && d.body.trim());
+  if(!docs.length){ toast("このカテゴリーに格納済みの命令書がありません", true); return; }
+  const allOn = docs.every(d=>selectedIds.has(d.id));
+  if(allOn) docs.forEach(d=>selectedIds.delete(d.id));
+  else docs.forEach(d=>selectedIds.add(d.id));
+  updateSelBar();
+  render();
+  toast(allOn ? "全チェックを外しました" : `このカテゴリーの${docs.length}件を全選択しました`);
+};
+document.getElementById("selCopyBtn").onclick = async ()=>{
+  // 選択したものはカテゴリーをまたいでいてもすべてコピーする
+  const docs = state.docs.filter(d=> selectedIds.has(d.id) && d.body && d.body.trim());
+  if(!docs.length){ toast("コピーする命令書をタップして選んでください", true); return; }
+  const text = docs.length === 1
+    ? docs[0].body
+    : docs.map(d=> `━━━━━ 命令書:${d.name}${d.ver ? " " + d.ver : ""} ━━━━━\n\n${d.body}`).join("\n\n\n");
+  const ok = await copyText(text, null);
+  if(!ok) return;
+  for(const d of docs){ if(countOnce("c:" + d.id)) d.copies = (d.copies || 0) + 1; }
+  save(true);
+  toast(`${docs.length}件の命令書をまとめてコピーしました(${text.length.toLocaleString()}字)`);
+  setSelectMode(false);
 };
 document.getElementById("addDoc").onclick = async ()=>{
   const cat = state.cats.find(c=>c.id===state.activeCat);
