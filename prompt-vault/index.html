@@ -400,6 +400,26 @@
   </div>
 </div>
 
+<!-- bulkfill(複数の命令書へ同じ文をまとめて差し込み) -->
+<div class="overlay" id="bulkfill">
+  <div class="ov-head">
+    <button class="icon-btn" id="bfBack">← 戻る</button>
+    <div class="ov-title">まとめて差し込み(複数の命令書へ)</div>
+  </div>
+  <div class="ov-body">
+    <div class="fill-note" id="bfNote"></div>
+    <div class="ff-head"><span class="ff-label">対象の目印を絞るワード(空欄=全項目)</span></div>
+    <input class="title-input" id="bfFilter" placeholder="例:星データ / 🥳1 / 前回記事" autocomplete="off">
+    <div class="empty-note" id="bfPreview" style="text-align:left;padding:4px 2px 14px;font-size:12px;line-height:2"></div>
+    <div class="ff-head"><span class="ff-label">差し込む共通の文</span><button class="hist-btn" id="bfPaste">貼り付け</button></div>
+    <textarea class="editor" id="bfText" style="min-height:30vh" placeholder="ここに共通の文を入力(または貼り付け)"></textarea>
+  </div>
+  <div class="ov-foot">
+    <button class="big-btn ghost" id="bfCancel">キャンセル</button>
+    <button class="big-btn accent" id="bfApply">下書きに差し込む</button>
+  </div>
+</div>
+
 <div class="modal-bg" id="modalBg">
   <div class="modal">
     <h3 id="mTitle"></h3>
@@ -411,6 +431,7 @@
 
 <div class="sel-bar" id="selBar">
   <button class="sel-btn ghost" id="selAllBtn">全選択</button>
+  <button class="sel-btn ghost" id="selFillBtn">差し込み</button>
   <button class="sel-btn accent" id="selCopyBtn">選択した0件をコピー</button>
   <button class="sel-btn ghost" id="selCancelBtn">✕</button>
 </div>
@@ -1541,6 +1562,99 @@ document.getElementById("selCopyBtn").onclick = async ()=>{
   save(true);
   toast(`${docs.length}件の命令書をまとめてコピーしました(${text.length.toLocaleString()}字)`);
   setSelectMode(false);
+};
+// ---- まとめて差し込み(選択した複数の命令書の下書きへ、同じ文を一括で入れる)----
+function bfMatch(d, f, q){
+  if(!q) return true;
+  return (f.name + " " + fieldContext(d.body, f)).toLowerCase().includes(q.toLowerCase());
+}
+function bfTargets(){
+  return state.docs.filter(d=> selectedIds.has(d.id) && d.body && d.body.trim());
+}
+function bfRenderPreview(){
+  const q = document.getElementById("bfFilter").value.trim();
+  const pv = document.getElementById("bfPreview");
+  const lines = [];
+  let totalDocs = 0, totalFields = 0;
+  for(const d of bfTargets()){
+    const fields = detectFields(d.body);
+    if(!fields.length){ lines.push(`✕ ${d.name}:差し込み項目なし`); continue; }
+    const n = fields.filter(f=> bfMatch(d, f, q)).length;
+    if(!n){ lines.push(`⚠ ${d.name}:「${q}」に該当する項目なし`); continue; }
+    lines.push(`✔ ${d.name}:${n}項目に差し込み`);
+    totalDocs++; totalFields += n;
+  }
+  pv.style.whiteSpace = "pre-wrap";
+  pv.textContent = lines.join("\n");
+  document.getElementById("bfApply").textContent =
+    totalDocs ? `${totalDocs}冊・${totalFields}項目の下書きに差し込む` : "下書きに差し込む";
+}
+function openBulkFill(){
+  if(!bfTargets().length){ toast("先に差し込みたい命令書をタップして選んでください", true); return; }
+  document.getElementById("bfNote").textContent =
+    "選択した命令書の本文そのものは変更しません。共通の文を、各命令書の「差し込み」の下書きとして一括保存します。あとは各命令書を開いて「差し込み」→「完成文をコピー」を押すだけで、埋め込み済みの全文がコピーできます。絞り込みワードは、目印の名前と目印の前後の本文の両方から探します。";
+  document.getElementById("bfFilter").value = "";
+  document.getElementById("bfText").value = "";
+  bfRenderPreview();
+  showOverlay("bulkfill");
+}
+document.getElementById("selFillBtn").onclick = openBulkFill;
+document.getElementById("bfBack").onclick = ()=> hideOverlay("bulkfill");
+document.getElementById("bfCancel").onclick = ()=> hideOverlay("bulkfill");
+document.getElementById("bfFilter").addEventListener("input", bfRenderPreview);
+document.getElementById("bfPaste").onclick = async ()=>{
+  try{
+    const t = await navigator.clipboard.readText();
+    if(t && t.trim()){
+      document.getElementById("bfText").value = t;
+      toast(`貼り付けました(${t.length.toLocaleString()}字)`);
+    }else{
+      toast("クリップボードが空です", true);
+    }
+  }catch(e){
+    toast("読み取れません。欄を長押し→ペーストしてください", true);
+  }
+};
+document.getElementById("bfApply").onclick = ()=>{
+  const q = document.getElementById("bfFilter").value.trim();
+  const t = document.getElementById("bfText").value;
+  if(!t.trim()){ toast("差し込む共通の文を入力(または貼り付け)してください", true); return; }
+  // まず計画を立てる(既存の下書きを上書きする箇所を数えてから確認)
+  const plans = [];
+  const skipped = [];
+  let overwrite = 0;
+  for(const d of bfTargets()){
+    const fields = detectFields(d.body);
+    const names = fields.map(f=>f.name);
+    const hitIdxs = fields.map((f, idx)=> bfMatch(d, f, q) ? idx : -1).filter(x=> x !== -1);
+    if(!hitIdxs.length){ skipped.push(d.name); continue; }
+    // 既存の下書きの値を項目名で引き継ぐ(対象外の項目の入力は消さない)
+    const old = fillDrafts[d.id];
+    const values = names.map(nm=>{
+      if(old && Array.isArray(old.names)){
+        const oi = old.names.indexOf(nm);
+        if(oi !== -1 && old.values && old.values[oi]) return old.values[oi];
+      }
+      return "";
+    });
+    for(const idx of hitIdxs){
+      if(values[idx].trim() && values[idx] !== t) overwrite++;
+      values[idx] = t;
+    }
+    plans.push({ id: d.id, names, values, n: hitIdxs.length });
+  }
+  if(!plans.length){ toast("該当する項目がありませんでした。絞り込みワードを見直してください", true); return; }
+  if(overwrite && !confirm(`入力済みの下書きを${overwrite}箇所上書きします。よろしいですか?`)) return;
+  let fieldCount = 0;
+  for(const p of plans){
+    fillDrafts[p.id] = { names: p.names, values: p.values, ts: Date.now() };
+    fieldCount += p.n;
+  }
+  scheduleSaveDrafts();
+  hideOverlay("bulkfill");
+  setSelectMode(false);
+  toast(`${plans.length}冊・${fieldCount}項目の下書きに差し込みました。各命令書の「差し込み」→「完成文をコピー」でどうぞ`);
+  if(skipped.length) setTimeout(()=> toast(`⚠ 該当項目がなかった命令書:${skipped.join("、")}`, true), 2600);
 };
 document.getElementById("addDoc").onclick = async ()=>{
   const cat = state.cats.find(c=>c.id===state.activeCat);
