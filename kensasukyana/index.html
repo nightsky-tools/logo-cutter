@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>星野ソラ 検品前スキャナ v1.4</title>
+<title>星野ソラ 検品前スキャナ v1.6</title>
 <style>
   :root{
     --bg:#0c111f;
@@ -71,7 +71,7 @@
 </head>
 <body>
 <header>
-  <h1>星野ソラ 検品前スキャナ<span class="v">v1.4</span></h1>
+  <h1>星野ソラ 検品前スキャナ<span class="v">v1.6</span></h1>
   <p>機械的走査(列挙・件数)を全部このツールが行い、意味判定(主語・主根拠など)だけを検品チャットに残す前段ツール。レポートを本文と一緒に検品へ渡す。</p>
 </header>
 <main>
@@ -109,11 +109,35 @@
     <p id="fixinfo" class="note" style="margin:10px 0 0;"></p></div>
   <div id="report"></div>
 </main>
-<footer>検品前スキャナ v1.4(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
+<footer>検品前スキャナ v1.6(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
 
 <script>
 /* =====================================================================
    ★ 辞書・設定(編集エリア)ここから
+
+   【v1.6 変更履歴】
+   ・第8章の4定型見出しが完全一致しないとき、括弧()（）・コロン:：を正規化して
+     再照合し、「文言は定型どおり・約物のみ不一致(半角括弧など)」と原因を
+     診断して表示するようにした(v1.5までは「不一致」としか出ず、半角括弧が
+     原因の号で警告が流される事故があった)。
+   ・タイトルのフック部に例文フック禁止語(DICT.HOOK_BANNED・生成命令書v10.4
+     改訂1)が含まれていないかの照合を[11]に追加。過去タイトル一覧がなくても
+     この照合は常に行える。
+   ・FIXED_1のコメントを更新(v10.3以降は各命令書の条文も地の文掲載で一重カギ
+     に統一済みのため、入れ子表記の注記を簡略化)。
+
+   【v1.5 変更履歴】
+   ・FIXED_1 を記事上の実体(一重カギ「運勢」)に修正。
+     v1.4までは生成命令書の条文表記『運勢』(引用の入れ子で二重カギ化した形)を
+     そのまま登録していたため、正しい記事に対して毎回「固定文言①不一致」の
+     誤検出が出ていた。記事上の正は一重カギ。命令書の理想例と過去号に一致。
+   ・parseBlob の天体データ仕分けを monthly_sky.py の実出力形式に対応。
+     「・9月11日(金) 12:27 乙女座で新月」のような行頭「・」付きの行、
+     「■ 新月・満月」等の見出し行、「(順行へ戻るのは〜)」等の継続行を
+     天体データとして正しく除外できるようにした(v1.4では行頭「・」で
+     日付判定が外れ、本文扱いになっていた)。
+   ・設定指紋は互換維持のため FIXED_2 のみ(記事保管庫側と式を揃えて変更する
+     までは FIXED_1 を含めない。含める場合は両ツール同時に変更すること)。
    ===================================================================== */
 const DICT = {
 
@@ -134,7 +158,9 @@ const DICT = {
   DANGEN_LIMIT: 2,
 
   // A-7(g) 固定文言(一字一句)
-  FIXED_1: "多くの占いは『運勢』を語りますが、このnoteは違います",
+  // ※FIXED_1は「記事上の実体」で登録する。一重カギ「運勢」が正
+  //   (生成・検品・修正・校閲の各v10.3以降は条文も地の文掲載で一重カギに統一済み)。
+  FIXED_1: "多くの占いは「運勢」を語りますが、このnoteは違います",
   FIXED_2: "この一冊には、3,000円以上の価値があると自負しています。それでも、価格を理由にあなたがこの1ヶ月を逃すことがないように。毎月15日までは、コーヒー1杯分の「500円」で。16日からは「1,000円」でお届けしています。",
 
   // 第8章の4定型見出し(一字一句)
@@ -162,6 +188,9 @@ const DICT = {
   },
   // 未成年配慮:記事のどこにあっても言い換え対象として警告する語
   SENSITIVE_PARTS: ["生殖器","排泄器","泌尿器","乳房"],
+
+  // A-12(b) 例文フック禁止語(生成命令書v10.4改訂1。過去タイトル一覧がなくても照合する)
+  HOOK_BANNED: ["輝き","輝く","本物の実力","真の実力","変える","変えていく","変わる"],
 
   // B-1(c) 星座名冠り深掘り見出しの上限(生成命令書v10.2)
   KANMURI_LIMIT: 2,
@@ -247,8 +276,16 @@ function parseBlob(blob){
   for(const line of lines){
     const t = line.trim();
     const isoStart = /^\d{4}-\d{2}-\d{2}/.test(t);
-    const dateStart = /^([0-9０-９]{1,2})[\/／月][0-9０-９]{1,2}日?/.test(t);
-    if(isoStart || (dateStart && evWord.test(t) && !t.includes("。") && t.length < 70)){
+    // v1.5: monthly_sky出力の行頭「・」に対応(「・9月11日(金) 12:27 乙女座で新月」等)
+    const dateStart = /^[・･]?\s*([0-9０-９]{1,2})[\/／月][0-9０-９]{1,2}日?/.test(t);
+    // v1.5: 天体データの見出し行(「■ 新月・満月」「※使用天体暦:〜」「【〇年〇月の天体イベント一覧】」)
+    const skyHeader = (/^[■※]/.test(t) && /(新月|満月|逆行|順行|天体|天文|星座移動|JST|swisseph|国立天文台)/i.test(t))
+                      || /天体イベント一覧/.test(t);
+    // v1.5: 滞在・逆行の箇条書き行と「(順行へ戻るのは〜)」継続行(句点を含む本文の文は除外)
+    const skyBullet = /^[・･（(]/.test(t)
+                      && /(滞在|逆行中|逆行はなし|順行へ戻る|逆行開始|逆行を開始)/.test(t)
+                      && !t.includes("。") && t.length < 70;
+    if(isoStart || skyHeader || skyBullet || (dateStart && evWord.test(t) && !t.includes("。") && t.length < 70)){
       skyLines.push(line);
     }else{
       artLines.push(line);
@@ -301,7 +338,7 @@ function runScan(){
   const now = new Date();
   const stamp = now.getFullYear()+"/"+(now.getMonth()+1)+"/"+now.getDate()+" "+String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
 
-  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v1.4"});
+  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v1.6"});
   L.push({cls:"dim", s:"走査日時:"+stamp+" ／ 本文:"+raw.length+"文字 ／ 対象星座:"+(sign||"未指定")});
   L.push({cls:"dim", s:"※このレポートの【要判定】項目は、検品チャットが主語・文脈を判定する(列挙はスキャナが保証)。"});
   L.push({s:""});
@@ -380,7 +417,11 @@ function runScan(){
   if(f1){ L.push({cls:"ok", s:"  ◯ 固定文言①:一字一句一致"}); }
   else{
     const partial = raw.includes("多くの占いは");
-    L.push({cls:"bad", s:"  ✕ 固定文言①:完全一致なし"+(partial?"(「多くの占いは」を含む文はあり→変形の疑い。該当文を固定形へ復元)":"(段落ごと欠落の疑い)")});
+    const nijuKagi = raw.includes("多くの占いは『運勢』を語りますが、このnoteは違います");
+    L.push({cls:"bad", s:"  ✕ 固定文言①:完全一致なし"
+      + (nijuKagi ? "(二重カギ『運勢』を検出→記事上の正は一重カギ「運勢」。復元する)"
+        : partial ? "(「多くの占いは」を含む文はあり→変形の疑い。該当文を固定形へ復元)"
+        : "(段落ごと欠落の疑い)")});
   }
   if(f2){ L.push({cls:"ok", s:"  ◯ 固定文言②(価格段落):一字一句一致"}); }
   else{
@@ -405,12 +446,18 @@ function runScan(){
   const hajimeni = /【はじめに/.test(raw);
   if(!hajimeni) missing.push("【はじめに:〜】見出し");
   const ch8missing = DICT.CH8_HEADINGS.filter(h=>!raw.includes(h));
+  // v1.6: 完全一致しない定型見出しは括弧・コロンを正規化して再照合し、原因を診断する
+  const ch8Norm = t => t.replace(/\(/g,"（").replace(/\)/g,"）").replace(/:/g,"：");
+  const rawCh8 = ch8Norm(raw);
+  const ch8paren = ch8missing.filter(h=>rawCh8.includes(h));
+  const ch8lost  = ch8missing.filter(h=>!rawCh8.includes(h));
   if(missing.length===0 && ch8missing.length===0){
     L.push({cls:"ok", s:"  ◯ 【はじめに】+第1〜9章そろい / 第8章の4定型見出し一字一句一致"});
     chips.push({cls:"ok", label:"構造 ◯"});
   }else{
     if(missing.length) L.push({cls:"bad", s:"  ✕ 欠落:"+missing.join("・")});
-    if(ch8missing.length) L.push({cls:"bad", s:"  ✕ 第8章定型と不一致(または欠落):"+ch8missing.join(" / ")+" ※変形・説明句混入の疑い。定型へ復元"});
+    if(ch8paren.length) L.push({cls:"bad", s:"  ✕ 第8章定型見出しの約物のみ不一致(半角括弧・半角コロンの疑い):"+ch8paren.join(" / ")+" ※文言は定型どおり。括弧を全角（）へ置換するだけでよい(検品A-8(a)・修正のセーフハーバー(5))"});
+    if(ch8lost.length) L.push({cls:"bad", s:"  ✕ 第8章定型と不一致(または欠落):"+ch8lost.join(" / ")+" ※変形・説明句混入の疑い。定型へ復元"});
     chips.push({cls:"bad", label:"構造 要修正"});
   }
   L.push({s:""});
@@ -546,6 +593,9 @@ function runScan(){
         const isMoon = /新月|満月/.test(line);
         const isMerc = /水星/.test(line) && /(逆行|順行)/.test(line);
         if(!isMoon && !isMerc) return;
+        // v1.5: 見出し行(「■ 新月・満月」等)と「逆行はなし」行はイベントとして数えない
+        if(/^[■※]/.test(line.trim())) return;
+        if(/逆行はなし/.test(line)) return;
         let m=null,d=null;
         let r = line.match(/([0-9]{1,2})月([0-9]{1,2})日/) || line.match(/\b[0-9]{4}-([0-9]{2})-([0-9]{2})/) || line.match(/([0-9]{1,2})\/([0-9]{1,2})/);
         if(r){ m=+r[1]; d=+r[2]; }
@@ -592,9 +642,18 @@ function runScan(){
     const c2 = /座のあなたへ。/.test(t);
     const c4 = /1ヶ月【保存版】$/.test(t);
     const signOk = !sign || t.includes(sign);
+    // v1.6: フック部を切り出し、例文フック禁止語(生成命令書v10.4)と照合
+    const hookM = t.match(/座のあなたへ。(.*)1ヶ月【保存版】/);
+    const hookPart = hookM ? hookM[1] : t;
+    const hookBan = (DICT.HOOK_BANNED||[]).filter(w=>hookPart.includes(w));
     L.push({s:"  (1)【〇月限定】冒頭:"+(c1?"◯":"✕")+" / (2)「〇〇座のあなたへ。」:"+(c2?"◯":"✕")+(sign?("(対象星座一致:"+(signOk?"◯":"✕")+")"):"")+" / (4)末尾「1ヶ月【保存版】」:"+(c4?"◯":"✕")});
-    if(c1&&c2&&c4&&signOk){ L.push({cls:"ok", s:"  ◯ 定型4要素を充足(フックの重複は過去タイトル一覧との照合を検品で実施)"}); chips.push({cls:"ok", label:"タイトル ◯"}); }
-    else{ L.push({cls:"bad", s:"  ✕ 定型崩れ→固定型へ復元"}); chips.push({cls:"bad", label:"タイトル 要修正"}); }
+    L.push({s:"  (3)フック部「"+hookPart+"」/ 例文禁止語照合:"+(hookBan.length? "✕「"+hookBan.join("・")+"」を含む":"◯ 該当なし")});
+    if(c1&&c2&&c4&&signOk&&hookBan.length===0){ L.push({cls:"ok", s:"  ◯ 定型4要素を充足・例文禁止語なし(過去タイトルとのフック重複照合は検品で実施)"}); chips.push({cls:"ok", label:"タイトル ◯"}); }
+    else{
+      if(!(c1&&c2&&c4&&signOk)) L.push({cls:"bad", s:"  ✕ 定型崩れ→固定型へ復元"});
+      if(hookBan.length) L.push({cls:"bad", s:"  ✕ フックに例文禁止語(生成命令書v10.4改訂1)→別の主要語のフックへ差し替え"});
+      chips.push({cls:"bad", label:"タイトル 要修正"});
+    }
   }
   L.push({s:""});
 
@@ -668,13 +727,20 @@ function runScan(){
   }
   fixed = out;
   if(c2) fixes.push("日本語間の半角スペース削除:"+c2+"件");
-  // (3) 乙女座の「胃腸」→「腸・消化器」(対象星座が乙女座のときのみ)
+  // (3) v1.5: 二重カギの固定文言①を一意復元(記事上の正は一重カギ)
+  const F1_NIJU = "多くの占いは『運勢』を語りますが、このnoteは違います";
+  if(fixed.includes(F1_NIJU)){
+    const n = fixed.split(F1_NIJU).length-1;
+    fixed = fixed.split(F1_NIJU).join(DICT.FIXED_1);
+    fixes.push("固定文言①『運勢』→「運勢」:"+n+"件");
+  }
+  // (4) 乙女座の「胃腸」→「腸・消化器」(対象星座が乙女座のときのみ)
   if(sign==="乙女座" && fixed.includes("胃腸")){
     const n = fixed.split("胃腸").length-1;
     fixed = fixed.split("胃腸").join("腸・消化器");
     fixes.push("「胃腸」→「腸・消化器」:"+n+"件(乙女座)");
   }
-  // (4) 未成年言い換え語の置換(長い語から順に)
+  // (5) 未成年言い換え語の置換(長い語から順に)
   for(const [from,to] of DICT.AUTOFIX_SENSITIVE){
     if(fixed.includes(from)){
       const n = fixed.split(from).length-1;
@@ -688,7 +754,7 @@ function runScan(){
     $("fixinfo").innerHTML = "自動修正できる箇所:" + fixes.join(" / ") + "(それ以外の指摘は修正済みテキストにも残る=検品・手動対応)";
     $("copyfixed").style.display = "inline-block";
   }else{
-    $("fixinfo").innerHTML = "自動修正の対象(半角?!・不正スペース・胃腸・要言い換え語)は0件。";
+    $("fixinfo").innerHTML = "自動修正の対象(半角?!・不正スペース・固定文言①の二重カギ・胃腸・要言い換え語)は0件。";
     $("copyfixed").style.display = "none";
   }
   $("copy").style.display = "inline-block";
@@ -716,6 +782,7 @@ $("copyfixed").addEventListener("click", async ()=>{
   setTimeout(()=>{ $("copiedmsg").style.display="none"; }, 2000);
 });
 // 設定指紋:保管庫と固定文言②が一致しているかを照合(価格改定の反映漏れ検出)+設定価格の常時表示
+// ※v1.5:指紋は互換維持のためFIXED_2のみ。FIXED_1を含める場合は保管庫側と同時に式を変更すること。
 (function(){
   function cfgFp(str){let h=5381;for(let i=0;i<str.length;i++){h=((h<<5)+h+str.charCodeAt(i))>>>0;}return h.toString(16);}
   try{
