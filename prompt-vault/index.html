@@ -243,7 +243,7 @@
   /* ---- 差し込み(項目埋め)画面 ---- */
   .dc-act.fill{color:var(--ok);border-color:#3a5a4a}
   .fill-field{margin-bottom:18px}
-  .ff-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .ff-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
   .ff-label{
     flex:1;font-family:var(--serif);font-size:14px;letter-spacing:.05em;color:var(--accent);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -439,7 +439,7 @@
     <div class="cat-row" id="bfChips" style="padding:2px 2px 10px"></div>
     <input class="title-input" id="bfFilter" placeholder="ワードで絞る場合はここに(例:星データ / 前回記事)空欄=全項目" autocomplete="off">
     <div class="empty-note" id="bfPreview" style="text-align:left;padding:4px 2px 14px;font-size:12px;line-height:2"></div>
-    <div class="ff-head"><span class="ff-label">差し込む共通の文</span><button class="hist-btn" id="bfPaste">貼り付け</button></div>
+    <div class="ff-head"><span class="ff-label">差し込む共通の文</span><button class="hist-btn art" id="bfSky">☀星データ</button><button class="hist-btn" id="bfPaste">貼り付け</button></div>
     <textarea class="editor" id="bfText" style="min-height:30vh" placeholder="ここに共通の文を入力(または貼り付け)"></textarea>
   </div>
   <div class="ov-foot">
@@ -1303,6 +1303,7 @@ function openFiller(i){
         ${multi ? `<input type="checkbox" class="ff-sel" title="まとめて差し込みの対象にする">` : ``}
         <span class="ff-label"></span>
         <button class="hist-btn art ff-art">記事</button>
+        <button class="hist-btn art ff-sky">☀星</button>
         <button class="hist-btn ff-clear">空にする</button>
         <button class="hist-btn ff-paste">貼り付け</button>
       </div>
@@ -1324,6 +1325,13 @@ function openFiller(i){
       wrap.querySelector(".ff-text").value = art.body;
       captureDraft();
       toast(`「${f.name}」に ${art.label} の記事を入れました(${art.body.length.toLocaleString()}字)`);
+    };
+    wrap.querySelector(".ff-sky").onclick = async ()=>{
+      const s = await pickSky();
+      if(!s) return;
+      wrap.querySelector(".ff-text").value = s.body;
+      captureDraft();
+      toast(`「${f.name}」に ${s.label} の星データを入れました(${s.body.length.toLocaleString()}字)`);
     };
     wrap.querySelector(".ff-paste").onclick = async ()=>{
       try{
@@ -1600,6 +1608,32 @@ function artSkyOf(av, key){
   const m = av && av.months && av.months[key];
   return (m && m.sky && m.sky.body) ? m.sky.body : null;
 }
+// 記事保管庫に格納済みの星データから月を選ぶ。{key, label, body} か null を返す
+async function pickSky(){
+  const av = await loadArticleVault();
+  if(!av){
+    toast("記事保管庫のデータが見つかりません(同じサイトで記事保管庫を開いて保存してください)", true);
+    return null;
+  }
+  const keys = Object.keys(av.months)
+    .filter(k=> av.months[k] && av.months[k].sky && av.months[k].sky.body)
+    .sort().reverse().slice(0, 24);
+  if(!keys.length){
+    toast("記事保管庫に星データが未格納です(各号の☀バーの「ペースト」で入れてください)", true);
+    return null;
+  }
+  const mk = await _modal({
+    title: "どの月の星データ?",
+    buttons: keys.map(k=>({
+      label: `${artLabelOf(k).replace("号","")}(${av.months[k].sky.body.length.toLocaleString()}字)${k === state.lastSkyMonth ? " ← 前回" : ""}`,
+      value: k, style: k === state.lastSkyMonth ? "primary" : "ghost"
+    })).concat([{ label: "キャンセル", value: null }])
+  });
+  if(!mk) return null;
+  state.lastSkyMonth = mk;
+  save(true);
+  return { key: mk, label: artLabelOf(mk).replace("号",""), body: av.months[mk].sky.body };
+}
 // 号選択→星座選択の2段モーダルで過去記事を1本選ぶ。{label, body} か null を返す
 async function pickArticle(){
   const av = await loadArticleVault();
@@ -1769,15 +1803,25 @@ async function seqCopy(){
   }
   const idx = seqIdx(items);
   if(idx >= items.length){
-    const v = await _modal({
-      title: "この号は全星座コピー済みです",
-      buttons: [
-        { label: "別の号・別の命令書に変更", value: "chg", style: "primary" },
-        { label: "この号を最初からもう一周", value: "again", style: "ghost" },
-        { label: "キャンセル", value: null }
-      ]
-    });
-    if(v === "again"){
+    // 次の号(現在の号+1ヶ月)に記事があれば、設定そのままで1タップ切替を最優先で出す
+    const nextK = nextMonthKey(state.seqPos.month);
+    const av2 = await loadArticleVault();
+    const hasNext = !!(nextK && av2 && av2.months[nextK] &&
+      Object.keys((av2.months[nextK].signs)||{}).some(id=> av2.months[nextK].signs[id] && av2.months[nextK].signs[id].body));
+    const btns = [];
+    if(hasNext) btns.push({ label: `${artLabelOf(nextK)}に進む(命令書・差し込み先はそのまま)`, value: "next", style: "primary" });
+    btns.push(
+      { label: "別の号・別の命令書に変更", value: "chg", style: hasNext ? "ghost" : "primary" },
+      { label: "この号を最初からもう一周", value: "again", style: "ghost" },
+      { label: "キャンセル", value: null }
+    );
+    const v = await _modal({ title: "この号は全星座コピー済みです", buttons: btns });
+    if(v === "next"){
+      state.seqPos.month = nextK;
+      state.seqPos.idx = 0; state.seqPos.label = null;
+      save(true); renderSeq();
+      toast(`${artLabelOf(nextK)}に切り替えました。押すとコピーを開始します(星データは${artLabelOf(nextMonthKey(nextK)||"").replace("号","")}分を自動使用)`);
+    }else if(v === "again"){
       state.seqPos.idx = 0; state.seqPos.label = null;
       save(true); renderSeq();
       toast("最初に戻りました。もう一度押すとコピーを開始します");
@@ -2068,6 +2112,12 @@ document.getElementById("bfPaste").onclick = async ()=>{
     toast("読み取れません。欄を長押し→ペーストしてください", true);
   }
 };
+document.getElementById("bfSky").onclick = async ()=>{
+  const s = await pickSky();
+  if(!s) return;
+  document.getElementById("bfText").value = s.body;
+  toast(`${s.label}の星データを入れました(${s.body.length.toLocaleString()}字)。対象の項目を選んで差し込んでください`);
+};
 document.getElementById("bfApply").onclick = ()=>{
   const q = document.getElementById("bfFilter").value.trim();
   const t = document.getElementById("bfText").value;
@@ -2339,7 +2389,8 @@ function mergeStates(a, b){
     markSeq: Math.max(a.markSeq||1, b.markSeq||1),
     customMarks: Array.from(new Set([...(a.customMarks||[]), ...(b.customMarks||[])])).slice(0, 50),
     countReset: Math.max(ra, rb),
-    seqPos: a.seqPos || null // 連続コピーの位置はこの端末のものを維持
+    seqPos: a.seqPos || null, // 連続コピーの位置はこの端末のものを維持
+    lastSkyMonth: a.lastSkyMonth || null
   };
 }
 
