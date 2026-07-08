@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="画像スタジオ">
+<meta name="theme-color" content="#f7f5f0">
+<title>Gemini 自動生成 × ロゴカッター</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f7f5f0; --ink:#1e2230; --ink-soft:#5a6072; --line:#d9d4c8;
+    --accent:#4c5ce8; --accent-deep:#3543b8; --amber:#e8a13c;
+    --card:#ffffff; --danger:#c2402f; --ok:#2e8b57; --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    font-family:'Zen Kaku Gothic New',sans-serif;background:var(--paper);color:var(--ink);
+    min-height:100vh;line-height:1.65;
+    background-image:radial-gradient(circle at 85% -10%, rgba(76,92,232,.08), transparent 45%);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  header{max-width:1100px;margin:0 auto;padding:30px 20px 8px}
+  h1{font-family:'Shippori Mincho',serif;font-weight:800;font-size:clamp(22px,4vw,32px);letter-spacing:.04em}
+  h1 .dot{color:var(--accent)}
+  .sub{color:var(--ink-soft);font-size:13px;margin-top:6px}
+  main{max-width:1100px;margin:0 auto;padding:14px 20px 80px;display:grid;grid-template-columns:400px 1fr;gap:22px}
+  @media(max-width:900px){main{grid-template-columns:1fr}}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px}
+  .panel h2{
+    font-size:12px;font-weight:700;letter-spacing:.18em;color:var(--ink-soft);
+    margin-bottom:12px;display:flex;align-items:center;gap:8px;
+  }
+  .panel h2::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--accent)}
+  .panel.cut h2::before{background:var(--amber)}
+  label{display:block;font-size:13px;font-weight:700;margin:12px 0 6px}
+  label small{font-weight:400;color:var(--ink-soft)}
+  input[type=password],input[type=number],select,textarea{
+    width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
+    font:inherit;font-size:14px;background:#fdfcfa;color:var(--ink);
+  }
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+  textarea{resize:vertical;min-height:110px;line-height:1.7}
+  .hint{font-size:12px;color:var(--ink-soft);margin-top:6px;line-height:1.6}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    padding:12px 16px;border-radius:10px;border:none;font:inherit;font-weight:700;font-size:15px;
+    cursor:pointer;transition:transform .08s ease, background .15s ease;min-height:42px;
+  }
+  .btn:active{transform:scale(.98)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn-primary{background:var(--accent);color:#fff;width:100%;margin-top:16px}
+  .btn-primary:hover:not(:disabled){background:var(--accent-deep)}
+  .btn-stop{background:var(--danger);color:#fff;width:100%;margin-top:10px;display:none}
+  .btn-ghost{background:transparent;border:1px solid var(--line);color:var(--ink);font-size:13px;padding:8px 12px;min-height:36px}
+  .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+  .btn-gold{background:rgba(232,161,60,.15);border:1px solid rgba(232,161,60,.5);color:#a56b12;font-size:13px;padding:8px 12px;min-height:36px}
+
+  /* カットスライダー */
+  .slrow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .slrow label{min-width:52px;margin:0;font-size:13px;font-weight:500;color:var(--ink-soft)}
+  .slrow input[type=range]{flex:1;accent-color:var(--amber);height:28px}
+  .slrow .val{font-size:13px;font-weight:700;min-width:40px;text-align:right;font-variant-numeric:tabular-nums}
+  .preset{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .toggle{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;cursor:pointer;margin-bottom:10px}
+  .toggle input{accent-color:var(--amber);width:18px;height:18px;cursor:pointer}
+
+  /* フィルムストリップ */
+  .filmstrip{
+    display:flex;gap:6px;margin-top:14px;padding:10px;
+    background:var(--ink);border-radius:10px;overflow-x:auto;min-height:52px;align-items:center;
+  }
+  .frame{flex:0 0 44px;height:32px;border-radius:4px;background:#3a3f52;border:2px dashed #565c75;transition:all .3s ease}
+  .frame.done{background:linear-gradient(135deg,var(--accent),#7b6cf0);border:2px solid transparent}
+  .frame.active{border:2px solid var(--amber);animation:pulse 1s infinite alternate}
+  .frame.error{background:#5a2c26;border:2px solid var(--danger)}
+  @keyframes pulse{from{box-shadow:0 0 0 0 rgba(232,161,60,.6)}to{box-shadow:0 0 0 6px rgba(232,161,60,0)}}
+  .strip-empty{color:#7d8299;font-size:12px;padding:0 6px}
+  .status{margin-top:10px;font-size:13px;line-height:1.7;color:var(--ink-soft);min-height:20px}
+  .status .ok{color:var(--ok);font-weight:700}
+  .status .err{color:var(--danger);font-weight:700}
+
+  /* ギャラリー */
+  .gallery-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap}
+  .gallery-head h2{font-size:12px;font-weight:700;letter-spacing:.18em;color:var(--ink-soft)}
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+  .g-item{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;animation:fadein .4s ease}
+  @keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .g-item img{width:100%;aspect-ratio:auto;object-fit:contain;display:block;background:#eceae4;cursor:zoom-in;max-height:220px}
+  .g-num{position:absolute}
+  .g-meta{padding:8px 12px;font-size:12px;color:var(--ink-soft);line-height:1.5}
+  .g-meta .n{font-weight:700;color:var(--accent);margin-right:4px}
+  .g-meta .p{color:var(--ink);font-weight:500;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .g-actions{display:flex;gap:6px;padding:0 12px 12px}
+  .g-actions .btn{flex:1;font-size:12px;padding:6px 4px;min-height:32px}
+  .empty{border:2px dashed var(--line);border-radius:var(--radius);padding:56px 20px;text-align:center;color:var(--ink-soft);font-size:14px;line-height:2}
+  .empty b{font-family:'Shippori Mincho',serif;font-size:17px;color:var(--ink);display:block}
+
+  .lightbox{position:fixed;inset:0;background:rgba(20,22,32,.92);display:none;align-items:center;justify-content:center;z-index:50;padding:24px;flex-direction:column;gap:12px}
+  .lightbox.show{display:flex}
+  .lightbox img{max-width:100%;max-height:78vh;border-radius:8px}
+  .lightbox .cap{color:#fff;font-size:13px;text-align:center}
+  details.setup{margin-top:2px}
+  details.setup summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--accent);list-style:none}
+  details.setup summary::before{content:"▸ "}
+  details.setup[open] summary::before{content:"▾ "}
+  details.setup .hint{background:#f0eee7;border-radius:8px;padding:10px 12px;margin-top:8px}
+  a{color:var(--accent)}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Gemini 自動生成 × ロゴカッター<span class="dot">.</span></h1>
+  <p class="sub">生成 → ロゴカット → 保存まで全自動。プロンプトを入れた順番のまま処理します(順番は変わりません)。</p>
+</header>
+
+<main>
+  <!-- 左カラム -->
+  <div>
+    <!-- 生成設定 -->
+    <section class="panel">
+      <h2>生成設定</h2>
+      <label for="apikey">Gemini APIキー <small>(このブラウザにのみ保存)</small></label>
+      <div style="display:flex;gap:8px">
+        <input type="password" id="apikey" style="flex:1" placeholder="AIza..." autocomplete="off">
+        <button class="btn btn-ghost" id="keyClear" title="共用PCでは使用後に消去" style="white-space:nowrap">消去</button>
+      </div>
+      <details class="setup">
+        <summary>APIキーの取得方法</summary>
+        <p class="hint">
+          1. <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> にログイン →「APIキーを作成」<br>
+          2. キーをコピーして上に貼り付けるだけ。無料枠内なら課金はされません。
+        </p>
+      </details>
+
+      <label for="theme">プロンプト自動作成 <small>(テーマを入れるとAIが下に書き込みます)</small></label>
+      <div style="display:flex;gap:8px">
+        <input type="password" id="theme" style="flex:1" placeholder="例: 秋の京都 / かわいい動物 / SF都市" autocomplete="off" onfocus="this.type='text'">
+        <select id="themeCount" style="width:90px">
+          <option value="3">3個</option>
+          <option value="5" selected>5個</option>
+          <option value="10">10個</option>
+          <option value="20">20個</option>
+        </select>
+      </div>
+      <button class="btn btn-ghost" id="aiGenBtn" style="width:100%;margin-top:8px">✨ AIにプロンプトを作らせる</button>
+
+      <label for="prompts">プロンプト <small>(区切り: 改行 / 空行 / --- / 🙂 の行)</small></label>
+      <textarea id="prompts" placeholder="夕焼けの富士山と桜、水彩画風&#10;近未来の東京の街並み&#10;&#10;※長文プロンプトは間に「---」か「🙂」だけの行を入れると確実に分かれます。コードブロックごと貼ってもOK"></textarea>
+      <p class="hint" id="parseInfo" style="font-weight:700"></p>
+
+      <div class="row3">
+        <div>
+          <label for="count">各枚数</label>
+          <input type="number" id="count" min="1" max="10" value="1">
+        </div>
+        <div>
+          <label for="aspect">比率</label>
+          <select id="aspect">
+            <option value="1:1">1:1</option>
+            <option value="16:9">16:9</option>
+            <option value="9:16">9:16</option>
+            <option value="4:3">4:3</option>
+            <option value="3:4">3:4</option>
+          </select>
+        </div>
+        <div>
+          <label for="interval">間隔(秒)</label>
+          <input type="number" id="interval" min="0" max="120" value="8">
+        </div>
+      </div>
+      <label for="model">モデル</label>
+      <select id="model">
+        <option value="gemini-3.1-flash-image">Nano Banana 2(最新)</option>
+        <option value="gemini-2.5-flash-image">Nano Banana(安定版)</option>
+      </select>
+    </section>
+
+    <!-- ロゴカット設定 -->
+    <section class="panel cut">
+      <h2>ロゴカット(自動適用)</h2>
+      <label class="toggle"><input type="checkbox" id="cropOn" checked> 生成した画像を自動でカットする</label>
+      <div class="preset">
+        <button class="btn btn-gold preset-btn" data-p="std">★ 標準(22/25/3/3)</button>
+        <button class="btn btn-ghost preset-btn" data-p="br">右下ロゴ</button>
+        <button class="btn btn-ghost preset-btn" data-p="bl">左下ロゴ</button>
+        <button class="btn btn-ghost preset-btn" data-p="zero">ゼロ</button>
+      </div>
+      <div class="slrow"><label>上から</label><input type="range" id="cutT" min="0" max="45" value="22"><span class="val" id="cutTOut">22%</span></div>
+      <div class="slrow"><label>下から</label><input type="range" id="cutB" min="0" max="45" value="25"><span class="val" id="cutBOut">25%</span></div>
+      <div class="slrow"><label>左から</label><input type="range" id="cutL" min="0" max="45" value="3"><span class="val" id="cutLOut">3%</span></div>
+      <div class="slrow"><label>右から</label><input type="range" id="cutR" min="0" max="45" value="3"><span class="val" id="cutROut">3%</span></div>
+    </section>
+
+    <!-- 保存設定 -->
+    <section class="panel">
+      <h2>自動保存</h2>
+      <label for="saveMode">保存方法</label>
+      <select id="saveMode">
+        <option value="folder">フォルダに直接保存(Chrome/Edge・いちばん確実)</option>
+        <option value="each">1枚できるたびに自動ダウンロード</option>
+        <option value="zip">全部終わったらZIPで自動保存</option>
+        <option value="none">自動保存しない(あとで共有/保存)</option>
+      </select>
+      <p class="hint">
+        💻 <b>フォルダ直接保存</b>: スタート時に保存先フォルダを1回選ぶだけで、以降は完成するたびに直接書き込みます。許可ダイアログの連打がなく最も確実です(Chrome/Edge限定)。<br>
+        📱 iPhone: 自動保存はファイルAppに入ります。写真アプリやLINEへは、完了後に「📤 まとめて共有」を1タップしてください(iPhoneの仕様で写真への追加だけは自動化できません)。
+      </p>
+
+      <button class="btn btn-primary" id="startBtn">▶ 自動生成 → カット → 保存 スタート</button>
+      <button class="btn btn-stop" id="stopBtn">■ 停止する</button>
+      <button class="btn btn-ghost" id="retryBtn" style="display:none;width:100%;margin-top:10px">↻ 失敗した分だけ再生成</button>
+
+      <div class="filmstrip" id="filmstrip"><span class="strip-empty">生成キューはここに表示されます</span></div>
+      <div class="status" id="status">待機中です。</div>
+    </section>
+  </div>
+
+  <!-- 右:ギャラリー -->
+  <section>
+    <div class="gallery-head">
+      <h2>完成ギャラリー(<span id="galCount">0</span>枚・入れた順)</h2>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-gold" id="shareBtn">📤 まとめて共有</button>
+        <button class="btn btn-ghost" id="zipBtn">📦 ZIP保存</button>
+        <button class="btn btn-ghost" id="clearBtn">🗑 クリア</button>
+      </div>
+    </div>
+    <div class="gallery" id="gallery"></div>
+    <div class="empty" id="emptyState">
+      <b>まだ画像がありません</b>
+      左の設定を入れて「スタート」を押すと、生成→カット→保存まで<br>自動で進み、完成品がここに順番どおり並びます。
+    </div>
+  </section>
+</main>
+
+<div class="lightbox" id="lightbox">
+  <img id="lightboxImg" alt="拡大画像">
+  <div class="cap">📱 iPhoneはこの画像を<b>長押し</b>→「"写真"に追加」で写真アプリに保存できます(タップで閉じる)</div>
+</div>
+
+<script>
+"use strict";
+
+/* ===== ZIP(store方式・UTF-8名対応) ===== */
+var CRC_TABLE=(function(){var t=new Uint32Array(256);for(var n=0;n<256;n++){var c=n;for(var k=0;k<8;k++){c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);}t[n]=c>>>0;}return t;})();
+function crc32(b){var c=0xFFFFFFFF;for(var i=0;i<b.length;i++){c=CRC_TABLE[(c^b[i])&0xFF]^(c>>>8);}return (c^0xFFFFFFFF)>>>0;}
+function u16(n){return [n&255,(n>>>8)&255];}
+function u32(n){return [n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255];}
+function dosDateTime(){var d=new Date();return {t:(d.getHours()<<11)|(d.getMinutes()<<5)|Math.floor(d.getSeconds()/2), d:((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate()};}
+function buildZip(files){
+  var enc=new TextEncoder(),F=0x0800,dd=dosDateTime(),local=[],central=[],off=0;
+  files.forEach(function(f){
+    var nb=enc.encode(f.name),crc=crc32(f.bytes),sz=f.bytes.length;
+    var lh=[].concat(u32(0x04034b50),u16(20),u16(F),u16(0),u16(dd.t),u16(dd.d),u32(crc),u32(sz),u32(sz),u16(nb.length),u16(0));
+    var la=new Uint8Array(lh.length+nb.length+sz);la.set(lh,0);la.set(nb,lh.length);la.set(f.bytes,lh.length+nb.length);local.push(la);
+    var ch=[].concat(u32(0x02014b50),u16(20),u16(20),u16(F),u16(0),u16(dd.t),u16(dd.d),u32(crc),u32(sz),u32(sz),u16(nb.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(off));
+    var ca=new Uint8Array(ch.length+nb.length);ca.set(ch,0);ca.set(nb,ch.length);central.push(ca);off+=la.length;
+  });
+  var cs=0;central.forEach(function(c){cs+=c.length;});
+  var eocd=new Uint8Array([].concat(u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(cs),u32(off),u16(0)));
+  var out=new Uint8Array(off+cs+eocd.length),p=0;
+  local.forEach(function(a){out.set(a,p);p+=a.length;});
+  central.forEach(function(a){out.set(a,p);p+=a.length;});
+  out.set(eocd,p);return out;
+}
+
+(function(){
+  var $=function(id){return document.getElementById(id);};
+  var apikey=$('apikey'),promptsEl=$('prompts'),countEl=$('count'),aspectEl=$('aspect'),
+      modelEl=$('model'),intervalEl=$('interval'),saveModeEl=$('saveMode'),
+      startBtn=$('startBtn'),stopBtn=$('stopBtn'),filmstrip=$('filmstrip'),statusEl=$('status'),
+      gallery=$('gallery'),emptyState=$('emptyState'),galCount=$('galCount'),
+      lightbox=$('lightbox'),lightboxImg=$('lightboxImg'),cropOn=$('cropOn');
+
+  var sl={T:{i:$('cutT'),o:$('cutTOut')},B:{i:$('cutB'),o:$('cutBOut')},L:{i:$('cutL'),o:$('cutLOut')},R:{i:$('cutR'),o:$('cutROut')}};
+  Object.keys(sl).forEach(function(k){
+    sl[k].i.addEventListener('input',function(){sl[k].o.textContent=sl[k].i.value+"%";});
+  });
+  document.querySelectorAll('.preset-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var p=btn.getAttribute('data-p');
+      var v=p==='std'?[22,25,3,3]:p==='br'?[0,10,0,12]:p==='bl'?[0,10,12,0]:[0,0,0,0];
+      sl.T.i.value=v[0];sl.B.i.value=v[1];sl.L.i.value=v[2];sl.R.i.value=v[3];
+      Object.keys(sl).forEach(function(k){sl[k].o.textContent=sl[k].i.value+"%";});
+    });
+  });
+  function pct(k){return parseInt(sl[k].i.value,10)/100;}
+
+  try{
+    var saved=localStorage.getItem('gemini_api_key');
+    if(saved) apikey.value=saved;
+    apikey.addEventListener('change',function(){try{localStorage.setItem('gemini_api_key',apikey.value.trim());}catch(e){}});
+  }catch(e){}
+
+  var running=false, results=[]; /* {name, blob, url, prompt, idx} 入れた順のまま */
+
+  function setStatus(html){statusEl.innerHTML=html;}
+  function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
+  function esc(s){return s.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function pad(n){return String(n).padStart(3,'0');}
+
+  /* ---- プロンプト解析(コードブロック丸ごと貼り付け対応) ----
+     空行区切りの複数行ブロックがあれば「空行ごとに1プロンプト」、
+     なければ「1行=1プロンプト」。```や番号・見出しは自動除去。 */
+  function cleanBlock(s){
+    return s
+      .replace(/^```[a-zA-Z]*\s*$/gm,'')                 /* コードフェンス行を除去 */
+      .replace(/^(プロンプト|prompt)\s*[0-9０-９]*\s*[:：.．]?\s*$/gim,'') /* 見出しだけの行を除去 */
+      .split('\n').map(function(l){
+        return l.replace(/^\s*(?:[0-9０-９]+[\.．\)）:：]|[-・*#>]+)\s*/,'').trim(); /* 行頭の番号・記号を除去 */
+      }).join('\n')
+      .replace(/^\s+|\s+$/g,'');
+  }
+  function parsePrompts(text){
+    var t=text.replace(/```[a-zA-Z]*/g,'').replace(/\r/g,'');
+    /* 最優先: 「---」「===」「🙂(絵文字のみ)」だけの行を明示的な区切りとして扱う */
+    var DELIM=/^\s*(?:-{3,}|={3,}|[🙂😀😊✂️⭐️★☆●◆■]+)\s*$/u;
+    var lines=t.split('\n');
+    var hasDelim=lines.some(function(l){return DELIM.test(l)&&l.trim().length>0;});
+    var prompts;
+    if(hasDelim){
+      var blocks=[],cur=[];
+      lines.forEach(function(l){
+        if(DELIM.test(l)&&l.trim().length>0){blocks.push(cur.join('\n'));cur=[];}
+        else cur.push(l);
+      });
+      blocks.push(cur.join('\n'));
+      prompts=blocks.map(cleanBlock).filter(function(b){return b.trim().length>0;})
+        .map(function(b){return b.split('\n').map(function(l){return l.trim();}).filter(Boolean).join(' ');});
+    }else{
+      /* 区切り記号がなければ従来どおり: 空行区切りの複数行ブロック or 1行=1プロンプト */
+      var blocks2=t.split(/\n\s*\n+/).map(cleanBlock).filter(function(b){return b.trim().length>0;});
+      var hasMultiLineBlock=blocks2.some(function(b){return b.indexOf('\n')!==-1;});
+      if(blocks2.length>1&&hasMultiLineBlock){
+        prompts=blocks2.map(function(b){return b.split('\n').map(function(l){return l.trim();}).filter(Boolean).join(' ');});
+      }else{
+        prompts=t.split('\n').map(function(l){return cleanBlock(l);}).filter(function(l){return l.trim().length>0;});
+      }
+    }
+    return prompts.map(function(p){return p.trim();}).filter(function(p){return p.length>0;});
+  }
+  var parseInfo=$('parseInfo');
+  function updateParseInfo(){
+    var n=parsePrompts(promptsEl.value).length;
+    parseInfo.textContent=n?('✓ '+n+'個のプロンプトとして認識中(上から順に生成します)'):'';
+    parseInfo.style.color=n?'var(--ok)':'';
+  }
+  promptsEl.addEventListener('input',updateParseInfo);
+
+  function buildQueue(){
+    var lines=parsePrompts(promptsEl.value);
+    var n=Math.max(1,Math.min(10,parseInt(countEl.value)||1));
+    var q=[];
+    lines.forEach(function(p){for(var i=0;i<n;i++)q.push(p);});
+    return q; /* 上から順=入れた順 */
+  }
+
+  function renderStrip(queue,doneIdx,activeIdx,errs){
+    filmstrip.innerHTML='';
+    if(!queue.length){filmstrip.innerHTML='<span class="strip-empty">生成キューはここに表示されます</span>';return;}
+    queue.forEach(function(_,i){
+      var f=document.createElement('div');
+      f.className='frame'+(errs.has(i)?' error':(i<doneIdx?' done':(i===activeIdx?' active':'')));
+      f.title=queue[i];filmstrip.appendChild(f);
+    });
+  }
+
+  /* ---- Gemini生成 ---- */
+  var ALT_MODEL={'gemini-3.1-flash-image':'gemini-2.5-flash-image','gemini-2.5-flash-image':'gemini-3.1-flash-image'};
+  function generateOne(prompt,model){
+    var body={
+      contents:[{parts:[{text:prompt}]}],
+      generationConfig:{responseModalities:["TEXT","IMAGE"],imageConfig:{aspectRatio:aspectEl.value}}
+    };
+    return fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-goog-api-key':apikey.value.trim()},
+      body:JSON.stringify(body)
+    }).then(function(res){
+      if(!res.ok){return res.json().catch(function(){return {};}).then(function(e){throw new Error((e.error&&e.error.message)||('HTTP '+res.status));});}
+      return res.json();
+    }).then(function(data){
+      var parts=(data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts)||[];
+      var img=null;
+      for(var i=0;i<parts.length;i++){if(parts[i].inlineData||parts[i].inline_data){img=parts[i].inlineData||parts[i].inline_data;break;}}
+      if(!img) throw new Error('画像が返されませんでした');
+      return {mime:img.mimeType||img.mime_type||'image/png', b64:img.data};
+    });
+  }
+  /* 自動リトライ: レート制限→30秒待って最大2回 / モデル廃止→もう片方に自動切替 / その他→5秒後に1回 */
+  async function tryGenerate(p,label){
+    var model=modelEl.value, rateTries=0, plainTries=0, triedAlt=false;
+    while(true){
+      if(!running) throw new Error('停止しました');
+      try{ return await generateOne(p,model); }
+      catch(e){
+        var msg=e.message||'';
+        if(/quota|rate|429|resource|exhaust/i.test(msg)&&rateTries<2){
+          rateTries++;
+          setStatus(label+' レート制限のため30秒待機して再試行('+rateTries+'/2)…');
+          await sleep(30000);continue;
+        }
+        if(/not\s?found|404|deprecat|no longer|unsupported/i.test(msg)&&!triedAlt&&ALT_MODEL[model]){
+          triedAlt=true;model=ALT_MODEL[model];
+          setStatus(label+' モデルが利用できないため「'+model+'」に自動切替して再試行…');
+          continue;
+        }
+        if(plainTries<1){
+          plainTries++;
+          setStatus(label+' エラーのため5秒後にもう一度だけ試します…<br><small>'+esc(msg.slice(0,80))+'</small>');
+          await sleep(5000);continue;
+        }
+        throw e;
+      }
+    }
+  }
+
+  /* ---- 自動ロゴカット(保存用blob+表示用サムネの両方を返す) ---- */
+  function cropB64(mime,b64){
+    return new Promise(function(res,rej){
+      var im=new Image();
+      im.onload=function(){
+        var w=im.naturalWidth,h=im.naturalHeight;
+        var top=0,bot=0,left=0,right=0;
+        if(cropOn.checked){
+          top=Math.round(h*pct('T'));bot=Math.round(h*pct('B'));
+          left=Math.round(w*pct('L'));right=Math.round(w*pct('R'));
+        }
+        var sw=Math.max(1,w-left-right),sh=Math.max(1,h-top-bot);
+        var c=document.createElement('canvas');c.width=sw;c.height=sh;
+        c.getContext('2d').drawImage(im,left,top,sw,sh,0,0,sw,sh);
+        /* ギャラリー表示は縮小サムネにしてメモリを節約 */
+        var m=Math.max(sw,sh),s=m>420?420/m:1;
+        var tc=document.createElement('canvas');
+        tc.width=Math.max(1,Math.round(sw*s));tc.height=Math.max(1,Math.round(sh*s));
+        tc.getContext('2d').drawImage(c,0,0,tc.width,tc.height);
+        var thumb=tc.toDataURL('image/jpeg',0.8);
+        c.toBlob(function(blob){
+          if(!blob){rej(new Error('変換失敗'));return;}
+          res({blob:blob,thumb:thumb});
+        },'image/png');
+      };
+      im.onerror=function(){rej(new Error('画像の読み込みに失敗'));};
+      im.src='data:'+mime+';base64,'+b64;
+    });
+  }
+
+  /* ---- 自動保存 ---- */
+  var dirHandle=null;
+  var FOLDER_OK=!!window.showDirectoryPicker;
+  if(!FOLDER_OK){
+    var fOpt=saveModeEl.querySelector('option[value="folder"]');
+    if(fOpt)fOpt.remove(); /* 非対応ブラウザでは選択肢から外す */
+  }
+  async function saveToFolder(blob,name){
+    var fh=await dirHandle.getFileHandle(name,{create:true});
+    var w=await fh.createWritable();
+    await w.write(blob);await w.close();
+  }
+  function autoDownload(blob,name){
+    var url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=name;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},1500);
+  }
+  function blobToBytes(blob){
+    return new Promise(function(res,rej){
+      var r=new FileReader();
+      r.onload=function(){res(new Uint8Array(r.result));};
+      r.onerror=function(){rej(new Error('読み取り失敗'));};
+      r.readAsArrayBuffer(blob);
+    });
+  }
+  function saveZip(){
+    if(!results.length)return Promise.resolve();
+    setStatus('ZIP作成中…');
+    var files=[],i=0;
+    return new Promise(function(resolve){
+      function next(){
+        if(i>=results.length){
+          var zb=buildZip(files);
+          autoDownload(new Blob([zb],{type:'application/zip'}),'gemini_cropped_'+new Date().toISOString().slice(0,10)+'.zip');
+          resolve();return;
+        }
+        blobToBytes(results[i].blob).then(function(bytes){
+          files.push({name:results[i].name,bytes:bytes});
+          i++;setTimeout(next,0);
+        }).catch(function(){i++;setTimeout(next,0);});
+      }
+      next();
+    });
+  }
+
+  /* ---- ギャラリー(入れた順に末尾へ追加・表示はサムネで軽量) ---- */
+  var lbUrl=null;
+  function addToGallery(entry){
+    emptyState.style.display='none';
+    galCount.textContent=results.length;
+    var item=document.createElement('div');item.className='g-item';
+    item.innerHTML='<img src="'+entry.thumb+'" alt="'+esc(entry.prompt)+'" loading="lazy">'+
+      '<div class="g-meta"><span class="n">#'+entry.idx+'</span><span class="p">'+esc(entry.prompt)+'</span></div>'+
+      '<div class="g-actions"><button class="btn btn-ghost dl">保存</button></div>';
+    item.querySelector('img').addEventListener('click',function(){
+      if(lbUrl)URL.revokeObjectURL(lbUrl);
+      lbUrl=URL.createObjectURL(entry.blob); /* 拡大時だけ原寸を展開 */
+      lightboxImg.src=lbUrl;lightbox.classList.add('show');
+    });
+    item.querySelector('.dl').addEventListener('click',function(){autoDownload(entry.blob,entry.name);});
+    gallery.appendChild(item); /* prependしない=順番維持 */
+    if(results.length>0&&results.length%60===0){
+      setStatus('💡 '+results.length+'枚たまりました。メモリ節約のため一度保存してクリアするのがおすすめです。');
+    }
+  }
+
+  /* ---- メインパイプライン ---- */
+  var failedPrompts=[],retryBtn=$('retryBtn'),hasUnsaved=false;
+  function run(){
+    var queue=buildQueue();
+    runQueue(queue,false);
+  }
+  function runQueue(queue,isRetry){
+    if(!apikey.value.trim()){setStatus('<span class="err">APIキーを入力してください。</span>');apikey.focus();return;}
+    if(!queue.length){setStatus('<span class="err">プロンプトを1つ以上入力してください。</span>');promptsEl.focus();return;}
+
+    running=true;startBtn.disabled=true;stopBtn.style.display='block';retryBtn.style.display='none';
+    if(!isRetry)failedPrompts=[];
+    var errs=new Set();
+    var wait=Math.max(0,parseInt(intervalEl.value)||0)*1000;
+    var mode=saveModeEl.value;
+
+    (async function(){
+      /* フォルダ保存モード: 最初に1回だけ保存先を選ぶ */
+      if(mode==='folder'){
+        try{
+          if(!dirHandle)dirHandle=await window.showDirectoryPicker({mode:'readwrite'});
+        }catch(e){
+          setStatus('<span class="err">フォルダが選ばれなかったため、ZIP保存に切り替えます。</span>');
+          mode='zip';saveModeEl.value='zip';
+          await sleep(1200);
+        }
+      }
+      for(var i=0;i<queue.length;i++){
+        if(!running)break;
+        renderStrip(queue,i,i,errs);
+        var p=queue[i];
+        var label='<b>'+(i+1)+' / '+queue.length+'</b>';
+        setStatus('生成中… '+label+'<br>「'+esc(p.slice(0,40))+(p.length>40?'…':'')+'」');
+        try{
+          var gen=await tryGenerate(p,label);
+          setStatus('カット処理中… '+label);
+          var out=await cropB64(gen.mime,gen.b64);
+          var idx=results.length+1;
+          var name=pad(idx)+'_'+p.slice(0,20).replace(/[\\/:*?"<>|\s]/g,'_')+'_cropped.png';
+          var entry={name:name,blob:out.blob,thumb:out.thumb,prompt:p,idx:idx};
+          results.push(entry);hasUnsaved=(mode==='none');
+          addToGallery(entry);
+          if(mode==='each'){autoDownload(out.blob,name);}
+          else if(mode==='folder'&&dirHandle){
+            try{await saveToFolder(out.blob,name);}
+            catch(e){autoDownload(out.blob,name);setStatus('フォルダ書き込みに失敗したため通常ダウンロードしました');}
+          }
+          setStatus('<span class="ok">✓ #'+idx+' 完成</span>(生成→カット'+(mode!=='none'?'→保存':'')+' 完了)');
+        }catch(e){
+          if(!running)break;
+          errs.add(i);failedPrompts.push(p);
+          setStatus('<span class="err">エラー('+(i+1)+'枚目): '+esc(e.message)+'</span><br>次に進みます…');
+          await sleep(1500);
+        }
+        if(i<queue.length-1&&running&&wait>0){
+          renderStrip(queue,i+1,-1,errs);
+          setStatus('次の生成まで '+(wait/1000)+' 秒待機中…('+(i+1)+' / '+queue.length+' 完了)');
+          await sleep(wait);
+        }
+      }
+      renderStrip(queue,queue.length,-1,errs);
+      var okCount=queue.length-errs.size;
+      if(running&&mode==='zip'&&okCount>0){await saveZip();hasUnsaved=false;}
+      var doneMsg=running
+        ?'<span class="ok">すべて完了!</span> '+okCount+'枚を生成→カット'+(mode!=='none'?'→保存':'')+'しました'+(errs.size?'(<span class="err">エラー'+errs.size+'件</span>)':'')+'。'
+        :'停止しました。';
+      if(failedPrompts.length&&running){
+        doneMsg+='<br>失敗した'+failedPrompts.length+'枚は下のボタンでやり直せます。';
+        retryBtn.textContent='↻ 失敗した'+failedPrompts.length+'枚だけ再生成';
+        retryBtn.style.display='block';
+      }
+      setStatus(doneMsg);
+      running=false;startBtn.disabled=false;stopBtn.style.display='none';
+    })();
+  }
+  retryBtn.addEventListener('click',function(){
+    var q=failedPrompts.slice();failedPrompts=[];
+    runQueue(q,true);
+  });
+
+  /* 未保存の画像があるままページを閉じそうなときに警告 */
+  window.addEventListener('beforeunload',function(e){
+    if(running||(hasUnsaved&&results.length)){e.preventDefault();e.returnValue='';}
+  });
+
+  /* ---- まとめて共有(iPhone→LINE・写真) ---- */
+  var shareBtn=$('shareBtn');
+  if(!(navigator.share&&navigator.canShare)){shareBtn.style.display='none';}
+  shareBtn.addEventListener('click',function(){
+    if(!results.length)return;
+    var files=results.map(function(r){return new File([r.blob],r.name,{type:'image/png'});});
+    if(!navigator.canShare({files:files})){setStatus('<span class="err">この環境では複数共有に非対応です。ZIP保存をお使いください。</span>');return;}
+    navigator.share({files:files}).then(function(){hasUnsaved=false;setStatus('<span class="ok">✓ 共有しました</span>');})
+      .catch(function(err){if(!(err&&err.name==='AbortError'))setStatus('<span class="err">共有できませんでした。ZIP保存をお使いください。</span>');});
+  });
+
+  $('keyClear').addEventListener('click',function(){
+    apikey.value='';
+    try{localStorage.removeItem('gemini_api_key');}catch(e){}
+    setStatus('APIキーをこのブラウザから消去しました。');
+  });
+  $('zipBtn').addEventListener('click',function(){if(results.length)saveZip().then(function(){hasUnsaved=false;setStatus('<span class="ok">✓ ZIP保存しました</span>');});});
+  $('clearBtn').addEventListener('click',function(){
+    if(results.length&&!confirm('ギャラリーをクリアしますか?(保存済みのファイルは消えません)'))return;
+    if(lbUrl){URL.revokeObjectURL(lbUrl);lbUrl=null;}
+    results=[];hasUnsaved=false;gallery.innerHTML='';galCount.textContent='0';emptyState.style.display='block';
+    retryBtn.style.display='none';failedPrompts=[];
+    renderStrip([],0,-1,new Set());setStatus('待機中です。');
+  });
+
+  /* ---- AIプロンプト自動作成(同じAPIキーでテキストモデルを利用) ---- */
+  var aiGenBtn=$('aiGenBtn'),themeEl=$('theme'),themeCountEl=$('themeCount');
+  aiGenBtn.addEventListener('click',function(){
+    if(!apikey.value.trim()){setStatus('<span class="err">先にAPIキーを入力してください。</span>');apikey.focus();return;}
+    var theme=themeEl.value.trim();
+    if(!theme){setStatus('<span class="err">テーマを入力してください。</span>');themeEl.focus();return;}
+    var n=parseInt(themeCountEl.value,10)||5;
+    aiGenBtn.disabled=true;aiGenBtn.textContent='✨ 作成中…';
+    var instruction='あなたは画像生成AI用のプロンプト作成の専門家です。テーマ「'+theme+'」に沿った、画像生成AI向けの高品質なプロンプトを'+n+'個、日本語で作成してください。それぞれ構図・スタイル・雰囲気を具体的に描写し、互いに違うバリエーションにすること。出力は1行に1プロンプトのみ。番号・記号・見出し・説明文は一切付けないこと。';
+    fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-goog-api-key':apikey.value.trim()},
+      body:JSON.stringify({contents:[{parts:[{text:instruction}]}]})
+    }).then(function(res){
+      if(!res.ok){return res.json().catch(function(){return {};}).then(function(e){throw new Error((e.error&&e.error.message)||('HTTP '+res.status));});}
+      return res.json();
+    }).then(function(data){
+      var parts=(data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts)||[];
+      var text=parts.map(function(p){return p.text||'';}).join('\n');
+      var lines=text.split('\n').map(function(s){return s.replace(/^[\s\d\.\)\-・*#]+/,'').trim();}).filter(function(s){return s.length>4;}).slice(0,n);
+      if(!lines.length)throw new Error('プロンプトを取り出せませんでした。もう一度お試しください');
+      var cur=promptsEl.value.trim();
+      promptsEl.value=(cur?cur+'\n':'')+lines.join('\n'); /* 既存の下に順番どおり追記 */
+      updateParseInfo();
+      setStatus('<span class="ok">✓ プロンプトを'+lines.length+'個 追加しました</span>(そのままスタートできます)');
+    }).catch(function(e){
+      setStatus('<span class="err">プロンプト作成エラー: '+esc(e.message)+'</span>');
+    }).finally(function(){
+      aiGenBtn.disabled=false;aiGenBtn.textContent='✨ AIにプロンプトを作らせる';
+    });
+  });
+
+  startBtn.addEventListener('click',run);
+  stopBtn.addEventListener('click',function(){running=false;setStatus('停止しています…');});
+  lightbox.addEventListener('click',function(e){if(e.target!==lightboxImg)lightbox.classList.remove('show');});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')lightbox.classList.remove('show');});
+})();
+</script>
+</body>
+</html>
