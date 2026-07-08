@@ -314,7 +314,8 @@
 
   <div class="cat-row" id="catRow"></div>
 
-  <div style="display:flex;justify-content:flex-end;margin:-6px 0 12px">
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin:-6px 0 12px">
+    <button class="tool-btn" id="copyAllBtn" style="flex:0 0 auto;padding:9px 16px;font-size:12px">⧉ 全体コピー</button>
     <button class="tool-btn" id="multiCopyBtn" style="flex:0 0 auto;padding:9px 16px;font-size:12px">☑ まとめてコピー</button>
   </div>
 
@@ -669,6 +670,7 @@ function sanitize(d){
     fills: (typeof x.fills === "number" && x.fills > 0) ? Math.floor(x.fills) : 0,
     pastes: (typeof x.pastes === "number" && x.pastes > 0) ? Math.floor(x.pastes) : 0,
     ppastes: (typeof x.ppastes === "number" && x.ppastes > 0) ? Math.floor(x.ppastes) : 0,
+    autoMat: (x.autoMat && typeof x.autoMat === "object") ? x.autoMat : null,
     ts: x.ts || 0
   }));
   d.tombstones = Array.isArray(d.tombstones) ? d.tombstones.filter(t=>t && t.id).slice(-100) : [];
@@ -879,6 +881,9 @@ function render(){
       <div class="dc-actions" style="margin-top:8px">
         <button class="dc-act paste wpaste">全体ペースト${d.pastes ? ` <b class="copy-n">${d.pastes}</b>` : ""}</button>
         ${hasBlocks ? `<button class="dc-act paste ppaste">部分ペースト${d.ppastes ? ` <b class="copy-n">${d.ppastes}</b>` : ""}</button>` : ""}
+      </div>
+      <div class="dc-actions" style="margin-top:8px">
+        <button class="dc-act fill matcopy">⚡素材コピー(記事・星データ入り)</button>
       </div>` : `
       <div class="dc-actions">
         <button class="dc-act copy">コピー${d.copies ? ` <b class="copy-n">${d.copies}</b>` : ""}</button>
@@ -887,6 +892,11 @@ function render(){
     el.querySelector(".dc-main").onclick = ()=> openDoc(i);
     el.querySelector(".dc-act.copy").onclick = ()=> copyDoc(i);
     if(hasFields) el.querySelector(".dc-act.fill").onclick = ()=> openFiller(i);
+    if(hasFields){
+      const mb = el.querySelector(".matcopy");
+      mb.onclick = ()=> matCopy(i, false);
+      attachLongPress(mb, ()=> matCopy(i, true)); // 長押しで星座を選び直せる
+    }
     el.querySelector(".wpaste").onclick = ()=> pasteToDoc(i);
     if(hasBlocks) el.querySelector(".ppaste").onclick = ()=> partialPaste(i);
     attachLongPress(el, ()=>{
@@ -1701,28 +1711,47 @@ async function copyWithArticle(){
   toast(`命令書+過去記事(${art.label})をコピーしました(${text.length.toLocaleString()}字)`);
 }
 
-// ---- 連続コピー(命令書+過去記事:押すたびに 牡羊座→牡牛座→… と星座が進む)----
-// 最初のタップで「どの命令書と、どの号の記事か」を選ぶ。以後は押すたびに
-// 「命令書本文+次の星座の過去記事」を連結コピーして前進。「←戻る」で1つ前へ。
-// コピー失敗時は進まない。進み具合は保存され、閉じても続きから。
+// ---- 連続コピー(工程パイプライン:1つの緑ボタンで 生成→検品→修正→次の星座… と全部進む)----
+// 初回タップで「号」と「工程(命令書の並び)」を設定。以後は押すたびに、
+// いまの星座の次の工程の命令書(記事・星データ埋め込み済み)をコピーして前進。
+// 「←戻る」で1つ前へ、緑ボタン長押しでその工程をコピーせずに飛ばす。
+function seqSteps(){
+  const sp = state.seqPos;
+  if(!sp) return [];
+  if(Array.isArray(sp.steps) && sp.steps.length) return sp.steps;
+  if(sp.docId) return [sp.docId]; // 旧形式(1命令書のみ)との互換
+  return [];
+}
+function seqDocOf(id){ return state.docs.find(d=> d.id === id && d.body && d.body.trim()) || null; }
+function seqCfgOf(d){
+  if(d.autoMat) return d.autoMat;
+  const sp = state.seqPos || {};
+  // 旧形式の設定(記事の差し込み先・星データ先)をその場で変換
+  return { art: sp.field || "__END__", artTitleOnly: false, sky: sp.dataField || null };
+}
 async function seqItems(){
   const sp = state.seqPos;
-  if(!sp || !sp.docId || !sp.month) return null;
+  if(!sp || !sp.month) return null;
+  const steps = seqSteps().map(id=> seqDocOf(id)).filter(Boolean);
+  if(!steps.length) return null;
   const av = await loadArticleVault();
   if(!av || !av.months[sp.month]) return null;
   const signs = av.months[sp.month].signs || {};
-  return ART_SIGNS.filter(([id])=> signs[id] && signs[id].body)
-    .map(([id, nm])=> ({ id, label: nm, body: signs[id].body }));
-}
-function seqDoc(){
-  const sp = state.seqPos;
-  if(!sp || !sp.docId) return null;
-  return state.docs.find(d=> d.id === sp.docId && d.body && d.body.trim()) || null;
+  const marks = ["①","②","③","④","⑤"];
+  const items = [];
+  ART_SIGNS.forEach(([id, nm])=>{
+    if(!(signs[id] && signs[id].body)) return;
+    steps.forEach((doc, si)=>{
+      items.push({ signId: id, signNm: nm, doc,
+        label: `${nm} ${steps.length > 1 ? (marks[si] || "") : ""}${doc.name}` });
+    });
+  });
+  return items.length ? items : null;
 }
 function seqIdx(items){
   const sp = state.seqPos;
   let idx = sp.idx || 0;
-  // 途中で記事が増減しても「次の星座名」で位置を探し直す(番号ズレ防止)
+  // 途中で記事・命令書が増減しても「次の項目名」で位置を探し直す(番号ズレ防止)
   if(sp.label && (!items[idx] || items[idx].label !== sp.label)){
     const f = items.findIndex(x=> x.label === sp.label);
     if(f !== -1) idx = f;
@@ -1730,11 +1759,27 @@ function seqIdx(items){
   if(idx > items.length) idx = items.length;
   return idx < 0 ? 0 : idx;
 }
+// 差し込み欄のない命令書用の簡易設定
+async function matSetupNoFields(d){
+  const v = await _modal({
+    title: `${d.name}:入れ方(差し込み欄なし)`,
+    buttons: [
+      { label: "末尾に 記事+星データ を付ける", value: "both", style: "ghost" },
+      { label: "末尾に 記事だけ 付ける", value: "art", style: "ghost" },
+      { label: "何も付けない(本文のみコピー)", value: "none", style: "ghost" },
+      { label: "キャンセル", value: null }
+    ]
+  });
+  if(v === null) return null;
+  d.autoMat = { art: v === "none" ? null : "__END__", artTitleOnly: false, sky: v === "both" ? "__END__" : null };
+  save(true);
+  return d.autoMat;
+}
 async function seqSetup(){
   const docs = state.docs.filter(d=> d.body && d.body.trim());
   if(!docs.length){ toast("先に命令書を格納してください", true); return false; }
   const did = await _modal({
-    title: "連続コピー:どの命令書と一緒に?",
+    title: "工程①の命令書は?(通常は生成命令書)",
     buttons: docs.slice(0, 20).map(d=>({ label: d.name + (d.ver ? " " + d.ver : ""), value: d.id, style: "ghost" }))
       .concat([{ label: "キャンセル", value: null }])
   });
@@ -1747,7 +1792,7 @@ async function seqSetup(){
   }).sort().reverse().slice(0, 24);
   if(!monthKeys.length){ toast("記事保管庫にまだ記事がありません", true); return false; }
   const mk = await _modal({
-    title: "どの号の記事を順番に付ける?",
+    title: "どの号の記事を使う?",
     buttons: monthKeys.map(k=>{
       const s = av.months[k].signs;
       const n = Object.keys(s).filter(id=> s[id] && s[id].body).length;
@@ -1755,36 +1800,33 @@ async function seqSetup(){
     }).concat([{ label: "キャンセル", value: null }])
   });
   if(!mk) return false;
-  // 命令書に差し込み欄(目印)があれば、記事の入れ方を選ぶ
-  const doc = docs.find(x=> x.id === did);
-  const fields = doc ? detectFields(doc.body) : [];
-  let fieldName = null;
-  if(fields.length){
-    const v = await _modal({
-      title: "記事をどこに入れる?",
-      buttons: fields.map(f=>({ label: `「${f.name}」の位置に差し込む`, value: "F:" + f.name, style: "ghost" }))
-        .concat([{ label: "末尾にそのまま付ける", value: "END", style: "ghost" }, { label: "キャンセル", value: null }])
-    });
-    if(v === null) return false;
-    if(v !== "END") fieldName = v.slice(2);
+  const steps = [];
+  // 工程①の入れ方(未設定なら聞く。設定済みならそのまま使う)
+  const d0 = docs.find(x=> x.id === did);
+  if(!d0.autoMat){
+    const c = detectFields(d0.body).length ? await matSetup(d0) : await matSetupNoFields(d0);
+    if(!c) return false;
   }
-  // 翌月の星データも一緒に入れるか(記事の号+1ヶ月のデータを自動で探す)
-  let dataField = null;
-  const nk = nextMonthKey(mk);
-  if(nk){
-    const dv = await _modal({
-      title: `翌月(${artLabelOf(nk).replace("号","")})の星データも入れる?`,
-      msg: "記事保管庫の各号に格納した「星データ」から、過去記事の翌月分を自動で探して一緒にコピーします。",
-      buttons: fields.filter(f=> f.name !== fieldName).map(f=>({ label: `「${f.name}」の位置に差し込む`, value: "F:" + f.name, style: "ghost" }))
-        .concat([
-          { label: "末尾に付ける", value: "END", style: "ghost" },
-          { label: "入れない", value: "NONE", style: "ghost" }
-        ])
+  steps.push(did);
+  // 工程②以降を任意で追加(検品・修正など)
+  while(steps.length < 5){
+    const rest = docs.filter(x=> !steps.includes(x.id));
+    if(!rest.length) break;
+    const nx = await _modal({
+      title: `工程${steps.length + 1}を追加する?(現在${steps.length}工程)`,
+      msg: "追加すると、同じ緑ボタンで各星座ごとに 工程①→②→③… の順にコピーされます。",
+      buttons: rest.slice(0, 20).map(x=>({ label: "追加:" + x.name + (x.ver ? " " + x.ver : ""), value: x.id, style: "ghost" }))
+        .concat([{ label: "これで完了", value: "__DONE__", style: "primary" }])
     });
-    if(dv === "END") dataField = "__END__";
-    else if(dv && dv !== "NONE" && dv !== null) dataField = dv.slice(2);
+    if(nx === "__DONE__" || nx === null) break;
+    const dx = docs.find(x=> x.id === nx);
+    if(!dx.autoMat){
+      const c = detectFields(dx.body).length ? await matSetup(dx) : await matSetupNoFields(dx);
+      if(!c) continue; // 設定キャンセル=この工程は追加しない
+    }
+    steps.push(nx);
   }
-  state.seqPos = { docId: did, month: mk, idx: 0, label: null, field: fieldName, dataField: dataField };
+  state.seqPos = { month: mk, idx: 0, label: null, steps };
   save(true);
   return true;
 }
@@ -1794,49 +1836,49 @@ async function renderSeq(){
   if(selectMode || reorderMode){ bar.style.display = "none"; return; }
   bar.style.display = "flex";
   const btn = document.getElementById("seqMainBtn");
-  const d = seqDoc();
-  const items = d ? await seqItems() : null;
-  if(!d || !items || !items.length){
-    btn.innerHTML = `▶ 連続コピー(命令書+過去記事)をはじめる<small>タップして命令書と号を選ぶと、押すたびに 牡羊座→牡牛座→… と順にコピー</small>`;
+  const items = state.seqPos ? await seqItems() : null;
+  if(!items){
+    btn.innerHTML = `▶ 連続コピー(全工程)をはじめる<small>タップして号と工程(生成→検品→修正など)を選ぶと、以後は押すだけで全部順番にコピー</small>`;
     document.getElementById("seqBackBtn").style.opacity = ".35";
     return;
   }
+  const steps = seqSteps().map(id=> seqDocOf(id)).filter(Boolean);
   const idx = seqIdx(items);
-  const head = `${esc(d.name)}+${esc(artLabelOf(state.seqPos.month))}`;
+  const head = `${esc(artLabelOf(state.seqPos.month))}・${steps.length}工程`;
   if(idx >= items.length){
-    btn.innerHTML = `✔ ${head}:全星座コピー済み<small>タップで最初からもう一周。「変更」で別の命令書/号へ</small>`;
+    btn.innerHTML = `✔ ${head}:すべてコピー済み<small>タップで次の号へ/もう一周。「変更」で設定し直し</small>`;
   }else{
-    btn.innerHTML = `▶ ${head}<br>次は「${esc(items[idx].label)}」<small>${idx+1}/${items.length}・押すたびに 命令書+その星座の記事 をコピー</small>`;
+    btn.innerHTML = `▶ ${head}<br>次は「${esc(items[idx].label)}」<small>${idx+1}/${items.length}・押すとコピーして次へ。長押しで飛ばす</small>`;
   }
   document.getElementById("seqBackBtn").style.opacity = idx > 0 ? "1" : ".35";
 }
 async function seqCopy(){
-  const d = seqDoc();
-  const items = d ? await seqItems() : null;
-  if(!d || !items || !items.length){
+  const sp = state.seqPos;
+  const items = sp ? await seqItems() : null;
+  if(!items){
     if(await seqSetup()) renderSeq();
     return;
   }
   const idx = seqIdx(items);
   if(idx >= items.length){
     // 次の号(現在の号+1ヶ月)に記事があれば、設定そのままで1タップ切替を最優先で出す
-    const nextK = nextMonthKey(state.seqPos.month);
+    const nextK = nextMonthKey(sp.month);
     const av2 = await loadArticleVault();
     const hasNext = !!(nextK && av2 && av2.months[nextK] &&
       Object.keys((av2.months[nextK].signs)||{}).some(id=> av2.months[nextK].signs[id] && av2.months[nextK].signs[id].body));
     const btns = [];
-    if(hasNext) btns.push({ label: `${artLabelOf(nextK)}に進む(命令書・差し込み先はそのまま)`, value: "next", style: "primary" });
+    if(hasNext) btns.push({ label: `${artLabelOf(nextK)}に進む(工程・入れ方はそのまま)`, value: "next", style: "primary" });
     btns.push(
-      { label: "別の号・別の命令書に変更", value: "chg", style: hasNext ? "ghost" : "primary" },
+      { label: "別の号・工程に変更", value: "chg", style: hasNext ? "ghost" : "primary" },
       { label: "この号を最初からもう一周", value: "again", style: "ghost" },
       { label: "キャンセル", value: null }
     );
-    const v = await _modal({ title: "この号は全星座コピー済みです", buttons: btns });
+    const v = await _modal({ title: "この号は全工程コピー済みです", buttons: btns });
     if(v === "next"){
       state.seqPos.month = nextK;
       state.seqPos.idx = 0; state.seqPos.label = null;
       save(true); renderSeq();
-      toast(`${artLabelOf(nextK)}に切り替えました。押すとコピーを開始します(星データは${artLabelOf(nextMonthKey(nextK)||"").replace("号","")}分を自動使用)`);
+      toast(`${artLabelOf(nextK)}に切り替えました。押すとコピーを開始します`);
     }else if(v === "again"){
       state.seqPos.idx = 0; state.seqPos.label = null;
       save(true); renderSeq();
@@ -1847,58 +1889,26 @@ async function seqCopy(){
     return;
   }
   const it = items[idx];
-  // 翌月の星データ(設定されていれば記事保管庫から自動取得)
-  const nk = nextMonthKey(state.seqPos.month);
-  let skyBody = null, skyWarn = null;
-  if(state.seqPos.dataField && nk){
-    const av = await loadArticleVault();
-    skyBody = artSkyOf(av, nk);
-    if(!skyBody) skyWarn = `⚠ ${artLabelOf(nk)}の星データが記事保管庫に未格納です(記事のみコピーしました)`;
+  const av = await loadArticleVault();
+  const signs = av && av.months[sp.month] && av.months[sp.month].signs;
+  if(!signs || !signs[it.signId] || !signs[it.signId].body){
+    toast("記事が見つかりません。「変更」で設定し直してください", true);
+    return;
   }
-  let mode = "末尾に付けて";
-  const fields = detectFields(d.body);
-  const artTarget = state.seqPos.field ? fields.find(f=> f.name === state.seqPos.field) : null;
-  const skyTarget = (skyBody && state.seqPos.dataField && state.seqPos.dataField !== "__END__")
-    ? fields.find(f=> f.name === state.seqPos.dataField) : null;
-  let base = d.body;
-  if(artTarget || skyTarget){
-    // 選んだ目印の位置に記事/星データを差し込み、他の欄は下書きがあればそれを使う
-    const draft = fillDrafts[d.id];
-    const values = fields.map(f=>{
-      if(artTarget && f.name === state.seqPos.field) return it.body;
-      if(skyTarget && f.name === state.seqPos.dataField) return skyBody;
-      if(draft && Array.isArray(draft.names)){
-        const di = draft.names.indexOf(f.name);
-        if(di !== -1 && draft.values && draft.values[di]) return draft.values[di];
-      }
-      return "";
-    });
-    base = cleanFilledText(applyFields(d.body, fields, values));
-  }
-  let text = base;
-  if(!artTarget){
-    // 記事は差し込み先が無ければ末尾に付ける(目印が消えていた場合の保険も兼ねる)
-    text += "\n\n━━━━━ 過去記事(記事保管庫より:" + artLabelOf(state.seqPos.month) + " " + it.label + ") ━━━━━\n\n" + it.body;
-  }else{
-    mode = "「" + state.seqPos.field + "」に差し込んで";
-  }
-  if(skyBody && state.seqPos.dataField === "__END__"){
-    text += "\n\n━━━━━ 翌月(" + artLabelOf(nk).replace("号","") + ")の天文データ ━━━━━\n\n" + skyBody;
-  }
-  const ok = await copyText(text, null);
+  const r = composeDoc(it.doc, seqCfgOf(it.doc), signs[it.signId].body, it.signNm, sp.month, av);
+  const ok = await copyText(r.text, null);
   if(!ok) return; // コピーできなかったら進まない(飛ばし防止)
-  if(countOnce("c:" + d.id)) d.copies = (d.copies || 0) + 1;
+  if(countOnce("c:" + it.doc.id)) it.doc.copies = (it.doc.copies || 0) + 1;
   state.seqPos.idx = idx + 1;
   state.seqPos.label = items[idx + 1] ? items[idx + 1].label : null;
   save(true);
-  toast(`${it.label}:記事${skyBody ? "+翌月の星データ" : ""}を${mode}コピーしました(${text.length.toLocaleString()}字)`);
-  if(skyWarn) setTimeout(()=> toast(skyWarn, true), 2400);
+  toast(`${it.label}:コピーしました(${r.text.length.toLocaleString()}字)`);
+  if(r.skyWarn) setTimeout(()=> toast(r.skyWarn, true), 2400);
   render();
 }
 async function seqBack(){
-  const d = seqDoc();
-  const items = d ? await seqItems() : null;
-  if(!d || !items || !items.length){ toast("先に緑のボタンで命令書と号を選んでください", true); return; }
+  const items = state.seqPos ? await seqItems() : null;
+  if(!items){ toast("先に緑のボタンで設定してください", true); return; }
   const idx = seqIdx(items);
   if(idx <= 0){ toast("これより前はありません", true); return; }
   state.seqPos.idx = idx - 1;
@@ -1906,6 +1916,17 @@ async function seqBack(){
   save(true);
   renderSeq();
   toast(`1つ戻りました。次は「${items[idx - 1].label}」`);
+}
+async function seqSkip(){
+  const items = state.seqPos ? await seqItems() : null;
+  if(!items) return;
+  const idx = seqIdx(items);
+  if(idx >= items.length) return;
+  state.seqPos.idx = idx + 1;
+  state.seqPos.label = items[idx + 1] ? items[idx + 1].label : null;
+  save(true);
+  renderSeq();
+  toast(`「${items[idx].label}」をコピーせずに飛ばしました`);
 }
 async function seqChange(){
   if(await seqSetup()){ renderSeq(); toast("連続コピーの設定を変更しました"); }
@@ -1945,6 +1966,151 @@ function moveDoc(id, dir){
   render();
 }
 
+// ---- ⚡素材コピー(命令書ごとに設定:過去記事/記事タイトル/翌月星データを埋めて1タップコピー)----
+// 命令書+記事+星データの組み立て(連続コピー・素材コピー共通)
+function composeDoc(d, cfg, artBody, signNm, mk, av){
+  const artText = cfg.artTitleOnly ? firstLineOf(artBody) : artBody;
+  const nk = nextMonthKey(mk);
+  let skyBody = null, skyWarn = null;
+  if(cfg.sky && nk){
+    skyBody = artSkyOf(av, nk);
+    if(!skyBody) skyWarn = `⚠ ${artLabelOf(nk)}の星データが記事保管庫に未格納です`;
+  }
+  const fields = detectFields(d.body);
+  const artTarget = (cfg.art && cfg.art !== "__END__") ? fields.find(f=> f.name === cfg.art) : null;
+  const skyTarget = (skyBody && cfg.sky && cfg.sky !== "__END__") ? fields.find(f=> f.name === cfg.sky) : null;
+  let base = d.body;
+  if(artTarget || skyTarget){
+    const draft = fillDrafts[d.id];
+    const values = fields.map(f=>{
+      if(artTarget && f.name === cfg.art) return artText;
+      if(skyTarget && f.name === cfg.sky) return skyBody;
+      if(draft && Array.isArray(draft.names)){
+        const di = draft.names.indexOf(f.name);
+        if(di !== -1 && draft.values && draft.values[di]) return draft.values[di];
+      }
+      return "";
+    });
+    base = cleanFilledText(applyFields(d.body, fields, values));
+  }
+  let text = base;
+  if(cfg.art && !artTarget){
+    // 末尾指定、または目印が消えていた場合の保険
+    text += "\n\n━━━━━ 過去記事(記事保管庫より:" + artLabelOf(mk) + " " + signNm + (cfg.artTitleOnly ? "・タイトル" : "") + ") ━━━━━\n\n" + artText;
+  }
+  if(skyBody && cfg.sky && !skyTarget){
+    text += "\n\n━━━━━ 翌月(" + artLabelOf(nk).replace("号","") + ")の天文データ ━━━━━\n\n" + skyBody;
+  }
+  return { text, skyWarn };
+}
+function firstLineOf(t){
+  for(const line of String(t||"").split("\n")){ if(line.trim()) return line.trim(); }
+  return "";
+}
+async function matSetup(d){
+  const fields = detectFields(d.body);
+  if(!fields.length){ toast("差し込み項目(目印)がありません", true); return null; }
+  const q1 = await _modal({
+    title: `${d.name}:過去記事の入れ方`,
+    buttons: [
+      { label: "記事の全文を欄に差し込む", value: "full", style: "ghost" },
+      { label: "タイトル行だけを欄に差し込む", value: "title", style: "ghost" },
+      { label: "末尾に全文を付ける", value: "end", style: "ghost" },
+      { label: "記事は入れない", value: "none", style: "ghost" },
+      { label: "キャンセル", value: null }
+    ]
+  });
+  if(q1 === null) return null;
+  let art = null, artTitleOnly = false;
+  if(q1 === "full" || q1 === "title"){
+    const fv = await _modal({
+      title: "どの欄に入れる?",
+      buttons: fields.map(f=>({ label: f.name, value: f.name, style: "ghost" })).concat([{ label: "キャンセル", value: null }])
+    });
+    if(fv === null) return null;
+    art = fv; artTitleOnly = (q1 === "title");
+  }else if(q1 === "end"){ art = "__END__"; }
+  const q3 = await _modal({
+    title: "翌月の星データは?",
+    msg: "記事の号+1ヶ月の星データを記事保管庫から自動で探します。",
+    buttons: fields.filter(f=> f.name !== art).map(f=>({ label: `「${f.name}」に差し込む`, value: "F:" + f.name, style: "ghost" }))
+      .concat([
+        { label: "末尾に付ける", value: "END", style: "ghost" },
+        { label: "入れない", value: "NONE", style: "ghost" }
+      ])
+  });
+  let sky = null;
+  if(q3 === "END") sky = "__END__";
+  else if(q3 && q3 !== "NONE") sky = q3.slice(2);
+  d.autoMat = { art, artTitleOnly, sky };
+  save(true);
+  return d.autoMat;
+}
+async function matCopy(i, forcePick){
+  const d = state.docs[i];
+  if(!d.body || !d.body.trim()){ toast(`${d.name}は未格納です`, true); return; }
+  let cfg = d.autoMat;
+  if(!cfg){
+    cfg = await matSetup(d);
+    if(!cfg) return;
+  }
+  const av = await loadArticleVault();
+  if(!av){ toast("記事保管庫のデータが見つかりません(同じサイトで記事保管庫を開いて保存してください)", true); return; }
+  const monthKeys = Object.keys(av.months).filter(k=>{
+    const s = (av.months[k]||{}).signs || {};
+    return Object.keys(s).some(id=> s[id] && s[id].body);
+  }).sort().reverse().slice(0, 24);
+  if(!monthKeys.length){ toast("記事保管庫にまだ記事がありません", true); return; }
+  // 号:連続コピー(生成)と同じ号を最優先で使う
+  let mk = (state.seqPos && state.seqPos.month && monthKeys.includes(state.seqPos.month)) ? state.seqPos.month
+         : (state.lastMatMonth && monthKeys.includes(state.lastMatMonth)) ? state.lastMatMonth : null;
+  if(!mk){
+    mk = await _modal({
+      title: "どの号の記事を使う?",
+      buttons: monthKeys.map(k=>({ label: artLabelOf(k), value: k, style: "ghost" })).concat([{ label: "キャンセル", value: null }])
+    });
+    if(!mk) return;
+  }
+  state.lastMatMonth = mk;
+  const signs = av.months[mk].signs;
+  const opts = ART_SIGNS.filter(([id])=> signs[id] && signs[id].body);
+  // 連続コピーで直前にコピーした星座を「いまの星座」として先頭候補に(工程数を考慮)
+  let lastId = null;
+  if(state.seqPos && state.seqPos.month === mk && state.seqPos.idx > 0){
+    const nSteps = Math.max(1, seqSteps().map(id=> seqDocOf(id)).filter(Boolean).length);
+    const li = opts[Math.floor((state.seqPos.idx - 1) / nSteps)];
+    if(li) lastId = li[0];
+  }
+  // 連動:いまの星座が分かるなら選択なしで即コピー(星座を変えたい時はボタン長押し)
+  let sid = null;
+  if(!forcePick && lastId) sid = lastId;
+  if(!sid){
+    sid = await _modal({
+      title: `${artLabelOf(mk)}:どの星座?`,
+      buttons: opts.map(([id, nm])=>({ label: nm + (id === lastId ? " ← いまの星座" : ""), value: id, style: id === lastId ? "primary" : "ghost" }))
+        .concat([{ label: "⚙ 入れ方を変更", value: "__CFG__", style: "ghost" }, { label: "キャンセル", value: null }])
+    });
+    if(!sid) return;
+    if(sid === "__CFG__"){
+      const c = await matSetup(d);
+      if(c) toast("入れ方を変更しました。もう一度⚡素材コピーをどうぞ");
+      return;
+    }
+  }
+  const artBody = signs[sid].body;
+  const nmS = (ART_SIGNS.find(([id])=> id === sid)||[])[1] || "";
+  const r = composeDoc(d, cfg, artBody, nmS, mk, av);
+  const text = r.text;
+  const skyWarn = r.skyWarn;
+  const ok = await copyText(text, null);
+  if(!ok) return;
+  if(countOnce("c:" + d.id)) d.copies = (d.copies || 0) + 1;
+  save(true);
+  render();
+  toast(`${d.name}:${nmS}の素材入りでコピーしました(${text.length.toLocaleString()}字)`);
+  if(skyWarn) setTimeout(()=> toast(skyWarn, true), 2400);
+}
+
 // ---- misc ----
 function showOverlay(id){ document.getElementById(id).classList.add("open"); }
 function hideOverlay(id){ document.getElementById(id).classList.remove("open"); }
@@ -1971,6 +2137,7 @@ document.getElementById("eSave").onclick = saveEditor;
 document.getElementById("eDelete").onclick = deleteDoc;
 document.getElementById("undoBtn").onclick = undoPaste;
 document.getElementById("seqMainBtn").onclick = seqCopy;
+attachLongPress(document.getElementById("seqMainBtn"), seqSkip); // 長押し=コピーせず飛ばす
 document.getElementById("seqBackBtn").onclick = seqBack;
 document.getElementById("seqChgBtn").onclick = seqChange;
 document.getElementById("eText").addEventListener("paste", ()=>{
@@ -2012,6 +2179,21 @@ function setSelectMode(on){
   if(on) toast("コピーしたい命令書をタップして選んでください(下の「全選択」で全部)");
 }
 document.getElementById("multiCopyBtn").onclick = ()=> setSelectMode(!selectMode);
+// 全体コピー:いまのカテゴリーの格納済み命令書を全部、1タップで連結コピー
+document.getElementById("copyAllBtn").onclick = async ()=>{
+  const docs = state.docs.filter(d=> d.catId === state.activeCat && d.body && d.body.trim());
+  if(!docs.length){ toast("このカテゴリーに格納済みの命令書がありません", true); return; }
+  const cat = state.cats.find(c=> c.id === state.activeCat);
+  const text = docs.length === 1
+    ? docs[0].body
+    : docs.map(d=> `━━━━━ 命令書:${d.name}${d.ver ? " " + d.ver : ""} ━━━━━\n\n${d.body}`).join("\n\n\n");
+  const ok = await copyText(text, null);
+  if(!ok) return;
+  for(const d of docs){ if(countOnce("c:" + d.id)) d.copies = (d.copies || 0) + 1; }
+  save(true);
+  render();
+  toast(`「${cat ? cat.name : ""}」の${docs.length}件を全体コピーしました(${text.length.toLocaleString()}字)`);
+};
 document.getElementById("selCancelBtn").onclick = ()=> setSelectMode(false);
 document.getElementById("selAllBtn").onclick = ()=>{
   const docs = state.docs.filter(d=>d.catId===state.activeCat && d.body && d.body.trim());
@@ -2412,7 +2594,8 @@ function mergeStates(a, b){
     customMarks: Array.from(new Set([...(a.customMarks||[]), ...(b.customMarks||[])])).slice(0, 50),
     countReset: Math.max(ra, rb),
     seqPos: a.seqPos || null, // 連続コピーの位置はこの端末のものを維持
-    lastSkyMonth: a.lastSkyMonth || null
+    lastSkyMonth: a.lastSkyMonth || null,
+    lastMatMonth: a.lastMatMonth || null
   };
 }
 
