@@ -342,14 +342,27 @@ function buildZip(files){
     return m[aspectEl.value]||[1024,1024];
   }
   function generatePollinations(prompt){
-    var wh=aspectWH();
-    var url='https://gen.pollinations.ai/image/'+encodeURIComponent(prompt)
-      +'?width='+wh[0]+'&height='+wh[1]+'&model=flux&nologo=true&seed='+Math.floor(Math.random()*1e9);
-    return fetch(url).then(function(res){
-      if(!res.ok)throw new Error('HTTP '+res.status+(res.status===429?'(無料枠が混雑中・少し待つと回復します)':''));
-      return res.blob();
-    }).then(function(blob){
-      if(!blob.type||blob.type.indexOf('image')!==0)throw new Error('画像が返されませんでした');
+    var wh=aspectWH(),seed=Math.floor(Math.random()*1e9);
+    var q='?width='+wh[0]+'&height='+wh[1]+'&model=flux&nologo=true&seed='+seed;
+    /* ブラウザ直アクセスに強い旧エンドポイントを先に、新エンドポイントを控えに */
+    var urls=[
+      'https://image.pollinations.ai/prompt/'+encodeURIComponent(prompt)+q,
+      'https://gen.pollinations.ai/image/'+encodeURIComponent(prompt)+q
+    ];
+    function tryUrl(i){
+      if(i>=urls.length)return Promise.reject(new Error('全エンドポイントで失敗(回線を変える/少し待つと直ることがあります)'));
+      return fetch(urls[i]).then(function(res){
+        if(!res.ok)throw new Error('HTTP '+res.status+(res.status===429?'(混雑中)':''));
+        return res.blob();
+      }).then(function(blob){
+        if(!blob.type||blob.type.indexOf('image')!==0)throw new Error('画像以外の応答');
+        return blob;
+      }).catch(function(e){
+        logError('接続先'+(i+1)+'/'+urls.length,(e.message||'失敗')+' → '+(i+1<urls.length?'別の接続先を試します':'打ち切り'));
+        return tryUrl(i+1);
+      });
+    }
+    return tryUrl(0).then(function(blob){
       return new Promise(function(r,j){
         var fr=new FileReader();
         fr.onload=function(){var s=fr.result;r({mime:blob.type||'image/jpeg',b64:s.slice(s.indexOf(',')+1)});};
@@ -741,12 +754,20 @@ function buildZip(files){
         return parts.map(function(p){return p.text||'';}).join('\n');
       });
     }else{
-      /* キー不要の無料テキストAPIで作成 */
-      getText=fetch('https://gen.pollinations.ai/text/'+encodeURIComponent(instruction))
-        .then(function(res){
+      /* キー不要の無料テキストAPI(旧→新の順に試す) */
+      var tUrls=[
+        'https://text.pollinations.ai/'+encodeURIComponent(instruction),
+        'https://gen.pollinations.ai/text/'+encodeURIComponent(instruction)
+      ];
+      getText=fetch(tUrls[0]).then(function(res){
+        if(!res.ok)throw new Error('HTTP '+res.status);
+        return res.text();
+      }).catch(function(){
+        return fetch(tUrls[1]).then(function(res){
           if(!res.ok)throw new Error('HTTP '+res.status);
           return res.text();
         });
+      });
     }
     getText.then(function(text){
       var lines=text.split('\n').map(function(s){return s.replace(/^[\s\d\.\)\-・*#]+/,'').trim();}).filter(function(s){return s.length>4;}).slice(0,n);
