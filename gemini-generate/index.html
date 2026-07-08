@@ -130,6 +130,13 @@
     <!-- 生成設定 -->
     <section class="panel">
       <h2>生成設定</h2>
+      <label for="engine">生成エンジン</label>
+      <select id="engine">
+        <option value="pollinations" selected>無料エンジン(Pollinations・キー不要)</option>
+        <option value="gemini">Gemini(APIキー必要・課金設定済みの人向け)</option>
+      </select>
+      <p class="hint">無料エンジンは登録もキーも不要で、完全無料で使えます。</p>
+      <div class="gemini-only" style="display:none">
       <label for="apikey">Gemini APIキー <small>(このブラウザにのみ保存)</small></label>
       <div style="display:flex;gap:8px">
         <input type="password" id="apikey" style="flex:1" placeholder="AIza..." autocomplete="off">
@@ -142,6 +149,7 @@
           2. キーをコピーして上に貼り付けるだけ。無料枠内なら課金はされません。
         </p>
       </details>
+      </div>
 
       <label for="theme">プロンプト自動作成 <small>(テーマを入れるとAIが下に書き込みます)</small></label>
       <div style="display:flex;gap:8px">
@@ -179,6 +187,7 @@
           <input type="number" id="interval" min="0" max="120" value="8">
         </div>
       </div>
+      <div class="gemini-only" style="display:none">
       <label for="model">モデル</label>
       <select id="model">
         <option value="gemini-2.5-flash-image" selected>Nano Banana(安定版・無料枠あり)</option>
@@ -186,6 +195,7 @@
       </select>
       <label class="toggle" style="margin-top:10px"><input type="checkbox" id="autoSwitch" checked> エラー時にもう片方のモデルへ自動切替する</label>
       <p class="hint">API課金を設定済みで、選んだモデルを固定したい場合はチェックを外してください。</p>
+      </div>
     </section>
 
     <!-- ロゴカット設定 -->
@@ -225,6 +235,16 @@
 
       <div class="filmstrip" id="filmstrip"><span class="strip-empty">生成キューはここに表示されます</span></div>
       <div class="status" id="status">待機中です。</div>
+      <div id="errlogWrap" style="display:none;margin-top:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <b style="font-size:12px;color:var(--danger)">エラーログ(消えずに残ります)</b>
+          <span>
+            <button class="btn btn-ghost" id="errCopy" style="min-height:28px;padding:4px 10px;font-size:12px">コピー</button>
+            <button class="btn btn-ghost" id="errClear" style="min-height:28px;padding:4px 10px;font-size:12px">消す</button>
+          </span>
+        </div>
+        <div id="errlog" style="font-size:12px;line-height:1.7;background:#fdf3f1;border:1px solid #e8c4bc;border-radius:8px;padding:8px 10px;max-height:200px;overflow:auto;margin-top:6px;word-break:break-all"></div>
+      </div>
     </section>
   </div>
 
@@ -308,6 +328,58 @@ function buildZip(files){
   var running=false, results=[]; /* {name, blob, url, prompt, idx} 入れた順のまま */
 
   function setStatus(html){statusEl.innerHTML=html;}
+  /* ---- 生成エンジン切替 ---- */
+  var engineEl=$('engine');
+  function updEngineUI(){
+    var g=engineEl.value==='gemini';
+    document.querySelectorAll('.gemini-only').forEach(function(el){el.style.display=g?'block':'none';});
+  }
+  engineEl.addEventListener('change',updEngineUI);
+  updEngineUI();
+  /* ---- Pollinations(無料・キー不要)生成 ---- */
+  function aspectWH(){
+    var m={'1:1':[1024,1024],'16:9':[1344,768],'9:16':[768,1344],'4:3':[1152,864],'3:4':[864,1152]};
+    return m[aspectEl.value]||[1024,1024];
+  }
+  function generatePollinations(prompt){
+    var wh=aspectWH();
+    var url='https://gen.pollinations.ai/image/'+encodeURIComponent(prompt)
+      +'?width='+wh[0]+'&height='+wh[1]+'&model=flux&nologo=true&seed='+Math.floor(Math.random()*1e9);
+    return fetch(url).then(function(res){
+      if(!res.ok)throw new Error('HTTP '+res.status+(res.status===429?'(無料枠が混雑中・少し待つと回復します)':''));
+      return res.blob();
+    }).then(function(blob){
+      if(!blob.type||blob.type.indexOf('image')!==0)throw new Error('画像が返されませんでした');
+      return new Promise(function(r,j){
+        var fr=new FileReader();
+        fr.onload=function(){var s=fr.result;r({mime:blob.type||'image/jpeg',b64:s.slice(s.indexOf(',')+1)});};
+        fr.onerror=function(){j(new Error('読み取り失敗'));};
+        fr.readAsDataURL(blob);
+      });
+    });
+  }
+  /* ---- 消えないエラーログ ---- */
+  var errlogWrap=$('errlogWrap'),errlogEl=$('errlog');
+  function logError(where,msg){
+    errlogWrap.style.display='block';
+    var d=document.createElement('div');
+    var t=new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    d.textContent='['+t+' '+where+'] '+msg;
+    d.style.borderBottom='1px dashed #e8c4bc';d.style.padding='3px 0';
+    errlogEl.appendChild(d);
+    errlogEl.scrollTop=errlogEl.scrollHeight;
+  }
+  $('errCopy').addEventListener('click',function(){
+    var text=errlogEl.innerText;
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){setStatus('<span class="ok">✓ エラーログをコピーしました</span>');});
+    }else{
+      var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);
+      ta.select();document.execCommand('copy');document.body.removeChild(ta);
+      setStatus('<span class="ok">✓ エラーログをコピーしました</span>');
+    }
+  });
+  $('errClear').addEventListener('click',function(){errlogEl.innerHTML='';errlogWrap.style.display='none';});
   function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
   function esc(s){return s.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function pad(n){return String(n).padStart(3,'0');}
@@ -401,14 +473,18 @@ function buildZip(files){
     });
   }
   /* 自動リトライ: レート制限→30秒待って最大2回 / モデル廃止→もう片方に自動切替 / その他→5秒後に1回 */
-  async function tryGenerate(p,label){
+  async function tryGenerate(p,label,num){
     var model=modelEl.value, rateTries=0, plainTries=0, triedAlt=false;
     while(true){
       if(!running) throw new Error('停止しました');
-      try{ return await generateOne(p,model); }
+      try{
+        return await (engineEl.value==='pollinations'?generatePollinations(p):generateOne(p,model));
+      }
       catch(e){
         var msg=e.message||'';
-        var allowSwitch=$('autoSwitch').checked&&!triedAlt&&ALT_MODEL[model];
+        var isGem=engineEl.value==='gemini';
+        logError('#'+num+' / '+(isGem?model:'pollinations'),msg);
+        var allowSwitch=isGem&&$('autoSwitch').checked&&!triedAlt&&ALT_MODEL[model];
         /* 無料枠0(要お支払い設定のモデル)→ 待っても無駄なので即モデル切替(許可時のみ) */
         if(/free_tier[\s\S]*limit:\s*0|limit:\s*0[\s\S]*free_tier/i.test(msg)&&allowSwitch){
           triedAlt=true;model=ALT_MODEL[model];
@@ -420,7 +496,7 @@ function buildZip(files){
           setStatus(label+' レート制限のため30秒待機して再試行('+rateTries+'/2)…');
           await sleep(30000);continue;
         }
-        if(/not\s?found|404|deprecat|no longer|unsupported/i.test(msg)&&$('autoSwitch').checked&&!triedAlt&&ALT_MODEL[model]){
+        if(/not\s?found|404|deprecat|no longer|unsupported/i.test(msg)&&isGem&&$('autoSwitch').checked&&!triedAlt&&ALT_MODEL[model]){
           triedAlt=true;model=ALT_MODEL[model];
           setStatus(label+' モデルが利用できないため「'+model+'」に自動切替して再試行…');
           continue;
@@ -539,7 +615,7 @@ function buildZip(files){
     runQueue(queue,false);
   }
   function runQueue(queue,isRetry){
-    if(!apikey.value.trim()){setStatus('<span class="err">APIキーを入力してください。</span>');apikey.focus();return;}
+    if(engineEl.value==='gemini'&&!apikey.value.trim()){setStatus('<span class="err">GeminiエンジンにはAPIキーが必要です(無料エンジンならキー不要)。</span>');apikey.focus();return;}
     if(!queue.length){setStatus('<span class="err">プロンプトを1つ以上入力してください。</span>');promptsEl.focus();return;}
 
     running=true;startBtn.disabled=true;stopBtn.style.display='block';retryBtn.style.display='none';
@@ -566,7 +642,7 @@ function buildZip(files){
         var label='<b>'+(i+1)+' / '+queue.length+'</b>';
         setStatus('生成中… '+label+'<br>「'+esc(p.slice(0,40))+(p.length>40?'…':'')+'」');
         try{
-          var gen=await tryGenerate(p,label);
+          var gen=await tryGenerate(p,label,i+1);
           setStatus('カット処理中… '+label);
           var out=await cropB64(gen.mime,gen.b64);
           var idx=results.length+1;
@@ -645,22 +721,34 @@ function buildZip(files){
   /* ---- AIプロンプト自動作成(同じAPIキーでテキストモデルを利用) ---- */
   var aiGenBtn=$('aiGenBtn'),themeEl=$('theme'),themeCountEl=$('themeCount');
   aiGenBtn.addEventListener('click',function(){
-    if(!apikey.value.trim()){setStatus('<span class="err">先にAPIキーを入力してください。</span>');apikey.focus();return;}
     var theme=themeEl.value.trim();
     if(!theme){setStatus('<span class="err">テーマを入力してください。</span>');themeEl.focus();return;}
     var n=parseInt(themeCountEl.value,10)||5;
     aiGenBtn.disabled=true;aiGenBtn.textContent='✨ 作成中…';
     var instruction='あなたは画像生成AI用のプロンプト作成の専門家です。テーマ「'+theme+'」に沿った、画像生成AI向けの高品質なプロンプトを'+n+'個、日本語で作成してください。それぞれ構図・スタイル・雰囲気を具体的に描写し、互いに違うバリエーションにすること。出力は1行に1プロンプトのみ。番号・記号・見出し・説明文は一切付けないこと。';
-    fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-goog-api-key':apikey.value.trim()},
-      body:JSON.stringify({contents:[{parts:[{text:instruction}]}]})
-    }).then(function(res){
-      if(!res.ok){return res.json().catch(function(){return {};}).then(function(e){throw new Error((e.error&&e.error.message)||('HTTP '+res.status));});}
-      return res.json();
-    }).then(function(data){
-      var parts=(data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts)||[];
-      var text=parts.map(function(p){return p.text||'';}).join('\n');
+    var useGemini=engineEl.value==='gemini'&&apikey.value.trim();
+    var getText;
+    if(useGemini){
+      getText=fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-goog-api-key':apikey.value.trim()},
+        body:JSON.stringify({contents:[{parts:[{text:instruction}]}]})
+      }).then(function(res){
+        if(!res.ok){return res.json().catch(function(){return {};}).then(function(e){throw new Error((e.error&&e.error.message)||('HTTP '+res.status));});}
+        return res.json();
+      }).then(function(data){
+        var parts=(data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts)||[];
+        return parts.map(function(p){return p.text||'';}).join('\n');
+      });
+    }else{
+      /* キー不要の無料テキストAPIで作成 */
+      getText=fetch('https://gen.pollinations.ai/text/'+encodeURIComponent(instruction))
+        .then(function(res){
+          if(!res.ok)throw new Error('HTTP '+res.status);
+          return res.text();
+        });
+    }
+    getText.then(function(text){
       var lines=text.split('\n').map(function(s){return s.replace(/^[\s\d\.\)\-・*#]+/,'').trim();}).filter(function(s){return s.length>4;}).slice(0,n);
       if(!lines.length)throw new Error('プロンプトを取り出せませんでした。もう一度お試しください');
       var cur=promptsEl.value.trim();
