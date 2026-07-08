@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -439,7 +439,7 @@
     <div class="cat-row" id="bfChips" style="padding:2px 2px 10px"></div>
     <input class="title-input" id="bfFilter" placeholder="ワードで絞る場合はここに(例:星データ / 前回記事)空欄=全項目" autocomplete="off">
     <div class="empty-note" id="bfPreview" style="text-align:left;padding:4px 2px 14px;font-size:12px;line-height:2"></div>
-    <div class="ff-head"><span class="ff-label">差し込む共通の文</span><button class="hist-btn art" id="bfSky">☀星データ</button><button class="hist-btn" id="bfPaste">貼り付け</button></div>
+    <div class="ff-head"><span class="ff-label">差し込む共通の文</span><button class="hist-btn art" id="bfArt">記事</button><button class="hist-btn art" id="bfSky">☀星データ</button><button class="hist-btn" id="bfPaste">貼り付け</button></div>
     <textarea class="editor" id="bfText" style="min-height:30vh" placeholder="ここに共通の文を入力(または貼り付け)"></textarea>
   </div>
   <div class="ov-foot">
@@ -1218,8 +1218,24 @@ function openFiller(i){
         <input type="search" class="fs-input" placeholder="🔍 ワードで項目を探す(目印名・前後の文)" autocomplete="off">
         <span class="fs-count"></span>
         <button class="hist-btn fs-next">次へ</button>
-      </div>`;
+      </div>
+      <div class="cat-row fs-chips" style="padding:10px 2px 0"></div>`;
     box.appendChild(search);
+    // 項目名のチップ:タップでその欄までジャンプ
+    const chipRow = search.querySelector(".fs-chips");
+    fillerFields.forEach((f, fi)=>{
+      const c = document.createElement("button");
+      c.className = "cat-chip";
+      c.textContent = f.name;
+      c.onclick = ()=>{
+        const w = box.querySelectorAll(".fill-field")[fi];
+        if(!w) return;
+        box.querySelectorAll(".fill-field.hit").forEach(x=> x.classList.remove("hit"));
+        w.classList.add("hit");
+        w.scrollIntoView({behavior:"smooth", block:"center"});
+      };
+      chipRow.appendChild(c);
+    });
     let hits = [], hitIdx = 0;
     const fsInput = search.querySelector(".fs-input");
     const fsCount = search.querySelector(".fs-count");
@@ -2117,6 +2133,12 @@ document.getElementById("bfSky").onclick = async ()=>{
   if(!s) return;
   document.getElementById("bfText").value = s.body;
   toast(`${s.label}の星データを入れました(${s.body.length.toLocaleString()}字)。対象の項目を選んで差し込んでください`);
+};
+document.getElementById("bfArt").onclick = async ()=>{
+  const art = await pickArticle();
+  if(!art) return;
+  document.getElementById("bfText").value = art.body;
+  toast(`${art.label}の記事を入れました(${art.body.length.toLocaleString()}字)。対象の項目を選んで差し込んでください`);
 };
 document.getElementById("bfApply").onclick = ()=>{
   const q = document.getElementById("bfFilter").value.trim();
