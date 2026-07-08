@@ -408,11 +408,15 @@
       <button class="tool-btn" id="eMarkOne">目印を挿入(1行)</button>
       <button class="tool-btn" id="eMarkPair">ここから/ここまで挿入</button>
     </div>
-    <div class="backup-row" style="margin-bottom:4px">
-      <input class="title-input" id="eSearch" placeholder="🔍 本文内をワード検索" autocomplete="off" style="margin-bottom:0;flex:1;min-width:0">
-      <button class="tool-btn" id="eSearchNext" style="flex:0 0 auto">次へ</button>
+    <div style="background:var(--night-2);border:1px solid var(--accent-dim);border-radius:12px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-size:11px;letter-spacing:.2em;color:var(--accent);margin-bottom:8px">🔍 本文内ワード検索</div>
+      <div class="backup-row">
+        <input class="title-input" id="eSearch" placeholder="探す言葉を入力" autocomplete="off" style="margin-bottom:0;flex:1;min-width:0">
+        <button class="tool-btn" id="eSearchNext" style="flex:0 0 auto;color:var(--accent);border-color:var(--accent-dim)">次へ</button>
+      </div>
+      <div class="empty-note" id="eSearchInfo" style="text-align:left;padding:8px 2px 0;font-size:12px"></div>
+      <div id="eSearchPrev" style="display:none;margin-top:8px;background:var(--night);border:1px solid var(--card-edge);border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.9;color:var(--ink-dim);word-break:break-all"></div>
     </div>
-    <div class="empty-note" id="eSearchInfo" style="text-align:left;padding:2px 4px 8px;font-size:12px"></div>
     <textarea class="editor" id="eText" placeholder="ここに命令書の本文を貼り付け(上のボタンか、長押し→ペースト)"></textarea>
   </div>
   <div class="ov-foot">
@@ -1468,6 +1472,7 @@ function openEditor(){
   document.getElementById("eText").value = d.body || "";
   document.getElementById("eSearch").value = "";
   document.getElementById("eSearchInfo").textContent = "";
+  document.getElementById("eSearchPrev").style.display = "none";
   eSearchPos = 0;
   hideOverlay("viewer");
   showOverlay("editor");
@@ -2522,30 +2527,49 @@ function eSearchCount(q, v){
 function eSearchInfoOnly(){
   const q = document.getElementById("eSearch").value;
   const info = document.getElementById("eSearchInfo");
+  document.getElementById("eSearchPrev").style.display = "none";
   if(!q){ info.textContent = ""; return; }
   const cnt = eSearchCount(q, document.getElementById("eText").value);
-  info.textContent = cnt ? `${cnt}件見つかりました。「次へ」で該当箇所へ移動` : `「${q}」は見つかりません(0件)`;
+  info.textContent = cnt ? `${cnt}件見つかりました。「次へ」で1件ずつ確認` : `「${q}」は見つかりません(0件)`;
 }
-// 「次へ」/Enterのときだけ本文へ移動して選択する
+// 「次へ」/Enterのとき:キーボードを閉じ、該当箇所を前後の文つきでプレビュー表示+本文をその位置へスクロール
 function eSearchJump(){
   const ta = document.getElementById("eText");
   const q = document.getElementById("eSearch").value;
   const info = document.getElementById("eSearchInfo");
-  if(!q){ info.textContent = ""; return; }
+  const prev = document.getElementById("eSearchPrev");
+  if(!q){ info.textContent = ""; prev.style.display = "none"; return; }
   const v = ta.value;
   const lq = q.toLowerCase(), lv = v.toLowerCase();
   const cnt = eSearchCount(q, v);
-  if(!cnt){ info.textContent = `「${q}」は見つかりません(0件)`; return; }
+  if(!cnt){ info.textContent = `「${q}」は見つかりません(0件)`; prev.style.display = "none"; return; }
   let hit = lv.indexOf(lq, eSearchPos);
   if(hit === -1) hit = lv.indexOf(lq); // 末尾まで来たら先頭へ
   let nth = 1;
   let p = lv.indexOf(lq);
   while(p !== -1 && p < hit){ nth++; p = lv.indexOf(lq, p + lq.length); }
   eSearchPos = hit + lq.length;
-  ta.focus();
+  // キーボードを閉じて画面を広く使う(本文のフォーカスは奪わない)
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
   ta.setSelectionRange(hit, hit + q.length);
   ta.scrollTop = Math.max(0, ta.scrollHeight * (hit / Math.max(1, v.length)) - ta.clientHeight * 0.4);
-  info.textContent = `${nth}/${cnt}件目を選択中(「次へ」で次の箇所へ)`;
+  // 前後の文つきプレビュー(該当語をハイライト)
+  prev.innerHTML = "";
+  const mkSpan = (t, hl)=>{
+    const s = document.createElement("span");
+    s.textContent = t;
+    if(hl){ s.style.background = "var(--accent)"; s.style.color = "#0e1626"; s.style.fontWeight = "700"; s.style.borderRadius = "3px"; s.style.padding = "0 2px"; }
+    return s;
+  };
+  const pre = v.slice(Math.max(0, hit - 60), hit).replace(/\n/g, "␣");
+  const post = v.slice(hit + q.length, hit + q.length + 60).replace(/\n/g, "␣");
+  if(hit > 60) prev.appendChild(mkSpan("…"));
+  prev.appendChild(mkSpan(pre));
+  prev.appendChild(mkSpan(v.substr(hit, q.length), true));
+  prev.appendChild(mkSpan(post));
+  if(hit + q.length + 60 < v.length) prev.appendChild(mkSpan("…"));
+  prev.style.display = "block";
+  info.textContent = `${nth}/${cnt}件目(下のプレビューが該当箇所。本文もその位置へスクロール済み)`;
 }
 document.getElementById("eSearch").addEventListener("input", ()=>{ eSearchPos = 0; eSearchInfoOnly(); });
 document.getElementById("eSearch").addEventListener("keydown", (ev)=>{ if(ev.key === "Enter"){ ev.preventDefault(); eSearchJump(); } });
