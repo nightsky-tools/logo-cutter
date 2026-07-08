@@ -125,6 +125,20 @@
     border-radius:14px;font-size:12px;cursor:pointer;font-family:var(--sans);line-height:1.5;
   }
   .seq-side:active{background:var(--card)}
+
+  .sky-bar{
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:var(--card);border:1px dashed var(--gold-dim);border-radius:12px;
+    padding:10px 12px;margin:0 0 14px;
+  }
+  .sky-bar .sky-label{flex:1;min-width:180px;font-size:12px;color:var(--ink-dim);line-height:1.7}
+  .sky-bar .sky-label b{color:var(--gold);font-weight:600}
+  .sky-bar button{
+    background:transparent;border:1px solid var(--card-edge);color:var(--ink);
+    border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer;font-family:var(--sans);flex-shrink:0;
+  }
+  .sky-bar button:active{background:var(--night-2)}
+  .sky-bar .sky-paste{color:var(--gold);border-color:var(--gold-dim)}
   .sign-card .vf{font-size:9px;letter-spacing:.03em}
   .sign-card .vf.ok{color:var(--ok)}
   .sign-card .vf.warn{color:#e2a25a;font-weight:600}
@@ -299,6 +313,8 @@
     <button class="seq-main" id="seqMainBtn"></button>
     <button class="seq-side" id="seqBackBtn">←<br>戻る</button>
   </div>
+
+  <div class="sky-bar" id="skyBar"></div>
 
   <div class="grid" id="signGrid"></div>
 
@@ -840,6 +856,7 @@ function render(){
   });
   updateStats();
   renderSeq();
+  renderSky();
 }
 function esc(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function nowStamp(){
@@ -1069,6 +1086,46 @@ function seqBack(){
   renderSeq();
   const it = items[idx - 1];
   if(it) toast(`1つ戻りました。次のコピーは「${it.label}」`);
+}
+
+// ---- 星データ(天文データ)の号ごと格納 ----
+// 「毎日の星の動き」等で出した月の天文データを号ごとに1本保存しておく。
+// 命令書保管庫の連続コピーが「過去記事の翌月」のデータを自動で探しに来る。
+function getSky(){ return (state.months[state.current]||{}).sky || null; }
+async function pasteSky(){
+  let t = "";
+  try{ t = await navigator.clipboard.readText(); }
+  catch(e){ toast("読み取れません。星データをコピーしてから押してください", true); return; }
+  if(!t || !t.trim()){ toast("クリップボードが空です。星データをコピーしてから押してください", true); return; }
+  const cur = getSky();
+  if(cur && cur.body && cur.body !== t){
+    if(!confirm(`${labelOf(state.current)}の星データは格納済み(${cur.body.length.toLocaleString()}字)です。上書きしますか?`)) return;
+  }
+  curSigns(); // 月の入れ物を確保
+  state.months[state.current].sky = { body: t, updated: nowStamp() };
+  state.lastAutoFp = cfgFp(t); // 自動取り込みが星データに反応しないように
+  if(await save()){ toast(`${labelOf(state.current)}の星データを格納しました(${t.length.toLocaleString()}字)`); render(); }
+}
+async function delSky(){
+  const cur = getSky();
+  if(!cur){ toast("星データは未格納です", true); return; }
+  if(!confirm(`${labelOf(state.current)}の星データ(${cur.body.length.toLocaleString()}字)を削除しますか?`)) return;
+  delete state.months[state.current].sky;
+  if(await save()){ toast("星データを削除しました"); render(); }
+}
+function renderSky(){
+  const bar = document.getElementById("skyBar");
+  if(!bar) return;
+  const sky = getSky();
+  bar.innerHTML = `
+    <span class="sky-label">☀ ${esc(labelOf(state.current))}の星データ:${sky ? `<b>${sky.body.length.toLocaleString()}字</b>(${esc(sky.updated||"")})` : "未格納"}</span>
+    <button class="hist-btn sky-paste">ペースト</button>
+    ${sky ? `<button class="hist-btn sky-copy">コピー</button><button class="hist-btn sky-del">削除</button>` : ``}`;
+  bar.querySelector(".sky-paste").onclick = pasteSky;
+  if(sky){
+    bar.querySelector(".sky-copy").onclick = ()=> copyText(sky.body, `星データをコピーしました(${sky.body.length.toLocaleString()}字)`);
+    bar.querySelector(".sky-del").onclick = delSky;
+  }
 }
 
 // ---- 全自動取り込み(ボタンなし) ----
@@ -1484,7 +1541,15 @@ function mergeStates(a, b){
       }
       else merged[id] = x || y;
     }
-    if(Object.keys(merged).length) out.months[k] = { signs: merged };
+    // 星データ(号ごと)は更新が新しい方を採用
+    const ka = ((a.months||{})[k]||{}).sky, kb = ((b.months||{})[k]||{}).sky;
+    let sky = null;
+    if(ka && kb) sky = parseUpd(kb.updated) > parseUpd(ka.updated) ? kb : ka;
+    else sky = ka || kb || null;
+    if(Object.keys(merged).length || sky){
+      out.months[k] = { signs: merged };
+      if(sky) out.months[k].sky = sky;
+    }
   }
   const seen = new Set();
   for(const x of [...(a.extras||[]), ...(b.extras||[])]){
