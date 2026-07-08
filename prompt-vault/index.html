@@ -408,6 +408,11 @@
       <button class="tool-btn" id="eMarkOne">目印を挿入(1行)</button>
       <button class="tool-btn" id="eMarkPair">ここから/ここまで挿入</button>
     </div>
+    <div class="backup-row" style="margin-bottom:4px">
+      <input class="title-input" id="eSearch" placeholder="🔍 本文内をワード検索" autocomplete="off" style="margin-bottom:0;flex:1;min-width:0">
+      <button class="tool-btn" id="eSearchNext" style="flex:0 0 auto">次へ</button>
+    </div>
+    <div class="empty-note" id="eSearchInfo" style="text-align:left;padding:2px 4px 8px;font-size:12px"></div>
     <textarea class="editor" id="eText" placeholder="ここに命令書の本文を貼り付け(上のボタンか、長押し→ペースト)"></textarea>
   </div>
   <div class="ov-foot">
@@ -1461,6 +1466,9 @@ function openEditor(){
   });
   sel.value = d.catId;
   document.getElementById("eText").value = d.body || "";
+  document.getElementById("eSearch").value = "";
+  document.getElementById("eSearchInfo").textContent = "";
+  eSearchPos = 0;
   hideOverlay("viewer");
   showOverlay("editor");
   setTimeout(()=> document.getElementById("eText").focus(), 100);
@@ -1775,15 +1783,60 @@ async function matSetupNoFields(d){
   save(true);
   return d.autoMat;
 }
+// 工程の選択:タップした順に①②③…の番号が付く(再タップで解除)
+function seqPickSteps(docs, preset){
+  return new Promise(resolve=>{
+    const bg = document.getElementById("modalBg");
+    const btns = document.getElementById("mBtns");
+    const msg = document.getElementById("mMsg");
+    document.getElementById("mTitle").textContent = "工程の順番:タップした順に番号が付きます";
+    msg.style.display = "block";
+    msg.textContent = "もう一度タップで解除。最大10工程。①が最初にコピーされます(通常は生成命令書)。";
+    document.getElementById("mInput").style.display = "none";
+    const marks = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩"];
+    const sel = [...(preset||[])].filter(id=> docs.some(d=> d.id === id));
+    const rebuild = ()=>{
+      btns.innerHTML = "";
+      docs.forEach(d=>{
+        const i = sel.indexOf(d.id);
+        const b = document.createElement("button");
+        b.className = "m-btn " + (i !== -1 ? "primary" : "ghost");
+        b.textContent = (i !== -1 ? marks[i] + " " : "") + d.name + (d.ver ? " " + d.ver : "");
+        b.onclick = ()=>{
+          const k = sel.indexOf(d.id);
+          if(k !== -1) sel.splice(k, 1);
+          else if(sel.length < 10) sel.push(d.id);
+          else { toast("工程は最大10までです", true); return; }
+          rebuild();
+        };
+        btns.appendChild(b);
+      });
+      const ok = document.createElement("button");
+      ok.className = "m-btn primary";
+      ok.textContent = sel.length ? `▶ この${sel.length}工程で決定` : "▶ 決定(先に1つ以上タップ)";
+      ok.onclick = ()=>{
+        if(!sel.length){ toast("命令書を1つ以上タップしてください", true); return; }
+        bg.classList.remove("open");
+        resolve(sel.slice());
+      };
+      btns.appendChild(ok);
+      const ng = document.createElement("button");
+      ng.className = "m-btn ghost";
+      ng.textContent = "キャンセル";
+      ng.onclick = ()=>{ bg.classList.remove("open"); resolve(null); };
+      btns.appendChild(ng);
+    };
+    rebuild();
+    bg.classList.add("open");
+  });
+}
 async function seqSetup(){
   const docs = state.docs.filter(d=> d.body && d.body.trim());
   if(!docs.length){ toast("先に命令書を格納してください", true); return false; }
-  const did = await _modal({
-    title: "工程①の命令書は?(通常は生成命令書)",
-    buttons: docs.slice(0, 20).map(d=>({ label: d.name + (d.ver ? " " + d.ver : ""), value: d.id, style: "ghost" }))
-      .concat([{ label: "キャンセル", value: null }])
-  });
-  if(!did) return false;
+  // ① 工程をタップ順で選ぶ
+  const steps = await seqPickSteps(docs.slice(0, 30), seqSteps());
+  if(!steps) return false;
+  // ② 号を選ぶ
   const av = await loadArticleVault();
   if(!av){ toast("記事保管庫のデータが見つかりません(同じサイトで記事保管庫を開いて保存してください)", true); return false; }
   const monthKeys = Object.keys(av.months).filter(k=>{
@@ -1800,31 +1853,13 @@ async function seqSetup(){
     }).concat([{ label: "キャンセル", value: null }])
   });
   if(!mk) return false;
-  const steps = [];
-  // 工程①の入れ方(未設定なら聞く。設定済みならそのまま使う)
-  const d0 = docs.find(x=> x.id === did);
-  if(!d0.autoMat){
-    const c = detectFields(d0.body).length ? await matSetup(d0) : await matSetupNoFields(d0);
+  // ③ 入れ方が未設定の命令書だけ、順に設定(設定済みはそのまま使う)
+  for(const id of steps){
+    const dx = docs.find(x=> x.id === id);
+    if(dx.autoMat) continue;
+    toast(`「${dx.name}」への記事・星データの入れ方を設定します`);
+    const c = detectFields(dx.body).length ? await matSetup(dx) : await matSetupNoFields(dx);
     if(!c) return false;
-  }
-  steps.push(did);
-  // 工程②以降を任意で追加(検品・修正など)
-  while(steps.length < 10){
-    const rest = docs.filter(x=> !steps.includes(x.id));
-    if(!rest.length) break;
-    const nx = await _modal({
-      title: `工程${steps.length + 1}を追加する?(現在${steps.length}工程)`,
-      msg: "追加すると、同じ緑ボタンで各星座ごとに 工程①→②→③… の順にコピーされます。",
-      buttons: rest.slice(0, 20).map(x=>({ label: "追加:" + x.name + (x.ver ? " " + x.ver : ""), value: x.id, style: "ghost" }))
-        .concat([{ label: "これで完了", value: "__DONE__", style: "primary" }])
-    });
-    if(nx === "__DONE__" || nx === null) break;
-    const dx = docs.find(x=> x.id === nx);
-    if(!dx.autoMat){
-      const c = detectFields(dx.body).length ? await matSetup(dx) : await matSetupNoFields(dx);
-      if(!c) continue; // 設定キャンセル=この工程は追加しない
-    }
-    steps.push(nx);
   }
   state.seqPos = { month: mk, idx: 0, label: null, steps };
   save(true);
@@ -2473,6 +2508,33 @@ document.getElementById("eMarkPair").onclick = ()=>{
   toast(`目印「項目${n}」(ここから/ここまで)を挿入しました`);
 };
 
+// ---- 編集画面のワード検索(本文内を検索して該当箇所を選択・スクロール)----
+let eSearchPos = 0;
+function eSearchRun(next){
+  const ta = document.getElementById("eText");
+  const q = document.getElementById("eSearch").value;
+  const info = document.getElementById("eSearchInfo");
+  if(!q){ info.textContent = ""; return; }
+  const v = ta.value;
+  const lq = q.toLowerCase(), lv = v.toLowerCase();
+  let cnt = 0, p = lv.indexOf(lq);
+  while(p !== -1){ cnt++; p = lv.indexOf(lq, p + lq.length); }
+  if(!cnt){ info.textContent = `「${q}」は見つかりません(0件)`; return; }
+  let hit = lv.indexOf(lq, next ? eSearchPos : 0);
+  if(hit === -1) hit = lv.indexOf(lq); // 末尾まで来たら先頭へ
+  let nth = 1;
+  p = lv.indexOf(lq);
+  while(p !== -1 && p < hit){ nth++; p = lv.indexOf(lq, p + lq.length); }
+  eSearchPos = hit + lq.length;
+  ta.focus();
+  ta.setSelectionRange(hit, hit + q.length);
+  ta.scrollTop = Math.max(0, ta.scrollHeight * (hit / Math.max(1, v.length)) - ta.clientHeight * 0.4);
+  info.textContent = `${nth}/${cnt}件目を選択中(「次へ」で次の箇所へ)`;
+}
+document.getElementById("eSearch").addEventListener("input", ()=>{ eSearchPos = 0; eSearchRun(false); });
+document.getElementById("eSearch").addEventListener("keydown", (ev)=>{ if(ev.key === "Enter"){ ev.preventDefault(); eSearchRun(true); } });
+document.getElementById("eSearchNext").onclick = ()=> eSearchRun(true);
+
 document.getElementById("resetCountBtn").onclick = async ()=>{
   let total = 0;
   for(const d of state.docs) total += (d.copies||0) + (d.fills||0) + (d.pastes||0) + (d.ppastes||0);
@@ -2593,9 +2655,9 @@ function mergeStates(a, b){
     markSeq: Math.max(a.markSeq||1, b.markSeq||1),
     customMarks: Array.from(new Set([...(a.customMarks||[]), ...(b.customMarks||[])])).slice(0, 50),
     countReset: Math.max(ra, rb),
-    seqPos: a.seqPos || null, // 連続コピーの位置はこの端末のものを維持
-    lastSkyMonth: a.lastSkyMonth || null,
-    lastMatMonth: a.lastMatMonth || null
+    seqPos: a.seqPos || b.seqPos || null, // 工程設定:自分に無ければ相手側(バックアップ等)から引き継ぐ
+    lastSkyMonth: a.lastSkyMonth || b.lastSkyMonth || null,
+    lastMatMonth: a.lastMatMonth || b.lastMatMonth || null
   };
 }
 
