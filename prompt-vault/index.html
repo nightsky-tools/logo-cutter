@@ -143,6 +143,7 @@
     border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer;font-family:var(--sans);flex-shrink:0;
   }
   .hist-btn:active{background:var(--card)}
+  .hist-btn.art{color:var(--ok);border-color:#3a5a4a}
 
   textarea.editor{
     width:100%;min-height:50vh;background:var(--night-2);border:1px solid var(--card-edge);
@@ -172,7 +173,7 @@
   /* ---- アプリ内モーダル(入力・確認) ---- */
   .modal-bg{position:fixed;inset:0;z-index:30;background:rgba(10,13,26,.75);display:none;align-items:center;justify-content:center;padding:20px}
   .modal-bg.open{display:flex}
-  .modal{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:20px;width:100%;max-width:420px}
+  .modal{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:20px;width:100%;max-width:420px;max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
   .modal h3{font-family:var(--serif);font-size:15px;letter-spacing:.08em;margin-bottom:14px;color:#fff}
   .modal .m-msg{font-size:13px;color:var(--ink-dim);line-height:1.9;margin-bottom:14px;white-space:pre-wrap}
   .modal input{width:100%;background:var(--night-2);border:1px solid var(--edge);border-radius:10px;color:var(--ink);font-size:15px;padding:12px 13px;margin-bottom:14px;font-family:var(--sans)}
@@ -341,6 +342,9 @@
     <button class="tool-btn" id="resetCountBtn">使用回数カウントを全部リセット</button>
   </div>
   <div id="backupRemind" style="display:none;background:#3b331d;border:1px solid #e2b25a;border-radius:12px;padding:12px 16px;margin-top:8px;font-size:12px;line-height:1.8;color:#e2b25a"></div>
+
+  <div class="section-label">記事保管庫との連携</div>
+  <div class="empty-note" id="artLinkInfo" style="text-align:left;padding:8px 4px;font-size:12px">同じサイト(同じドメイン)に置いた「記事保管庫」の記事を、差し込み画面の「記事」ボタンや、命令書を開いたときの「＋過去記事」からそのまま呼び出せます。</div>
 </div>
 
 <!-- viewer -->
@@ -361,6 +365,7 @@
   </div>
   <div class="ov-foot">
     <button class="big-btn ghost" id="vFill" style="display:none">差し込み</button>
+    <button class="big-btn ghost" id="vCopyArt" style="flex:0 0 auto;padding:16px 12px;font-size:13px">＋過去記事</button>
     <button class="big-btn accent" id="vCopy">本文をコピー</button>
   </div>
 </div>
@@ -1241,6 +1246,7 @@ function openFiller(i){
       <div class="ff-head">
         ${multi ? `<input type="checkbox" class="ff-sel" title="まとめて差し込みの対象にする">` : ``}
         <span class="ff-label"></span>
+        <button class="hist-btn art ff-art">記事</button>
         <button class="hist-btn ff-clear">空にする</button>
         <button class="hist-btn ff-paste">貼り付け</button>
       </div>
@@ -1256,6 +1262,13 @@ function openFiller(i){
     }
     wrap.querySelector(".ff-text").addEventListener("input", captureDraft);
     wrap.querySelector(".ff-clear").onclick = ()=>{ wrap.querySelector(".ff-text").value = ""; captureDraft(); };
+    wrap.querySelector(".ff-art").onclick = async ()=>{
+      const art = await pickArticle();
+      if(!art) return;
+      wrap.querySelector(".ff-text").value = art.body;
+      captureDraft();
+      toast(`「${f.name}」に ${art.label} の記事を入れました(${art.body.length.toLocaleString()}字)`);
+    };
     wrap.querySelector(".ff-paste").onclick = async ()=>{
       try{
         const t = await navigator.clipboard.readText();
@@ -1421,6 +1434,13 @@ function importBackup(file){
       // OK=統合(いまのデータとバックアップを合体・新しい方を優先)/キャンセル=置き換え
       const doMerge = confirm("復元方法を選んでください。\n\n[OK] 統合:いまのデータとバックアップを合体します(同じ命令書は新しい方を採用。おすすめ)\n[キャンセル] 置き換え:いまのデータを消してバックアップの内容だけにします");
       if(doMerge){
+        // 復元は明示的な操作なので、バックアップ内の命令書・カテゴリーは
+        // 過去に「削除」した記録(墓標)があっても必ず生き返らせる。
+        // 更新時刻も今に引き上げ、あとで同期しても古い削除記録に負けないようにする
+        const dead = new Set((state.tombstones||[]).map(t=>t.id));
+        for(const x of (data.docs||[])) if(x && dead.has(x.id)) x.ts = Date.now();
+        const backIds = new Set((data.docs||[]).map(x=>x.id).concat((data.cats||[]).map(c=>"cat:"+c.id)));
+        state.tombstones = (state.tombstones||[]).filter(t=> !backIds.has(t.id));
         state = sanitize(mergeStates(state, data)) || state;
       }else{
         if(!confirm("いまのデータは消えて、バックアップの内容だけになります。本当に置き換えますか?")) return;
@@ -1438,6 +1458,7 @@ function importBackup(file){
       toast("読み込めませんでした。ファイルを確認してください", true);
     }
   };
+  r.onerror = ()=> toast("ファイルを読み込めませんでした。もう一度選び直してください", true);
   r.readAsText(file);
 }
 
@@ -1477,6 +1498,81 @@ function askConfirm(title, msg, okLabel, danger){
     buttons:[{label: okLabel || "OK", value:true, style: danger ? "danger" : "primary"},{label:"キャンセル", value:false}] });
 }
 
+// ---- 記事保管庫との連携(同じサイトに置いた記事保管庫のデータを読む)----
+const ART_KEY = "article-vault-v1";
+const ART_LEGACY = "hoshino-article-vault-v1";
+const ART_SIGNS = [
+  ["aries","牡羊座"],["taurus","牡牛座"],["gemini","双子座"],["cancer","蟹座"],
+  ["leo","獅子座"],["virgo","乙女座"],["libra","天秤座"],["scorpio","蠍座"],
+  ["sagittarius","射手座"],["capricorn","山羊座"],["aquarius","水瓶座"],["pisces","魚座"]
+];
+async function loadArticleVault(){
+  try{
+    let raw = null;
+    if(hasAppStorage){
+      try{ const r = await window.storage.get(ART_KEY); raw = r && r.value; }catch(e){}
+      if(!raw){ try{ const r2 = await window.storage.get(ART_LEGACY); raw = r2 && r2.value; }catch(e){} }
+    }else if(hasLocalStorage){
+      raw = localStorage.getItem(ART_KEY) || localStorage.getItem(ART_LEGACY);
+    }
+    if(!raw) return null;
+    const d = JSON.parse(raw);
+    if(d && d.months && typeof d.months === "object") return d;
+    return null;
+  }catch(e){ return null; }
+}
+function artLabelOf(k){ const p = k.split("-"); return `${+p[0]}年${+p[1]}月号`; }
+// 号選択→星座選択の2段モーダルで過去記事を1本選ぶ。{label, body} か null を返す
+async function pickArticle(){
+  const av = await loadArticleVault();
+  if(!av){
+    toast("記事保管庫のデータが見つかりません(同じサイトのURLで記事保管庫を開いて保存してください)", true);
+    return null;
+  }
+  const monthKeys = Object.keys(av.months).filter(k=>{
+    const s = (av.months[k]||{}).signs || {};
+    return Object.keys(s).some(id=> s[id] && s[id].body);
+  }).sort().reverse().slice(0, 24);
+  if(!monthKeys.length){
+    toast("記事保管庫にまだ記事が保存されていません", true);
+    return null;
+  }
+  const mk = await _modal({
+    title: "過去記事:どの号から?",
+    buttons: monthKeys.map(k=>{
+      const s = av.months[k].signs;
+      const n = Object.keys(s).filter(id=> s[id] && s[id].body).length;
+      return { label: `${artLabelOf(k)}(${n}記事)`, value: k, style:"ghost" };
+    }).concat([{label:"キャンセル", value:null}])
+  });
+  if(!mk) return null;
+  const signs = av.months[mk].signs;
+  const opts = ART_SIGNS.filter(([id])=> signs[id] && signs[id].body);
+  const sid = await _modal({
+    title: `${artLabelOf(mk)}:どの星座?`,
+    buttons: opts.map(([id, nm])=>({ label: `${nm}(${signs[id].body.length.toLocaleString()}字)`, value: id, style:"ghost" }))
+      .concat([{label:"キャンセル", value:null}])
+  });
+  if(!sid) return null;
+  const nm = (ART_SIGNS.find(([id])=>id===sid)||[])[1] || "";
+  return { label: `${artLabelOf(mk)} ${nm}`, body: signs[sid].body };
+}
+// 命令書本文+選んだ過去記事を連結してコピー(命令書ビューアーの「＋過去記事」)
+async function copyWithArticle(){
+  const d = state.docs[current];
+  if(!d || !d.body || !d.body.trim()){ toast("本文がありません", true); return; }
+  const art = await pickArticle();
+  if(!art) return;
+  const text = d.body + "\n\n━━━━━ 過去記事(記事保管庫より:" + art.label + ") ━━━━━\n\n" + art.body;
+  const ok = await copyText(text, null);
+  if(!ok) return;
+  if(countOnce("c:" + d.id)) d.copies = (d.copies || 0) + 1;
+  save(true);
+  render();
+  updateViewerMeta(d);
+  toast(`命令書+過去記事(${art.label})をコピーしました(${text.length.toLocaleString()}字)`);
+}
+
 // ---- misc ----
 function showOverlay(id){ document.getElementById(id).classList.add("open"); }
 function hideOverlay(id){ document.getElementById(id).classList.remove("open"); }
@@ -1493,6 +1589,7 @@ function toast(msg, err){
 document.getElementById("vBack").onclick = ()=> hideOverlay("viewer");
 document.getElementById("vEdit").onclick = openEditor;
 document.getElementById("vCopy").onclick = ()=> copyDoc(current);
+document.getElementById("vCopyArt").onclick = copyWithArticle;
 document.getElementById("vFill").onclick = ()=> openFiller(current);
 document.getElementById("fBack").onclick = ()=> hideOverlay("filler");
 document.getElementById("fCopy").onclick = copyFilled;
