@@ -1737,7 +1737,7 @@ async function seqItems(){
   const av = await loadArticleVault();
   if(!av || !av.months[sp.month]) return null;
   const signs = av.months[sp.month].signs || {};
-  const marks = ["①","②","③","④","⑤"];
+  const marks = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩"];
   const items = [];
   ART_SIGNS.forEach(([id, nm])=>{
     if(!(signs[id] && signs[id].body)) return;
@@ -1809,7 +1809,7 @@ async function seqSetup(){
   }
   steps.push(did);
   // 工程②以降を任意で追加(検品・修正など)
-  while(steps.length < 5){
+  while(steps.length < 10){
     const rest = docs.filter(x=> !steps.includes(x.id));
     if(!rest.length) break;
     const nx = await _modal({
