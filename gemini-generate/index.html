@@ -182,8 +182,10 @@
       <label for="model">モデル</label>
       <select id="model">
         <option value="gemini-2.5-flash-image" selected>Nano Banana(安定版・無料枠あり)</option>
-        <option value="gemini-3.1-flash-image">Nano Banana 2(最新・有料プラン向け)</option>
+        <option value="gemini-3.1-flash-image">Nano Banana 2(最新・要お支払い設定)</option>
       </select>
+      <label class="toggle" style="margin-top:10px"><input type="checkbox" id="autoSwitch" checked> エラー時にもう片方のモデルへ自動切替する</label>
+      <p class="hint">API課金を設定済みで、選んだモデルを固定したい場合はチェックを外してください。</p>
     </section>
 
     <!-- ロゴカット設定 -->
@@ -406,19 +408,19 @@ function buildZip(files){
       try{ return await generateOne(p,model); }
       catch(e){
         var msg=e.message||'';
-        /* 無料枠0(有料専用モデル)→ 待っても無駄なので即モデル切替 */
-        if(/free_tier[\s\S]*limit:\s*0|limit:\s*0[\s\S]*free_tier/i.test(msg)&&!triedAlt&&ALT_MODEL[model]){
+        var allowSwitch=$('autoSwitch').checked&&!triedAlt&&ALT_MODEL[model];
+        /* 無料枠0(要お支払い設定のモデル)→ 待っても無駄なので即モデル切替(許可時のみ) */
+        if(/free_tier[\s\S]*limit:\s*0|limit:\s*0[\s\S]*free_tier/i.test(msg)&&allowSwitch){
           triedAlt=true;model=ALT_MODEL[model];
-          setStatus(label+' このモデルは無料枠がないため「'+model+'」(無料枠あり)に自動切替…');
-          modelEl.value=model; /* 以降の生成もこのモデルを使う */
-          continue;
+          setStatus(label+' このモデルは今の契約では使えないため「'+model+'」に切替えて再試行…<br><small>切替したくない場合は「自動切替」のチェックを外してください</small>');
+          continue; /* 選択UIは書き換えない(この実行中のみ切替) */
         }
         if(/quota|rate|429|resource|exhaust/i.test(msg)&&rateTries<2){
           rateTries++;
           setStatus(label+' レート制限のため30秒待機して再試行('+rateTries+'/2)…');
           await sleep(30000);continue;
         }
-        if(/not\s?found|404|deprecat|no longer|unsupported/i.test(msg)&&!triedAlt&&ALT_MODEL[model]){
+        if(/not\s?found|404|deprecat|no longer|unsupported/i.test(msg)&&$('autoSwitch').checked&&!triedAlt&&ALT_MODEL[model]){
           triedAlt=true;model=ALT_MODEL[model];
           setStatus(label+' モデルが利用できないため「'+model+'」に自動切替して再試行…');
           continue;
