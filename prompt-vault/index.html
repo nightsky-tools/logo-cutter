@@ -2013,7 +2013,9 @@ function composeDoc(d, cfg, artBody, signNm, mk, av){
   }
   const fields = detectFields(d.body);
   const artTarget = (cfg.art && cfg.art !== "__END__") ? fields.find(f=> f.name === cfg.art) : null;
-  const skyTarget = (skyBody && cfg.sky && cfg.sky !== "__END__") ? fields.find(f=> f.name === cfg.sky) : null;
+  // 記事と同じ欄に星データが指定されていたら、星データは末尾扱いにする(上書き消失の防止)
+  const skyConflict = !!(cfg.sky && cfg.sky !== "__END__" && cfg.sky === cfg.art);
+  const skyTarget = (skyBody && !skyConflict && cfg.sky && cfg.sky !== "__END__") ? fields.find(f=> f.name === cfg.sky) : null;
   let base = d.body;
   if(artTarget || skyTarget){
     const draft = fillDrafts[d.id];
@@ -2510,20 +2512,34 @@ document.getElementById("eMarkPair").onclick = ()=>{
 
 // ---- 編集画面のワード検索(本文内を検索して該当箇所を選択・スクロール)----
 let eSearchPos = 0;
-function eSearchRun(next){
+function eSearchCount(q, v){
+  const lq = q.toLowerCase(), lv = v.toLowerCase();
+  let cnt = 0, p = lv.indexOf(lq);
+  while(p !== -1){ cnt++; p = lv.indexOf(lq, p + lq.length); }
+  return cnt;
+}
+// 入力中は件数だけ表示(本文のフォーカスを奪わない)
+function eSearchInfoOnly(){
+  const q = document.getElementById("eSearch").value;
+  const info = document.getElementById("eSearchInfo");
+  if(!q){ info.textContent = ""; return; }
+  const cnt = eSearchCount(q, document.getElementById("eText").value);
+  info.textContent = cnt ? `${cnt}件見つかりました。「次へ」で該当箇所へ移動` : `「${q}」は見つかりません(0件)`;
+}
+// 「次へ」/Enterのときだけ本文へ移動して選択する
+function eSearchJump(){
   const ta = document.getElementById("eText");
   const q = document.getElementById("eSearch").value;
   const info = document.getElementById("eSearchInfo");
   if(!q){ info.textContent = ""; return; }
   const v = ta.value;
   const lq = q.toLowerCase(), lv = v.toLowerCase();
-  let cnt = 0, p = lv.indexOf(lq);
-  while(p !== -1){ cnt++; p = lv.indexOf(lq, p + lq.length); }
+  const cnt = eSearchCount(q, v);
   if(!cnt){ info.textContent = `「${q}」は見つかりません(0件)`; return; }
-  let hit = lv.indexOf(lq, next ? eSearchPos : 0);
+  let hit = lv.indexOf(lq, eSearchPos);
   if(hit === -1) hit = lv.indexOf(lq); // 末尾まで来たら先頭へ
   let nth = 1;
-  p = lv.indexOf(lq);
+  let p = lv.indexOf(lq);
   while(p !== -1 && p < hit){ nth++; p = lv.indexOf(lq, p + lq.length); }
   eSearchPos = hit + lq.length;
   ta.focus();
@@ -2531,9 +2547,9 @@ function eSearchRun(next){
   ta.scrollTop = Math.max(0, ta.scrollHeight * (hit / Math.max(1, v.length)) - ta.clientHeight * 0.4);
   info.textContent = `${nth}/${cnt}件目を選択中(「次へ」で次の箇所へ)`;
 }
-document.getElementById("eSearch").addEventListener("input", ()=>{ eSearchPos = 0; eSearchRun(false); });
-document.getElementById("eSearch").addEventListener("keydown", (ev)=>{ if(ev.key === "Enter"){ ev.preventDefault(); eSearchRun(true); } });
-document.getElementById("eSearchNext").onclick = ()=> eSearchRun(true);
+document.getElementById("eSearch").addEventListener("input", ()=>{ eSearchPos = 0; eSearchInfoOnly(); });
+document.getElementById("eSearch").addEventListener("keydown", (ev)=>{ if(ev.key === "Enter"){ ev.preventDefault(); eSearchJump(); } });
+document.getElementById("eSearchNext").onclick = eSearchJump;
 
 document.getElementById("resetCountBtn").onclick = async ()=>{
   let total = 0;
