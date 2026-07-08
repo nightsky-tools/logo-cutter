@@ -181,8 +181,8 @@
       </div>
       <label for="model">モデル</label>
       <select id="model">
-        <option value="gemini-3.1-flash-image">Nano Banana 2(最新)</option>
-        <option value="gemini-2.5-flash-image">Nano Banana(安定版)</option>
+        <option value="gemini-2.5-flash-image" selected>Nano Banana(安定版・無料枠あり)</option>
+        <option value="gemini-3.1-flash-image">Nano Banana 2(最新・有料プラン向け)</option>
       </select>
     </section>
 
@@ -406,6 +406,13 @@ function buildZip(files){
       try{ return await generateOne(p,model); }
       catch(e){
         var msg=e.message||'';
+        /* 無料枠0(有料専用モデル)→ 待っても無駄なので即モデル切替 */
+        if(/free_tier[\s\S]*limit:\s*0|limit:\s*0[\s\S]*free_tier/i.test(msg)&&!triedAlt&&ALT_MODEL[model]){
+          triedAlt=true;model=ALT_MODEL[model];
+          setStatus(label+' このモデルは無料枠がないため「'+model+'」(無料枠あり)に自動切替…');
+          modelEl.value=model; /* 以降の生成もこのモデルを使う */
+          continue;
+        }
         if(/quota|rate|429|resource|exhaust/i.test(msg)&&rateTries<2){
           rateTries++;
           setStatus(label+' レート制限のため30秒待機して再試行('+rateTries+'/2)…');
