@@ -70,6 +70,15 @@
     color:var(--ink);font-family:var(--sans);
   }
 
+  .auto-paste{
+    width:100%;margin:0 0 14px;background:var(--card);border:1px solid var(--gold-dim);color:var(--gold);
+    border-radius:14px;padding:15px 12px;font-size:14px;font-weight:600;cursor:pointer;
+    font-family:var(--sans);letter-spacing:.05em;
+  }
+  .auto-paste:active{background:var(--gold);color:#1a1508}
+  .auto-paste small{display:block;font-weight:400;font-size:11px;color:var(--ink-dim);margin-top:4px;letter-spacing:.03em}
+  .auto-paste:active small{color:#1a1508}
+
   .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
   @media (max-width:480px){ .grid{grid-template-columns:repeat(2,1fr);gap:12px} }
   .sign-card{
@@ -96,7 +105,6 @@
   }
   .sc-act:active{background:var(--night)}
   .sc-act.paste{color:var(--gold);border-color:var(--gold-dim)}
-  .sc-act .cc{color:var(--ok);font-weight:600;margin-left:4px}
   .sign-card .vf{font-size:9px;letter-spacing:.03em}
   .sign-card .vf.ok{color:var(--ok)}
   .sign-card .vf.warn{color:#e2a25a;font-weight:600}
@@ -110,10 +118,6 @@
   .sign-card.filled::after{
     content:"";position:absolute;top:8px;right:9px;width:6px;height:6px;border-radius:50%;
     background:var(--gold);box-shadow:0 0 8px var(--gold);
-  }
-  /* コピー済み(1回以上)は右上の点が緑に変わる */
-  .sign-card.copied::after{
-    background:var(--ok);box-shadow:0 0 8px var(--ok);
   }
   .sign-card.filled .st{color:var(--ok)}
 
@@ -157,25 +161,33 @@
   .icon-btn:active{background:var(--card)}
   .icon-btn.danger{color:var(--danger);border-color:#5a3040}
 
-  .ov-body{flex:1;overflow-y:auto;padding:18px 16px 120px;-webkit-overflow-scrolling:touch}
+  .ov-body{flex:1;overflow-y:auto;padding:18px 16px 170px;-webkit-overflow-scrolling:touch}
+  .part-card{background:var(--card);border:1px solid var(--card-edge);border-radius:12px;margin-bottom:12px;overflow:hidden}
+  .part-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--card-edge)}
+  .part-head .pt{font-family:var(--serif);color:var(--gold-soft);font-size:13px;letter-spacing:.1em}
+  .part-head .pc{font-size:10px;color:var(--ink-dim);font-family:var(--mono)}
+  .part-copy{background:var(--night-2);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;
+    padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);flex-shrink:0}
+  .part-copy:active{background:var(--gold);color:#1a1508}
+  .part-text{padding:12px;font-family:var(--serif);font-size:13px;line-height:1.9;letter-spacing:.02em;
+    white-space:pre-wrap;word-break:break-word;color:var(--ink);max-height:170px;overflow-y:auto;
+    -webkit-overflow-scrolling:touch;opacity:.85}
   .article-text{
     font-family:var(--serif);font-size:15px;line-height:2.0;letter-spacing:.03em;
     white-space:pre-wrap;word-break:break-word;color:var(--ink);
   }
-  .meta-line{font-size:11px;color:var(--ink-dim);margin-bottom:16px;letter-spacing:.05em}
-  .count-adjust{
-    display:none;align-items:center;gap:10px;margin:-6px 0 18px;
-    font-size:11px;color:var(--ink-dim);letter-spacing:.05em;
-  }
-  .count-adjust.show{display:flex}
-  .count-adjust b{color:var(--ok);font-size:16px;min-width:24px;text-align:center;font-family:var(--sans)}
-  .ca-btn{
-    width:38px;height:38px;border-radius:10px;background:var(--night-2);
-    border:1px solid var(--card-edge);color:var(--ink);font-size:17px;
-    cursor:pointer;font-family:var(--sans);line-height:1;
-  }
-  .ca-btn:active{background:var(--card)}
-  .ca-hint{font-size:10px}
+  .meta-line{font-size:11px;color:var(--ink-dim);margin-bottom:10px;letter-spacing:.05em}
+  .compile-box{margin:0 0 16px;font-size:12px;color:var(--ink-dim)}
+  .compile-box summary{cursor:pointer;padding:9px 12px;border:1px solid var(--card-edge);border-radius:10px;background:var(--night-2);color:var(--gold);letter-spacing:.04em;list-style:none}
+  .compile-box summary::-webkit-details-marker{display:none}
+  .compile-box[open] summary{border-radius:10px 10px 0 0}
+  .compile-box .cl{border:1px solid var(--card-edge);border-top:none;border-radius:0 0 10px 10px;padding:10px 12px;line-height:1.9;background:var(--night-2)}
+  .compile-box .cl .w{color:#e2a25a}
+  .compile-box .cl .b{color:var(--danger)}
+  .compile-box summary.warn{color:#e2a25a;border-color:#8a5a3a}
+  .compile-box summary.bad{color:var(--danger);border-color:#5a3040}
+  .compile-box .cl del{color:var(--danger);text-decoration:line-through;background:rgba(201,106,106,.14);padding:0 2px;border-radius:2px}
+  .compile-box .cl ins{color:var(--ok);text-decoration:none;background:rgba(126,201,162,.14);padding:0 2px;border-radius:2px}
 
   textarea.editor{
     width:100%;min-height:55vh;background:var(--night-2);border:1px solid var(--card-edge);
@@ -193,7 +205,16 @@
     position:fixed;left:0;right:0;bottom:0;padding:14px 16px calc(14px + env(safe-area-inset-bottom));
     background:linear-gradient(transparent, var(--night) 30%);
     display:flex;gap:10px;max-width:640px;margin:0 auto;
+    flex-wrap:wrap;
   }
+  .split-row{display:none;gap:10px;width:100%}
+  .split-row.on{display:flex}
+  .split-btn{
+    flex:1;background:var(--card);border:1px solid var(--gold-dim);color:var(--gold);
+    border-radius:14px;padding:13px 4px;font-size:13px;font-weight:600;cursor:pointer;
+    font-family:var(--sans);letter-spacing:.04em;
+  }
+  .split-btn:active{background:var(--gold);color:#1a1508}
   .big-btn{
     flex:1;border:none;border-radius:14px;padding:16px;font-size:15px;font-weight:600;
     cursor:pointer;font-family:var(--sans);letter-spacing:.08em;
@@ -215,7 +236,7 @@
   .toast.err{background:var(--danger);color:#fff}
 
   .undo-bar{
-    position:fixed;left:50%;bottom:34px;transform:translateX(-50%);
+    position:fixed;left:50%;bottom:150px;transform:translateX(-50%);
     background:var(--card);border:1px solid var(--gold-dim);border-radius:999px;
     display:none;align-items:center;gap:14px;padding:10px 10px 10px 20px;
     z-index:21;box-shadow:0 4px 20px rgba(0,0,0,.5);max-width:92vw;
@@ -230,6 +251,7 @@
   .undo-bar button:active{background:var(--gold-dim)}
 
   .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--night);z-index:30;color:var(--ink-dim);font-size:13px;letter-spacing:.2em}
+
 </style>
 </head>
 <body>
@@ -248,6 +270,10 @@
       <button class="mn-btn" id="mNext" aria-label="次の月">▶</button>
     </div>
   </header>
+
+  <div class="empty-note" style="padding:0 2px 12px;text-align:left;font-size:12px">完成記事(タイトル行ごと)をコピー → 下の<b style="color:var(--gold)">「自動ふりわけペースト」</b>を1回。星座と対象月を本文から判定し、タイトルごとそのまま該当の枠に格納します。手動で入れたいときは各星座の「ペースト」。開くと[タイトル][無料A][有料B]を個別にコピーできます。</div>
+
+  <button class="auto-paste" id="autoPasteBtn">🔮 自動ふりわけペースト<small>記事をコピーしてこの画面に戻るだけでも自動格納されます(このボタンは読み取れなかった時の予備)</small></button>
 
   <div class="grid" id="signGrid"></div>
 
@@ -277,9 +303,6 @@
   <div class="backup-row" style="margin-top:8px">
     <button class="tool-btn" id="clearPrevBtn">「前の版」をまとめて削除して軽量化</button>
   </div>
-  <div class="backup-row" style="margin-top:8px">
-    <button class="tool-btn" id="resetCountBtn">この月のコピー回数をリセット</button>
-  </div>
   <div class="empty-note" id="statsInfo" style="text-align:left;padding:8px 4px;font-size:12px"></div>
 </div>
 
@@ -292,16 +315,19 @@
   </div>
   <div class="ov-body">
     <div class="meta-line" id="vMeta"></div>
-    <div class="count-adjust" id="vCountRow">
-      <span>コピー回数</span>
-      <button class="ca-btn" id="vMinus" aria-label="コピー回数を1減らす">−</button>
-      <b id="vCount">0</b>
-      <button class="ca-btn" id="vPlus" aria-label="コピー回数を1増やす">＋</button>
-      <span class="ca-hint">数え間違いはここで修正できます</span>
-    </div>
+    <details class="compile-box" id="vCompile" style="display:none">
+      <summary id="vCompileSum"></summary>
+      <div class="cl" id="vCompileList"></div>
+    </details>
+    <div id="vParts" style="display:none"></div>
     <div class="article-text" id="vText"></div>
   </div>
   <div class="ov-foot">
+    <div class="split-row" id="splitRow">
+      <button class="split-btn" id="vCopyT">タイトル</button>
+      <button class="split-btn" id="vCopyA">無料A</button>
+      <button class="split-btn" id="vCopyB">有料B</button>
+    </div>
     <button class="big-btn ghost" id="vRevert" style="display:none;flex:0 0 auto;padding:16px 18px">前の版</button>
     <button class="big-btn gold" id="vCopy">本文をコピー</button>
   </div>
@@ -317,8 +343,8 @@
   <div class="ov-body">
     <input class="title-input" id="eTitleInput" placeholder="タイトル(その他テキスト用)" style="display:none">
     <input class="title-input" id="eMonthInput" placeholder="対象月(例:2026年8月号)">
-    <button class="icon-btn" id="ePasteBtn" style="width:100%;margin-bottom:10px;padding:12px">クリップボードから貼り付け</button>
-    <textarea class="editor" id="eText" placeholder="ここに記事本文を貼り付け(上のボタンか、長押し→ペースト)"></textarea>
+    <button class="icon-btn" id="ePasteBtn" style="width:100%;margin-bottom:10px;padding:12px">クリップボードから貼り付け(タイトル+本文まとめてOK)</button>
+    <textarea class="editor" id="eText" placeholder="タイトル行+本文をまとめて貼り付け(タイトルは自動判別。上のボタンか、長押し→ペースト)"></textarea>
   </div>
   <div class="ov-foot">
     <button class="big-btn ghost" id="eCancel2">キャンセル</button>
@@ -432,6 +458,168 @@ function analyzeBody(body, signId){
   return { match, detected, month };
 }
 
+/* ==== NYUKO_START 入稿マシン同等の整形・分割(保管庫内蔵版・差分記録つき) ==== */
+/* ★設定ブロック:価格改定・文言変更はここを編集。
+   同時に更新する場所(計4箇所):①ここ ②検品前スキャナのDICT.FIXED_2 ③入稿マシンのFIXED2(使用時) ④生成命令書v10.2の固定文言② */
+const NY_FIXED2='この一冊には、3,000円以上の価値があると自負しています。それでも、価格を理由にあなたがこの1ヶ月を逃すことがないように。毎月15日までは、コーヒー1杯分の「500円」で。16日からは「1,000円」でお届けしています。';
+const NY_FIXED2KEY='毎月15日までは、コーヒー1杯分の「500円」で。16日からは「1,000円」でお届けしています。';
+const NY_GUIDE='この先、有料エリアに入る前に、まずは【第1章】を無料で公開します。中身を確かめてみてください。';
+const NY_PRICES=(NY_FIXED2.match(/「[0-9,，]+円」/g)||[]).join("・");
+/* ★設定ブロックここまで */
+function cfgFp(str){let h=5381;for(let i=0;i<str.length;i++){h=((h<<5)+h+str.charCodeAt(i))>>>0;}return h.toString(16);}
+function nyLineIndexOf(text,key,from){
+  const re=new RegExp('^'+key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'m');
+  const m=text.slice(from||0).match(re);return m?(from||0)+m.index:-1;
+}
+function nyBlock(text,startKey,endKeys){
+  const st=nyLineIndexOf(text,startKey,0);if(st===-1)return null;
+  let e=text.length;
+  for(const k of endKeys){const q=nyLineIndexOf(text,k,st+startKey.length);if(q!==-1&&q<e)e=q;}
+  return {s:st,e,body:text.slice(st,e)};
+}
+function nyBullets(body){return (body.match(/^\s*・.+$/gm)||[]).length;}
+// 本文 → {ok, problems[], warnings[], changes[], diffs[], title, partA, partB}
+// diffs=[{label, del, ins, b(前文脈), a(後文脈)}] 保存本文は無変更・コピー時に毎回この整形を適用
+function compileParts(src){
+  let text=(src||'').replace(/\r\n?/g,'\n');
+  const problems=[], warnings=[], changes=[], diffs=[];
+  const tr=(x,n)=>x.length>n?x.slice(0,n)+'…':x;
+  const dctx=(t,pos,len)=>({b:t.slice(Math.max(0,pos-14),pos), a:t.slice(pos+len,pos+len+14)});
+  // 行の除去
+  {const lines=text.split('\n');const keep=[];let rm=0;
+   for(const l of lines){const t=l.trim();
+     if(/^```/.test(t)||/^続けてよろしいですか[？?]$/.test(t)){rm++;diffs.push({label:'行の除去',del:tr(l,60),ins:'',b:'',a:''});continue;}
+     keep.push(l);}
+   text=keep.join('\n');
+   if(rm)changes.push('進行フレーズ・コード記号の行を除去:'+rm+'行');}
+  // タイトル行の分離
+  let title='';
+  let tm=text.match(/^【[0-9０-９]{1,2}月限定】[^\n]*【保存版】[^\n]*$/m);
+  let titleLoose=false;
+  if(!tm){ tm=text.match(/^【[0-9０-９]{1,2}月限定】[^\n]+$/m); if(tm)titleLoose=true; }
+  if(tm){
+    title=tm[0].trim();
+    text=(text.slice(0,tm.index)+text.slice(tm.index+tm[0].length)).replace(/^\n+/,'');
+    changes.push('タイトル行を分離');
+    diffs.push({label:'タイトル行を分離(タイトル欄へ移動)',del:tr(title,60),ins:'',b:'',a:''});
+    if(titleLoose)warnings.push('タイトル行が定型と不一致(末尾「1ヶ月【保存版】」を確認)');
+  }else{
+    warnings.push('タイトル行なし([タイトル]は空振りします。タイトルごと格納すると使えます)');
+  }
+  // 半角?!の全角化
+  {const ps=[];for(let i=0;i<text.length&&ps.length<8;i++){if(text[i]==='?'||text[i]==='!')ps.push(i);}
+   const n=(text.match(/[?!]/g)||[]).length;
+   if(n){
+     ps.forEach(p=>{const c=dctx(text,p,1);diffs.push({label:'半角記号の全角化',del:text[p],ins:text[p]==='?'?'？':'！',b:c.b,a:c.a});});
+     text=text.replace(/\?/g,'？').replace(/!/g,'！');changes.push('半角?!を全角化:'+n+'件');}}
+  // 日本語間の半角スペース除去
+  {const JPC='[\\u3040-\\u30FF\\u4E00-\\u9FFF、。，「」『』（）【】？！・…]';
+   const exRe=new RegExp('('+JPC+')( +)(?='+JPC+')','g');
+   let em,ec=0;
+   while((em=exRe.exec(text))!==null&&ec<8){const p=em.index+em[1].length;const c=dctx(text,p,em[2].length);
+     diffs.push({label:'日本語間の半角スペース除去',del:'␣',ins:'',b:c.b,a:c.a});ec++;}
+   const spRe=new RegExp('('+JPC+')[ \\t]+(?='+JPC+')','g');
+   let n=0,prevT;
+   do{prevT=text;text=text.replace(spRe,(mm,p1)=>{n++;return p1;});}while(text!==prevT);
+   if(n)changes.push('日本語間の半角スペース除去:'+n+'件');}
+  // 強調記号の除去
+  {const ps=[];let ix=text.indexOf('**');while(ix!==-1&&ps.length<8){ps.push(ix);ix=text.indexOf('**',ix+2);}
+   const n=(text.match(/\*\*/g)||[]).length;
+   if(n){ps.forEach(p=>{const c=dctx(text,p,2);diffs.push({label:'強調記号の除去',del:'**',ins:'',b:c.b,a:c.a});});
+     text=text.replace(/\*\*/g,'');changes.push('強調記号**を除去:'+n+'件');}}
+  // 第8章見出しの「対 」スペース復元
+  {const re=/【対(?=[火地風水]の星座)/g;let m8;const ps=[];
+   while((m8=re.exec(text))!==null&&ps.length<8)ps.push(m8.index);
+   const n=(text.match(/【対(?=[火地風水]の星座)/g)||[]).length;
+   if(n){ps.forEach(p=>{const c=dctx(text,p,2);diffs.push({label:'第8章見出しのスペース補正',del:'【対',ins:'【対 ',b:c.b,a:c.a});});
+     text=text.replace(/【対(?=[火地風水]の星座)/g,'【対 ');changes.push('第8章見出しのスペース復元:'+n+'件');}}
+  // 構造の確認
+  const need=['【はじめに'];for(let i=1;i<=9;i++)need.push('【第'+i+'章】');
+  for(const k of need){
+    const c=(text.match(new RegExp('^'+k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'mg'))||[]).length;
+    if(c===0)problems.push(k.replace(/[【】]/g,'')+'が見つかりません');
+    else if(c>1)problems.push(k.replace(/[【】]/g,'')+'が'+c+'回(複数バージョン混在?)');
+  }
+  if(problems.length)return {ok:false,problems,warnings,changes,diffs,title};
+  // 数の照合(警告のみ)
+  {const CH=[];for(let i=1;i<=9;i++)CH.push('【第'+i+'章】');
+   for(let i=1;i<=6;i++){
+     const b=nyBlock(text,'【第'+i+'章】',CH.filter(k=>k!=='【第'+i+'章】'));
+     if(!b)continue;
+     const rm=b.body.match(/^【[^\n]*つの理由】[^\n]*$/m);
+     if(rm){let e=b.body.length;
+       for(const k of ['【深掘り','【今すぐ']){const q=nyLineIndexOf(b.body,k,rm.index+1);if(q!==-1&&q<e)e=q;}
+       const n=nyBullets(b.body.slice(rm.index,e));
+       if(n!==3)warnings.push('第'+i+'章の理由が'+n+'件(正:3)');}
+     else warnings.push('第'+i+'章に【〜3つの理由】見出しなし');
+     const ab=nyBlock(b.body,'【今すぐできるアクション】',['【第']);
+     if(ab){const n=nyBullets(ab.body);if(n!==2)warnings.push('第'+i+'章のアクションが'+n+'件(正:2)');}
+     else warnings.push('第'+i+'章に【今すぐできるアクション】なし');
+   }
+   {const b7=nyBlock(text,'【第7章】',['【第8章】']);
+    if(b7){const w=(b7.body.match(/【第[1-4１-４]週/g)||[]).length;
+      if(w!==4)warnings.push('第7章の週見出しが'+w+'本(正:4)');}}
+   {const b9=nyBlock(text,'【第9章】',['画像特典']);
+    if(b9){
+      const wish=nyBlock(b9.body,'【新月の願い事】',['【満月','【新月前','【ワークの進め方】'])||nyBlock(b9.body,'【満月前の意図の書き出し】',['【満月','【新月前','【ワークの進め方】']);
+      if(wish){const n=nyBullets(wish.body);if(n!==3)warnings.push('第9章の願い文例が'+n+'件(正:3)');}
+      const rel=nyBlock(b9.body,'【満月の手放しワーク】',['【ワークの進め方】'])||nyBlock(b9.body,'【新月前の手放しの問い】',['【ワークの進め方】']);
+      if(rel){const n=nyBullets(rel.body);if(n<2||n>3)warnings.push('第9章の問いかけが'+n+'件(正:2〜3)');}
+    }}}
+  // 価格段落(固定文言②)
+  if(text.indexOf(NY_FIXED2KEY)===-1){
+    const introEnd=text.indexOf('【第1章】');
+    let found=null;
+    if(introEnd>0){
+      const intro=text.slice(0,introEnd);
+      const paras=intro.split(/\n\n+/);let cursor=0;
+      for(const pp of paras){
+        const at=intro.indexOf(pp,cursor);cursor=at+pp.length;
+        if(/[0-9０-９][0-9０-９,，]*円|ランチ[0-9０-９一二三]?回分|ワンコイン|コーヒー1杯分/.test(pp)){found={at,p:pp};break;}
+      }
+    }
+    if(found){
+      text=text.slice(0,found.at)+NY_FIXED2+text.slice(found.at+found.p.length);
+      changes.push('旧価格段落を固定文言②へ置換');
+      diffs.push({label:'価格段落を固定文言②へ置換',del:tr(found.p,80),ins:tr(NY_FIXED2,80),b:'',a:''});
+    }else{
+      const anchor=text.search(/\n準備はいいですか/);
+      if(anchor!==-1){ text=text.slice(0,anchor+1)+NY_FIXED2+'\n\n'+text.slice(anchor+1); changes.push('価格段落(固定文言②)を挿入'); diffs.push({label:'価格段落(固定文言②)を挿入',del:'',ins:tr(NY_FIXED2,80),b:'',a:'準備はいいですかの直前'}); }
+      else{ return {ok:false,problems:['価格段落の挿入位置(「準備はいいですか」)が見つかりません'],warnings,changes,diffs,title}; }
+    }
+  }
+  // 誘導文
+  if(text.indexOf(NY_GUIDE)===-1){
+    const c1=nyLineIndexOf(text,'【第1章】',0);
+    const pos=text.slice(0,c1).replace(/\n*$/,'').length;
+    text=text.slice(0,pos)+'\n\n'+NY_GUIDE+'\n'+text.slice(pos);
+    changes.push('「第1章無料」誘導を挿入');
+    diffs.push({label:'「第1章無料」誘導を挿入',del:'',ins:NY_GUIDE,b:'',a:'【第1章】の直前'});
+  }
+  // 画像特典
+  if(!/画像特典\s*$/.test(text)){ text=text.replace(/\s+$/,'')+'\n\n画像特典'; changes.push('末尾「画像特典」を付与'); diffs.push({label:'末尾「画像特典」を付与',del:'',ins:'画像特典',b:'本文末尾に',a:''}); }
+  // A/B分割
+  const c2=nyLineIndexOf(text,'【第2章】',0);
+  return {
+    ok:true, problems, warnings, changes, diffs, title,
+    partA:text.slice(0,c2).replace(/\s+$/,''),
+    partB:text.slice(c2).replace(/\s+$/,'')
+  };
+}
+// カード表示用の軽量チェック
+function quickSplitCheck(body){
+  const t=(body||'');
+  const hasTitle=/^【[0-9０-９]{1,2}月限定】[^\n]+$/m.test(t);
+  let okStruct=true;
+  const need=['【はじめに'];for(let i=1;i<=9;i++)need.push('【第'+i+'章】');
+  for(const k of need){
+    const c=(t.match(new RegExp('^'+k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'mg'))||[]).length;
+    if(c!==1){okStruct=false;break;}
+  }
+  return {okStruct,hasTitle};
+}
+/* ==== NYUKO_END ==== */
+
 let state = { current:"", months:{}, extras:[] };
 let current = null; // {kind:"sign"|"extra", id or index}
 
@@ -520,11 +708,32 @@ async function load(){
   if(memoryOnly) document.getElementById("storageWarn").style.display = "block";
   document.getElementById("loading").style.display = "none";
   render();
+  setTimeout(()=> tryAutoImport(), 400); // 開いた直後にも自動チェック(読めない環境では何もしない)
   await loadSyncConfig();
   if(sync){
     setSyncStatus(`同期ID: ${sync.gistId} ／ 確認中…`);
     syncNow(false); // 起動時に自動同期(新しい方を採用)
+  }else{
+    // 同期未設定:直近30日バックアップがなければ促す(ブラウザ保存は消えることがあるため)
+    const last = state.lastExportAt || 0;
+    if(Date.now() - last > 30*24*3600*1000){
+      setSyncStatus("⚠ 同期未設定・直近30日のバックアップなし。ブラウザ保存は消えることがあります。「同期を設定」か「全データを書き出し」を", true);
+    }
   }
+  // ブラウザに保存領域の永続化を要求(Safariの自動削除への抵抗)
+  try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+  // 設定指紋:スキャナと固定文言②が一致しているかを照合(価格改定の反映漏れ検出)
+  try{
+    if(hasLocalStorage){
+      const fp = cfgFp(NY_FIXED2);
+      let reg = {}; try{ reg = JSON.parse(localStorage.getItem("hoshino-config-fp")||"{}"); }catch(e2){}
+      reg.vault = { fp, ts: Date.now() };
+      localStorage.setItem("hoshino-config-fp", JSON.stringify(reg));
+      if(reg.scanner && reg.scanner.fp !== fp){
+        toast("⚠ スキャナと固定文言②が不一致(価格改定の反映漏れ?)両ツールの設定を確認", true);
+      }
+    }
+  }catch(e){}
 }
 async function save(silent){
   try{
@@ -555,7 +764,6 @@ function render(){
     const d = signs[s.id];
     const a = (d && d.body) ? analyzeBody(d.body, s.id) : null;
     const month = d ? (a && a.month ? a.month : (d.month || "")) : "";
-    const cnt = (d && d.copyCount) || 0; // この記事をコピーした回数
     let vf = "";
     if(a){
       if(a.match === "ok") vf = `<span class="vf ok">✓ ${s.nm}の内容</span>`;
@@ -564,11 +772,13 @@ function render(){
       if(a.month && a.month !== boardMonth){
         vf += `<span class="vf warn">⚠ ${a.month}の記事?</span>`;
       }
+      const q = quickSplitCheck(d.body);
+      if(!q.okStruct) vf += `<span class="vf warn">⚠ 分割不可</span>`;
+      else if(!q.hasTitle) vf += `<span class="vf warn">⚠ タイトル行なし</span>`;
     }
     const el = document.createElement("div");
     el.className = "sign-card"
       + (d && d.body ? " filled" : "")
-      + (cnt > 0 ? " copied" : "")
       + (a && (a.match === "mismatch" || (a.month && a.month !== boardMonth)) ? " mismatch" : "");
     el.innerHTML = `
       <button class="sc-main">
@@ -576,7 +786,7 @@ function render(){
         <span class="st">${d && d.body ? (month ? month+" ／ " : "") + d.body.length.toLocaleString()+"字" : "未格納"}</span>${vf}
       </button>
       <div class="sc-actions">
-        <button class="sc-act copy">コピー${cnt ? `<span class="cc">${cnt}</span>` : ""}</button>
+        <button class="sc-act copy">コピー</button>
         <button class="sc-act paste">ペースト</button>
       </div>`;
     el.querySelector(".sc-main").onclick = ()=> openSign(s.id);
@@ -592,8 +802,7 @@ function render(){
   state.extras.forEach((x,i)=>{
     const el = document.createElement("button");
     el.className = "extra-item";
-    const xc = x.copyCount ? ` ／ コピー${x.copyCount}回` : "";
-    el.innerHTML = `<span class="t">${esc(x.title||"無題")}</span><span class="c">${x.month ? esc(x.month)+" ／ " : ""}${(x.body||"").length.toLocaleString()}字${xc}</span>`;
+    el.innerHTML = `<span class="t">${esc(x.title||"無題")}</span><span class="c">${x.month ? esc(x.month)+" ／ " : ""}${(x.body||"").length.toLocaleString()}字</span>`;
     el.onclick = ()=> openExtra(i);
     list.appendChild(el);
   });
@@ -606,58 +815,71 @@ function nowStamp(){
 }
 
 // ---- ワンタップ貼り付け保存 ----
-// コピーに成功したら true を返す(コピー回数のカウントに使う)
 async function copyText(text, okMsg){
   try{
     await navigator.clipboard.writeText(text);
     toast(okMsg);
-    return true;
   }catch(e){
     const ta = document.createElement("textarea");
     ta.value = text; document.body.appendChild(ta); ta.select();
-    let ok = false;
-    try{ ok = document.execCommand("copy"); }catch(e2){ ok = false; }
+    try{ document.execCommand("copy"); toast(okMsg); }
+    catch(e2){ toast("コピーできませんでした", true); }
     document.body.removeChild(ta);
-    if(ok) toast(okMsg);
-    else toast("コピーできませんでした", true);
-    return ok;
   }
 }
-// コピーに成功したら回数を1増やして保存・表示に反映
-async function bumpCopyCount(obj){
-  obj.copyCount = (obj.copyCount||0) + 1;
-  obj.countAt = Date.now(); // 回数を最後に変更した時刻(同期の勝敗判定に使う)
-  await save(true); // 回数の記録だけなので失敗しても操作は止めない
-  render();
-  return obj.copyCount;
-}
-// 「コピー→ペーストで1回」の判定:
-// アプリを離れずに同じ記事をコピーし直しても回数は増やさない(ダブルタップ対策)。
-// 一度アプリを離れて(=ペーストしに行って)戻ってきたら、次のコピーは新しい1回と数える。
-let lastCopy = { key:null, left:false };
-window.addEventListener("blur", ()=>{ lastCopy.left = true; });
-document.addEventListener("visibilitychange", ()=>{ if(document.hidden) lastCopy.left = true; });
-function isRepeatCopy(key){ return lastCopy.key === key && !lastCopy.left; }
-function markCopied(key){ lastCopy = { key, left:false }; }
 async function copySign(id){
   const s = SIGNS.find(x=>x.id===id);
   const d = getSigns()[id];
   if(!d || !d.body){ toast(`${labelOf(state.current)}の${s.nm}は未格納です`, true); return; }
   current = {kind:"sign", id};
-  const key = "sign/" + state.current + "/" + id;
-  const repeat = isRepeatCopy(key); // ペーストしに行く前のコピーし直しは数えない
-  const msg = repeat
-    ? `${s.nm}をコピーし直しました(回数はそのまま${d.copyCount||0}回)`
-    : `${s.nm}の本文をコピーしました(${(d.copyCount||0)+1}回目・${d.body.length.toLocaleString()}字)`;
-  if(await copyText(d.body, msg)){
-    if(!repeat) await bumpCopyCount(d);
-    markCopied(key);
+  await copyText(d.body, `${s.nm}の本文をコピーしました(${d.body.length.toLocaleString()}字)`);
+}
+// 共通の格納処理(手動ペースト・自動ふりわけの両方から使う)
+// key=格納先の号、id=星座ID、text=タイトル+本文そのまま
+async function storeArticle(key, id, text, auto){
+  const s = SIGNS.find(x=>x.id===id);
+  state.lastAutoFp = cfgFp(text); // どの経路の格納でも記録し、タブ復帰時の自動取り込みが同じ内容に再反応しないようにする
+  state.current = key; // 格納先の号のボードへ移動
+  const signs = curSigns();
+  if(signs[id] && signs[id].body === text){
+    toast(`${labelOf(key)}の${s.nm}に同じ内容が格納済みです(変更なし)`);
+    render();
+    openSign(id);
+    return;
+  }
+  if(signs[id] && signs[id].body){
+    if(!confirm(`${labelOf(key)}の${s.nm}は格納済みです。上書きしますか?`)) return;
+  }
+  const a = analyzeBody(text, id);
+  const old = signs[id];
+  const prev = (old && old.body) ? { body:old.body, month:old.month, updated:old.updated } : undefined;
+  // 取り消し用にペースト前の状態を記録
+  lastPaste = {
+    monthKey: key,
+    signId: id,
+    before: old ? JSON.parse(JSON.stringify(old)) : null
+  };
+  signs[id] = { body:text, month: a.month ? a.month+"号" : labelOf(key), updated: nowStamp(), prev };
+  if(await save()){
+    const boardMonth = shortOf(key);
+    // 分割可否・数の照合を保存直後にチェック(投稿直前に発覚させない)
+    const cr = compileParts(text);
+    let extra = "";
+    if(!cr.ok) extra = " ／ ⚠ 分割不可:" + cr.problems[0];
+    else if(cr.warnings.length) extra = " ／ ⚠ 要確認" + cr.warnings.length + "件(開いて整形プレビューを確認)";
+    const head = auto ? `${labelOf(key)}の${s.nm}に自動格納しました` : `${labelOf(key)}の${s.nm}に保存しました`;
+    if(!auto && a.match === "mismatch") toast(`保存しましたが ⚠ ${a.detected.nm}の内容かもしれません${extra}`, true);
+    else if(!auto && a.month && a.month !== boardMonth) toast(`保存しましたが ⚠ ${a.month}の記事かもしれません${extra}`, true);
+    else if(a.match === "none") toast(`保存しました(⚠ 本文に星座名なし)${extra}`, true);
+    else if(extra) toast(`${head}${extra}`, true);
+    else toast(`${head}(${text.length.toLocaleString()}字・タイトルごと保存)`);
+    showUndoBar(`${s.nm}(${labelOf(key)})に${auto ? "自動格納" : "ペースト"}しました`);
+    render();
+    openSign(id); // 格納直後に記事を開く:下部に[タイトル][無料A][有料B]が表示される
   }
 }
 async function pasteAndSave(id){
-  const s = SIGNS.find(x=>x.id===id);
   current = {kind:"sign", id};
-  const signs = curSigns();
   // ※クリップボードはボタンを押した直後しか読めない(特にiOS)ので、
   //   確認ダイアログより先に読む
   let text = "";
@@ -673,30 +895,96 @@ async function pasteAndSave(id){
     toast("クリップボードが空です。本文をコピーしてからタップしてください", true);
     return;
   }
-  if(signs[id] && signs[id].body){
-    if(!confirm(`${labelOf(state.current)}の${s.nm}は格納済みです。上書きしますか?`)) return;
-  }
-  const a = analyzeBody(text, id);
-  const old = signs[id];
-  const prev = (old && old.body) ? { body:old.body, month:old.month, updated:old.updated } : undefined;
-  // 取り消し用にペースト前の状態を記録
-  lastPaste = {
-    monthKey: state.current,
-    signId: id,
-    before: old ? JSON.parse(JSON.stringify(old)) : null
-  };
-  // 新しい本文で上書きしたらコピー回数は0から数え直し(countAtで「0にした」ことも記録)
-  signs[id] = { body:text, month: a.month ? a.month+"号" : labelOf(state.current), updated: nowStamp(), prev, countAt: Date.now() };
-  if(await save()){
-    const boardMonth = shortOf(state.current);
-    if(a.match === "mismatch") toast(`保存しましたが ⚠ ${a.detected.nm}の内容かもしれません`, true);
-    else if(a.month && a.month !== boardMonth) toast(`保存しましたが ⚠ ${a.month}の記事かもしれません`, true);
-    else if(a.match === "none") toast(`保存しました(⚠ 本文に星座名なし)`, true);
-    else toast(`${labelOf(state.current)}の${s.nm}に保存しました(${text.length.toLocaleString()}字)`);
-    showUndoBar(`${s.nm}にペーストしました`);
-    render();
-  }
+  await storeArticle(state.current, id, text, false);
 }
+
+// ---- 自動ふりわけペースト(星座・対象月を本文から判定して該当の枠へ格納)----
+// 星座:analyzeBodyと同じ採点(「◯◯座のあなた」×20 + 冒頭×5 + 全体×1)で最高得点の星座を採用
+// 月:冒頭400字の年月を最優先、なければ本文で最多の年月。判定できなければ表示中の号(確認あり)
+function detectBest(body){
+  const lead = body.slice(0, 400);
+  let bestId = null, best = 0;
+  SIGNS.forEach(s=>{
+    const ws = SIGN_VARIANTS[s.id];
+    const sc = ws.reduce((a,w)=>a+countOcc(body, w+"のあなた"),0)*20
+             + ws.reduce((a,w)=>a+countOcc(lead,w),0)*5
+             + ws.reduce((a,w)=>a+countOcc(body,w),0);
+    if(sc > best){ best = sc; bestId = s.id; }
+  });
+  if(!bestId) return { signId:null, month:null };
+  return { signId:bestId, month: analyzeBody(body, bestId).month };
+}
+async function autoPaste(){
+  let text = "";
+  try{
+    text = await navigator.clipboard.readText();
+  }catch(e){
+    toast("この画面ではクリップボードを読めません。各星座カードの「ペースト」をご利用ください", true);
+    return;
+  }
+  if(!text || !text.trim()){
+    toast("クリップボードが空です。記事(タイトル+本文)をコピーしてからタップしてください", true);
+    return;
+  }
+  const det = detectBest(text);
+  if(!det.signId){
+    toast("本文から星座を判定できませんでした。各星座カードの「ペースト」で格納してください", true);
+    return;
+  }
+  const s = SIGNS.find(x=>x.id===det.signId);
+  let key = det.month ? keyFromLabel(det.month) : null;
+  if(!key){
+    if(!confirm(`${s.nm}と判定しましたが、対象月を検出できませんでした。\n表示中の${labelOf(state.current)}として格納しますか?`)) return;
+    key = state.current;
+  }
+  await storeArticle(key, det.signId, text, true);
+}
+
+// ---- 全自動取り込み(ボタンなし) ----
+// ブラウザの安全制限上、クリップボードは「ユーザーが操作した瞬間」しか読めないため、
+// このタブに戻った瞬間・画面を開いた瞬間・Cmd+V(貼り付け操作)の瞬間に自動チェックする。
+// 記事らしい文章(章構成あり+星座判定可)のときだけ、自動ふりわけと同じ処理で格納する。
+function looksLikeArticle(t){
+  if(!t || t.length < 600) return false;
+  if(!/【第1章】/.test(t) && !/【はじめに/.test(t)) return false;
+  return !!detectBest(t).signId;
+}
+async function tryAutoImport(text){
+  // 編集画面を開いている間・入力欄にフォーカスがある間は割り込まない
+  // (編集途中でアプリを切り替えて戻った瞬間に、格納処理が編集を乗っ取るのを防ぐ)
+  if(document.getElementById("editor").classList.contains("open")) return;
+  const tag = (document.activeElement && document.activeElement.tagName) || "";
+  if(tag === "TEXTAREA" || tag === "INPUT") return;
+  let t = text;
+  if(t == null){
+    try{ t = await navigator.clipboard.readText(); }catch(e){ return; } // 権限がない環境では静かに何もしない
+  }
+  if(!t || !t.trim()) return;
+  const fp = cfgFp(t);
+  if(state.lastAutoFp === fp) return; // 同じ内容は一度しか取り込まない
+  if(!looksLikeArticle(t)) return;
+  const det = detectBest(t);
+  if(!det.signId) return;
+  state.lastAutoFp = fp; save(true); // 確認をキャンセルしても同じ内容で再度は聞かない
+  const s = SIGNS.find(x=>x.id===det.signId);
+  let key = det.month ? keyFromLabel(det.month) : null;
+  if(!key){
+    if(!confirm(`コピー中の記事を${s.nm}と判定しましたが、対象月を検出できませんでした。\n表示中の${labelOf(state.current)}として格納しますか?`)) return;
+    key = state.current;
+  }
+  await storeArticle(key, det.signId, t, true);
+}
+window.addEventListener("focus", ()=> tryAutoImport());
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible") tryAutoImport();
+});
+document.addEventListener("paste", (ev)=>{
+  // 編集画面などの入力欄への貼り付けは通常動作を優先
+  const tag = (document.activeElement && document.activeElement.tagName) || "";
+  if(tag === "TEXTAREA" || tag === "INPUT") return;
+  const t = ev.clipboardData && ev.clipboardData.getData("text");
+  if(t) tryAutoImport(t);
+});
 
 // ---- ペーストの取り消し ----
 let lastPaste = null; // {monthKey, signId, before}
@@ -746,10 +1034,64 @@ function openSign(id){
   else check = " ／ ⚠ 本文に星座名なし";
   if(a.month && a.month !== boardMonth) check += ` ／ ⚠ ${a.month}の記事の可能性`;
   document.getElementById("vMeta").textContent = `${month} ／ ${d.body.length.toLocaleString()}字 ／ 更新 ${d.updated||"—"}${check}`;
-  document.getElementById("vCount").textContent = d.copyCount||0;
-  document.getElementById("vCountRow").classList.add("show");
-  document.getElementById("vText").textContent = d.body;
   document.getElementById("vRevert").style.display = (d.prev && d.prev.body) ? "block" : "none";
+  document.getElementById("splitRow").classList.remove("on");
+  // 整形プレビュー+3分割ビュー(保存された本文は変わらない。分割はこの場で計算)
+  {
+    const r = compileParts(d.body);
+    const vp = document.getElementById("vParts");
+    const vt = document.getElementById("vText");
+    if(r.ok){
+      // 3分割された画面:タイトル/無料A/有料B をそれぞれの枠で表示し、枠ごとにコピー
+      const parts = [];
+      if(r.title) parts.push({label:"タイトル(noteのタイトル欄へ)", text:r.title, msg:"タイトルをコピーしました"});
+      parts.push({label:"無料エリア A(はじめに+第1章)", text:r.partA, msg:"無料エリア(A)をコピーしました"});
+      parts.push({label:"有料エリア B(第2章〜第9章)", text:r.partB, msg:"有料エリア(B)をコピーしました"});
+      vp.innerHTML = parts.map((p,i)=>`
+        <div class="part-card">
+          <div class="part-head"><span><span class="pt">${esc(p.label)}</span> <span class="pc">${p.text.length.toLocaleString()}字</span></span>
+          <button class="part-copy" data-i="${i}">コピー</button></div>
+          <div class="part-text">${esc(p.text)}</div>
+        </div>`).join("");
+      vp.querySelectorAll(".part-copy").forEach(btn=>{
+        btn.onclick = async ()=>{
+          const p = parts[+btn.dataset.i];
+          await copyText(p.text, p.msg + "(" + p.text.length.toLocaleString() + "字)");
+          btn.textContent = "コピーしました";
+          setTimeout(()=>{ btn.textContent = "コピー"; }, 1600);
+        };
+      });
+      vp.style.display = "block";
+      vt.style.display = "none";
+    }else{
+      vp.style.display = "none";
+      vt.style.display = "block";
+      vt.textContent = d.body;
+    }
+    const sum = document.getElementById("vCompileSum");
+    const list = document.getElementById("vCompileList");
+    let cls = "", label = "";
+    if(!r.ok){ cls = "bad"; label = "⚠ 分割不可:" + r.problems[0]; }
+    else if(r.warnings.length){ cls = "warn"; label = "整形プレビュー ⚠ 要確認 " + r.warnings.length + "件(タップで詳細)"; }
+    else{ label = "整形プレビュー:問題なし(コピー時の適用 " + r.changes.length + "件・タップで詳細)"; }
+    sum.className = cls; sum.textContent = label;
+    const rows = [];
+    r.problems.forEach(x=> rows.push('<div class="b">✕ ' + esc(x) + '</div>'));
+    r.warnings.forEach(x=> rows.push('<div class="w">⚠ ' + esc(x) + '</div>'));
+    r.changes.forEach(x=> rows.push('<div>・' + esc(x) + '</div>'));
+    if(r.diffs && r.diffs.length){
+      rows.push('<div style="margin:8px 0 2px;color:var(--gold-soft)">— 変更差分(コピー時に適用・保存本文は無変更) —</div>');
+      r.diffs.forEach(dd=>{
+        const del = dd.del ? ('<del>' + esc(dd.del) + '</del>') : '';
+        const ins = dd.ins ? ('<ins>' + esc(dd.ins) + '</ins>') : '';
+        rows.push('<div><span style="color:var(--gold-soft);font-size:11px">' + esc(dd.label) + '</span><br><span style="opacity:.55">…' + esc(dd.b||'') + '</span>' + del + ins + '<span style="opacity:.55">' + esc(dd.a||'') + '…</span></div>');
+      });
+    }
+    if(!rows.length) rows.push('<div>コピー時に適用される変更はありません(誘導・特典・価格段落はすべて格納済みの本文に含まれています)</div>');
+    list.innerHTML = rows.join('');
+    document.getElementById("vCompile").style.display = "block";
+    document.getElementById("vCompile").open = false;
+  }
   showOverlay("viewer");
 }
 function openExtra(i){
@@ -757,11 +1099,30 @@ function openExtra(i){
   const x = state.extras[i];
   document.getElementById("vTitle").textContent = x.title || "無題";
   document.getElementById("vMeta").textContent = `${x.month ? x.month+" ／ " : ""}${(x.body||"").length.toLocaleString()}字 ／ 更新 ${x.updated||"—"}`;
-  document.getElementById("vCount").textContent = x.copyCount||0;
-  document.getElementById("vCountRow").classList.toggle("show", !!(x.body));
-  document.getElementById("vText").textContent = x.body || "";
+  document.getElementById("vParts").style.display = "none";
+  const vtE = document.getElementById("vText");
+  vtE.style.display = "block";
+  vtE.textContent = x.body || "";
   document.getElementById("vRevert").style.display = (x.prev && x.prev.body) ? "block" : "none";
+  document.getElementById("splitRow").classList.remove("on"); // その他テキストは通常コピーのみ
+  document.getElementById("vCompile").style.display = "none";
   showOverlay("viewer");
+}
+
+// ---- 分割コピー(タイトル/無料A/有料B・入稿マシン内蔵)----
+async function copyPart(which){
+  if(!current || current.kind !== "sign"){ toast("星座記事のみ対応です", true); return; }
+  const d = getSigns()[current.id];
+  if(!d || !d.body){ toast("本文がありません", true); return; }
+  const r = compileParts(d.body);
+  if(which === "title"){
+    if(r.title) await copyText(r.title, "タイトルをコピーしました(noteのタイトル欄へ)");
+    else toast("本文に定型タイトル行(【〇月限定】〜【保存版】)がありません", true);
+    return;
+  }
+  if(!r.ok){ toast("分割できません:" + r.problems[0], true); return; }
+  if(which === "A") await copyText(r.partA, `無料エリア(A)をコピーしました(${r.partA.length.toLocaleString()}字)`);
+  else await copyText(r.partB, `有料エリア(B)をコピーしました(${r.partB.length.toLocaleString()}字)`);
 }
 
 // ---- editor ----
@@ -802,8 +1163,7 @@ async function saveEditor(){
       const prev = (old && old.body && old.body !== body)
         ? { body:old.body, month:old.month, updated:old.updated }
         : (old ? old.prev : undefined);
-      // 手直し(編集)ではコピー回数と回数変更時刻を引き継ぐ
-      signs[current.id] = {body, month, updated:stamp, prev, copyCount:(old && old.copyCount) || 0, countAt:(old && old.countAt) || 0};
+      signs[current.id] = {body, month, updated:stamp, prev};
     }
     else delete signs[current.id];
   }else{
@@ -816,13 +1176,20 @@ async function saveEditor(){
       const prev = (old && old.body && old.body !== body)
         ? { body:old.body, month:old.month, updated:old.updated }
         : (old ? old.prev : undefined);
-      state.extras[current.index] = {title, body, month, updated:stamp, prev, copyCount:(old && old.copyCount) || 0, countAt:(old && old.countAt) || 0};
+      state.extras[current.index] = {title, body, month, updated:stamp, prev};
     }
   }
   if(await save()){
-    toast("保存しました");
+    let msg = "保存しました", err = false;
+    if(current.kind === "sign" && body.trim()){
+      const cr = compileParts(body);
+      if(!cr.ok){ msg = "保存しました ／ ⚠ 分割不可:" + cr.problems[0]; err = true; }
+      else if(cr.warnings.length){ msg = "保存しました ／ ⚠ 要確認" + cr.warnings.length + "件(整形プレビューを確認)"; err = true; }
+    }
+    toast(msg, err);
     hideOverlay("editor");
     render();
+    if(current.kind === "sign" && body.trim()) openSign(current.id); // 保存後すぐ3分割ボタンへ
   }
 }
 async function deleteCurrent(){
@@ -838,40 +1205,11 @@ async function deleteCurrent(){
 
 // ---- copy ----
 async function copyBody(){
-  const obj = current.kind==="sign" ? getSigns()[current.id] : state.extras[current.index];
-  const text = (obj && obj.body) || "";
+  let text = "";
+  if(current.kind==="sign") text = (getSigns()[current.id]||{}).body||"";
+  else text = (state.extras[current.index]||{}).body||"";
   if(!text){ toast("本文がありません", true); return; }
-  const key = current.kind==="sign" ? ("sign/" + state.current + "/" + current.id) : ("extra/" + current.index);
-  const repeat = isRepeatCopy(key); // ペーストしに行く前のコピーし直しは数えない
-  const msg = repeat
-    ? `コピーし直しました(回数はそのまま${obj.copyCount||0}回)`
-    : `コピーしました(${(obj.copyCount||0)+1}回目)`;
-  if(await copyText(text, msg)){
-    if(!repeat){
-      await bumpCopyCount(obj);
-      // 閲覧画面のメタ情報(コピー回数)も更新
-      if(current.kind==="sign") openSign(current.id); else openExtra(current.index);
-    }
-    markCopied(key);
-  }
-}
-
-// ---- コピー回数の手動修正(−/＋)----
-function curObj(){
-  return current && current.kind==="sign" ? getSigns()[current.id] : (current ? state.extras[current.index] : null);
-}
-async function adjustCount(delta){
-  const obj = curObj();
-  if(!obj) return;
-  const now = obj.copyCount||0;
-  const v = Math.max(0, now + delta);
-  if(v === now){ if(delta < 0) toast("0回より下にはできません", true); return; }
-  obj.copyCount = v;
-  obj.countAt = Date.now(); // 手動修正も「最後に回数を触った」扱いにして同期で消えないようにする
-  lastCopy = { key:null, left:false }; // 修正後の次のコピーは必ず新しい1回として数える
-  document.getElementById("vCount").textContent = v;
-  await save(true);
-  render();
+  await copyText(text, "コピーしました");
 }
 
 // ---- 前の版に戻す(現在の版と入れ替え。もう一度押せば戻せる)----
@@ -889,24 +1227,6 @@ async function revertCurrent(){
   }
 }
 
-// ---- コピー回数のリセット(月替わりの作業前などに)----
-async function resetMonthCounts(){
-  const signs = getSigns();
-  let n = 0;
-  for(const id in signs){ if(signs[id] && signs[id].copyCount){ n++; } }
-  if(n === 0){ toast(`${labelOf(state.current)}にリセットできるコピー回数はありません`, true); return; }
-  if(!confirm(`${labelOf(state.current)}の${n}記事のコピー回数を0に戻します。\n(本文はそのまま残ります)\nよろしいですか?`)) return;
-  const stamp = Date.now();
-  for(const id in signs){
-    if(signs[id]){
-      delete signs[id].copyCount;
-      signs[id].countAt = stamp; // 「0にした」も最新の変更として記録(同期で古い回数が復活しないように)
-    }
-  }
-  lastCopy = { key:null, left:false }; // リセット直後のコピーは必ず1回目として数える
-  if(await save()){ toast(`${labelOf(state.current)}のコピー回数をリセットしました`); render(); }
-}
-
 // ---- バックアップ書き出し・復元 ----
 function exportBackup(){
   try{
@@ -918,6 +1238,7 @@ function exportBackup(){
     a.download = `article-vault-${n.getFullYear()}${String(n.getMonth()+1).padStart(2,"0")}${String(n.getDate()).padStart(2,"0")}.json`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+    state.lastExportAt = Date.now(); save(true);
     toast("バックアップを書き出しました");
   }catch(e){
     toast("書き出しに失敗しました", true);
@@ -949,6 +1270,7 @@ function importBackup(file){
       toast("読み込めませんでした。ファイルを確認してください", true);
     }
   };
+  r.onerror = ()=> toast("ファイルを読み込めませんでした。もう一度選び直してください", true);
   r.readAsText(file);
 }
 
@@ -1008,25 +1330,16 @@ function mergeStates(a, b){
     const merged = {};
     for(const id of new Set([...Object.keys(sa), ...Object.keys(sb)])){
       const x = sa[id], y = sb[id];
-      if(x && y){
-        // 本文は新しい方を採用。コピー回数は「最後に回数を変更した方」を採用
-        // (max方式だとリセットが同期で打ち消されるため、時刻で勝敗を決める)
-        const win = parseUpd(y.updated) > parseUpd(x.updated) ? y : x;
-        const cw = (y.countAt||0) >= (x.countAt||0) ? y : x;
-        merged[id] = Object.assign({}, win, { copyCount: cw.copyCount||0, countAt: Math.max(x.countAt||0, y.countAt||0) });
-      }
+      if(x && y) merged[id] = parseUpd(y.updated) > parseUpd(x.updated) ? y : x;
       else merged[id] = x || y;
     }
     if(Object.keys(merged).length) out.months[k] = { signs: merged };
   }
-  // その他テキスト:同じ内容は1つにまとめ、コピー回数を最後に触った方を残す
-  const map = new Map();
+  const seen = new Set();
   for(const x of [...(a.extras||[]), ...(b.extras||[])]){
     const sig = (x.title||"") + "\u0000" + (x.body||"");
-    const p = map.get(sig);
-    if(!p || (x.countAt||0) > (p.countAt||0)) map.set(sig, x);
+    if(!seen.has(sig)){ seen.add(sig); out.extras.push(x); }
   }
-  out.extras = [...map.values()];
   return out;
 }
 
@@ -1196,7 +1509,7 @@ function updateStats(){
   const st = storageStats();
   const mb = (JSON.stringify(state).length / 1024 / 1024);
   document.getElementById("statsInfo").textContent =
-    `現在:${st.months}ヶ月分・${st.articles}記事・約${st.chars.toLocaleString()}字(容量の目安 ${mb < 0.01 ? "0.01未満" : mb.toFixed(2)}MB ／ 上限約5MB)`;
+    `現在:${st.months}ヶ月分・${st.articles}記事・約${st.chars.toLocaleString()}字(容量の目安 ${mb < 0.01 ? "0.01未満" : mb.toFixed(2)}MB ／ 上限約5MB) ／ 設定中の価格:${NY_PRICES}`;
 }
 function countMonthArticles(key){
   const s = (state.months[key]||{}).signs || {};
@@ -1258,8 +1571,10 @@ document.getElementById("vBack").onclick = ()=> hideOverlay("viewer");
 document.getElementById("vEdit").onclick = openEditor;
 document.getElementById("vCopy").onclick = copyBody;
 document.getElementById("vRevert").onclick = revertCurrent;
-document.getElementById("vMinus").onclick = ()=> adjustCount(-1);
-document.getElementById("vPlus").onclick = ()=> adjustCount(+1);
+document.getElementById("vCopyT").onclick = ()=> copyPart("title");
+document.getElementById("vCopyA").onclick = ()=> copyPart("A");
+document.getElementById("vCopyB").onclick = ()=> copyPart("B");
+document.getElementById("autoPasteBtn").onclick = autoPaste;
 document.getElementById("eCancel").onclick = ()=>{ quickPaste = false; hideOverlay("editor"); render(); };
 document.getElementById("eCancel2").onclick = ()=>{ quickPaste = false; hideOverlay("editor"); render(); };
 document.getElementById("eSave").onclick = saveEditor;
@@ -1294,7 +1609,6 @@ document.getElementById("syncNowBtn").onclick = ()=> syncNow(true);
 document.getElementById("clearMonthBtn").onclick = clearCurrentMonth;
 document.getElementById("clearOldBtn").onclick = clearOldMonths;
 document.getElementById("clearPrevBtn").onclick = clearAllPrev;
-document.getElementById("resetCountBtn").onclick = resetMonthCounts;
 document.getElementById("importFile").onchange = (ev)=>{
   const f = ev.target.files[0];
   if(f) importBackup(f);
@@ -1438,6 +1752,7 @@ document.getElementById("pGo").onclick = goPicker;
 })();
 
 load();
+
 </script>
 </body>
 </html>
