@@ -62,6 +62,7 @@
   .doc-card{
     background:var(--card);border:1px solid var(--card-edge);border-radius:14px;
     padding:14px 14px 12px;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
   }
   .doc-card.filled{border-color:var(--accent-dim)}
   .doc-card.warn-old{border-color:#8a5a3a}
@@ -144,6 +145,21 @@
   }
   .hist-btn:active{background:var(--card)}
   .hist-btn.art{color:var(--ok);border-color:#3a5a4a}
+
+  .seq-bar{display:flex;gap:8px;margin:0 0 14px}
+  .seq-main{
+    flex:1;background:var(--card);border:1px solid #3a5a4a;color:var(--ok);
+    border-radius:14px;padding:14px 12px;font-size:14px;font-weight:600;cursor:pointer;
+    font-family:var(--sans);letter-spacing:.04em;text-align:center;
+  }
+  .seq-main:active{background:var(--ok);color:#0e1a12}
+  .seq-main small{display:block;font-weight:400;font-size:11px;color:var(--ink-dim);margin-top:4px}
+  .seq-main:active small{color:#0e1a12}
+  .seq-side{
+    width:64px;background:var(--night-2);border:1px solid var(--card-edge);color:var(--ink);
+    border-radius:14px;font-size:12px;cursor:pointer;font-family:var(--sans);line-height:1.5;
+  }
+  .seq-side:active{background:var(--card)}
 
   textarea.editor{
     width:100%;min-height:50vh;background:var(--night-2);border:1px solid var(--card-edge);
@@ -300,6 +316,12 @@
 
   <div style="display:flex;justify-content:flex-end;margin:-6px 0 12px">
     <button class="tool-btn" id="multiCopyBtn" style="flex:0 0 auto;padding:9px 16px;font-size:12px">☑ まとめてコピー</button>
+  </div>
+
+  <div class="seq-bar" id="seqBar" style="display:none">
+    <button class="seq-main" id="seqMainBtn"></button>
+    <button class="seq-side" id="seqChgBtn">変更</button>
+    <button class="seq-side" id="seqBackBtn">←<br>戻る</button>
   </div>
 
   <div class="doc-list" id="docList"></div>
@@ -782,12 +804,39 @@ function render(){
   if(!docs.length){
     list.innerHTML = `<div class="empty-note">このカテゴリーはまだ空です。<br>下の「＋命令書の枠を追加」から作れます。</div>`;
   }
+  if(reorderMode){
+    const bar = document.createElement("div");
+    bar.className = "doc-card";
+    bar.style.borderColor = "var(--accent)";
+    bar.innerHTML = `<div style="display:flex;align-items:center;gap:10px">
+      <span style="flex:1;font-size:13px;color:var(--accent)">並べ替え中:▲▼で順番を移動</span>
+      <button class="dc-act ro-done" style="flex:0 0 auto;padding:10px 18px">完了</button></div>`;
+    bar.querySelector(".ro-done").onclick = ()=>{ reorderMode = false; render(); toast("並べ替えを保存しました"); };
+    list.appendChild(bar);
+  }
   docs.forEach((d)=>{
     const i = state.docs.indexOf(d);
     const filled = !!(d.body && d.body.trim());
     const el = document.createElement("div");
     el.className = "doc-card" + (filled ? " filled" : "");
     const verBadge = d.ver ? `<span class="dc-ver">${esc(d.ver)}</span>` : (filled ? `<span class="dc-ver" style="color:var(--ink-dim);border-color:var(--card-edge)">版不明</span>` : "");
+    // ---- 並べ替えモード:▲▼で移動 ----
+    if(reorderMode){
+      el.innerHTML = `
+        <div class="dc-main" style="cursor:default">
+          <span style="font-size:16px;color:var(--ink-dim)">≡</span>
+          <span class="dc-name">${esc(d.name)}</span>
+          ${verBadge}
+        </div>
+        <div class="dc-actions">
+          <button class="dc-act ro-up">▲ 上へ</button>
+          <button class="dc-act ro-down">▼ 下へ</button>
+        </div>`;
+      el.querySelector(".ro-up").onclick = ()=> moveDoc(d.id, -1);
+      el.querySelector(".ro-down").onclick = ()=> moveDoc(d.id, +1);
+      list.appendChild(el);
+      return;
+    }
     // ---- まとめてコピーの選択モード:カードはチェック切替専用になる ----
     if(selectMode){
       if(selectedIds.has(d.id)) el.className += " selected";
@@ -840,11 +889,18 @@ function render(){
     if(hasFields) el.querySelector(".dc-act.fill").onclick = ()=> openFiller(i);
     el.querySelector(".wpaste").onclick = ()=> pasteToDoc(i);
     if(hasBlocks) el.querySelector(".ppaste").onclick = ()=> partialPaste(i);
+    attachLongPress(el, ()=>{
+      if(selectMode || reorderMode) return;
+      reorderMode = true;
+      render();
+      toast("並べ替えモード:▲▼で移動、右上の「完了」で確定");
+    });
     list.appendChild(el);
   });
   updateStats();
   renderMarkInfo();
   renderMyMarks();
+  renderSeq();
 }
 function updateStats(){
   let chars = 0, hist = 0, copies = 0;
@@ -1518,10 +1574,16 @@ async function loadArticleVault(){
     if(!raw) return null;
     const d = JSON.parse(raw);
     if(d && d.months && typeof d.months === "object") return d;
+    // 旧・記事保管庫の形式(単一月 {month, signs})も読めるように変換
+    if(d && d.signs && typeof d.signs === "object" && Object.keys(d.signs).length){
+      const m = String(d.month||"").match(/(20\d{2})\s*年\s*(\d{1,2})\s*月/);
+      const key = m ? `${m[1]}-${String(+m[2]).padStart(2,"0")}` : "0000-00";
+      return { months: { [key]: { signs: d.signs } } };
+    }
     return null;
   }catch(e){ return null; }
 }
-function artLabelOf(k){ const p = k.split("-"); return `${+p[0]}年${+p[1]}月号`; }
+function artLabelOf(k){ const p = k.split("-"); return +p[0] ? `${+p[0]}年${+p[1]}月号` : "号数不明"; }
 // 号選択→星座選択の2段モーダルで過去記事を1本選ぶ。{label, body} か null を返す
 async function pickArticle(){
   const av = await loadArticleVault();
@@ -1573,6 +1635,173 @@ async function copyWithArticle(){
   toast(`命令書+過去記事(${art.label})をコピーしました(${text.length.toLocaleString()}字)`);
 }
 
+// ---- 連続コピー(命令書+過去記事:押すたびに 牡羊座→牡牛座→… と星座が進む)----
+// 最初のタップで「どの命令書と、どの号の記事か」を選ぶ。以後は押すたびに
+// 「命令書本文+次の星座の過去記事」を連結コピーして前進。「←戻る」で1つ前へ。
+// コピー失敗時は進まない。進み具合は保存され、閉じても続きから。
+async function seqItems(){
+  const sp = state.seqPos;
+  if(!sp || !sp.docId || !sp.month) return null;
+  const av = await loadArticleVault();
+  if(!av || !av.months[sp.month]) return null;
+  const signs = av.months[sp.month].signs || {};
+  return ART_SIGNS.filter(([id])=> signs[id] && signs[id].body)
+    .map(([id, nm])=> ({ id, label: nm, body: signs[id].body }));
+}
+function seqDoc(){
+  const sp = state.seqPos;
+  if(!sp || !sp.docId) return null;
+  return state.docs.find(d=> d.id === sp.docId && d.body && d.body.trim()) || null;
+}
+function seqIdx(items){
+  const sp = state.seqPos;
+  let idx = sp.idx || 0;
+  // 途中で記事が増減しても「次の星座名」で位置を探し直す(番号ズレ防止)
+  if(sp.label && (!items[idx] || items[idx].label !== sp.label)){
+    const f = items.findIndex(x=> x.label === sp.label);
+    if(f !== -1) idx = f;
+  }
+  if(idx > items.length) idx = items.length;
+  return idx < 0 ? 0 : idx;
+}
+async function seqSetup(){
+  const docs = state.docs.filter(d=> d.body && d.body.trim());
+  if(!docs.length){ toast("先に命令書を格納してください", true); return false; }
+  const did = await _modal({
+    title: "連続コピー:どの命令書と一緒に?",
+    buttons: docs.slice(0, 20).map(d=>({ label: d.name + (d.ver ? " " + d.ver : ""), value: d.id, style: "ghost" }))
+      .concat([{ label: "キャンセル", value: null }])
+  });
+  if(!did) return false;
+  const av = await loadArticleVault();
+  if(!av){ toast("記事保管庫のデータが見つかりません(同じサイトで記事保管庫を開いて保存してください)", true); return false; }
+  const monthKeys = Object.keys(av.months).filter(k=>{
+    const s = (av.months[k]||{}).signs || {};
+    return Object.keys(s).some(id=> s[id] && s[id].body);
+  }).sort().reverse().slice(0, 24);
+  if(!monthKeys.length){ toast("記事保管庫にまだ記事がありません", true); return false; }
+  const mk = await _modal({
+    title: "どの号の記事を順番に付ける?",
+    buttons: monthKeys.map(k=>{
+      const s = av.months[k].signs;
+      const n = Object.keys(s).filter(id=> s[id] && s[id].body).length;
+      return { label: `${artLabelOf(k)}(${n}記事)`, value: k, style: "ghost" };
+    }).concat([{ label: "キャンセル", value: null }])
+  });
+  if(!mk) return false;
+  state.seqPos = { docId: did, month: mk, idx: 0, label: null };
+  save(true);
+  return true;
+}
+async function renderSeq(){
+  const bar = document.getElementById("seqBar");
+  if(!bar) return;
+  if(selectMode || reorderMode){ bar.style.display = "none"; return; }
+  bar.style.display = "flex";
+  const btn = document.getElementById("seqMainBtn");
+  const d = seqDoc();
+  const items = d ? await seqItems() : null;
+  if(!d || !items || !items.length){
+    btn.innerHTML = `▶ 連続コピー(命令書+過去記事)をはじめる<small>タップして命令書と号を選ぶと、押すたびに 牡羊座→牡牛座→… と順にコピー</small>`;
+    document.getElementById("seqBackBtn").style.opacity = ".35";
+    return;
+  }
+  const idx = seqIdx(items);
+  const head = `${esc(d.name)}+${esc(artLabelOf(state.seqPos.month))}`;
+  if(idx >= items.length){
+    btn.innerHTML = `✔ ${head}:全星座コピー済み<small>タップで最初からもう一周。「変更」で別の命令書/号へ</small>`;
+  }else{
+    btn.innerHTML = `▶ ${head}<br>次は「${esc(items[idx].label)}」<small>${idx+1}/${items.length}・押すたびに 命令書+その星座の記事 をコピー</small>`;
+  }
+  document.getElementById("seqBackBtn").style.opacity = idx > 0 ? "1" : ".35";
+}
+async function seqCopy(){
+  const d = seqDoc();
+  const items = d ? await seqItems() : null;
+  if(!d || !items || !items.length){
+    if(await seqSetup()) renderSeq();
+    return;
+  }
+  const idx = seqIdx(items);
+  if(idx >= items.length){
+    const v = await _modal({
+      title: "この号は全星座コピー済みです",
+      buttons: [
+        { label: "別の号・別の命令書に変更", value: "chg", style: "primary" },
+        { label: "この号を最初からもう一周", value: "again", style: "ghost" },
+        { label: "キャンセル", value: null }
+      ]
+    });
+    if(v === "again"){
+      state.seqPos.idx = 0; state.seqPos.label = null;
+      save(true); renderSeq();
+      toast("最初に戻りました。もう一度押すとコピーを開始します");
+    }else if(v === "chg"){
+      await seqChange();
+    }
+    return;
+  }
+  const it = items[idx];
+  const text = d.body + "\n\n━━━━━ 過去記事(記事保管庫より:" + artLabelOf(state.seqPos.month) + " " + it.label + ") ━━━━━\n\n" + it.body;
+  const ok = await copyText(text, null);
+  if(!ok) return; // コピーできなかったら進まない(飛ばし防止)
+  if(countOnce("c:" + d.id)) d.copies = (d.copies || 0) + 1;
+  state.seqPos.idx = idx + 1;
+  state.seqPos.label = items[idx + 1] ? items[idx + 1].label : null;
+  save(true);
+  toast(`${it.label}:命令書+記事をコピーしました(${text.length.toLocaleString()}字)`);
+  render();
+}
+async function seqBack(){
+  const d = seqDoc();
+  const items = d ? await seqItems() : null;
+  if(!d || !items || !items.length){ toast("先に緑のボタンで命令書と号を選んでください", true); return; }
+  const idx = seqIdx(items);
+  if(idx <= 0){ toast("これより前はありません", true); return; }
+  state.seqPos.idx = idx - 1;
+  state.seqPos.label = items[idx - 1].label;
+  save(true);
+  renderSeq();
+  toast(`1つ戻りました。次は「${items[idx - 1].label}」`);
+}
+async function seqChange(){
+  if(await seqSetup()){ renderSeq(); toast("連続コピーの設定を変更しました"); }
+}
+
+// ---- 並べ替え(カードを長押し→▲▼で順番を移動→完了)----
+let reorderMode = false;
+let lpTimer = null;
+function swallowNextClick(){
+  // 長押し発動の直後、指を離した瞬間に飛んでくるタップ判定を1回だけ無効化する
+  const h = (e)=>{ e.stopPropagation(); e.preventDefault(); };
+  document.addEventListener("click", h, true);
+  setTimeout(()=> document.removeEventListener("click", h, true), 800);
+}
+function attachLongPress(el, fn){
+  let sx = 0, sy = 0;
+  const start = (x, y)=>{ sx = x; sy = y; clearTimeout(lpTimer); lpTimer = setTimeout(()=>{ swallowNextClick(); fn(); }, 550); };
+  const cancel = ()=> clearTimeout(lpTimer);
+  el.addEventListener("touchstart", e=>{ const t = e.touches[0]; start(t.clientX, t.clientY); }, {passive:true});
+  el.addEventListener("touchmove", e=>{ const t = e.touches[0]; if(Math.abs(t.clientX - sx) > 12 || Math.abs(t.clientY - sy) > 12) cancel(); }, {passive:true});
+  el.addEventListener("touchend", cancel);
+  el.addEventListener("touchcancel", cancel);
+  el.addEventListener("mousedown", e=> start(e.clientX, e.clientY));
+  el.addEventListener("mousemove", e=>{ if(e.buttons && (Math.abs(e.clientX - sx) > 12 || Math.abs(e.clientY - sy) > 12)) cancel(); });
+  el.addEventListener("mouseup", cancel);
+  el.addEventListener("mouseleave", cancel);
+}
+function moveDoc(id, dir){
+  // いまのカテゴリー内だけで順番を入れ替える(他カテゴリーの並びは不変)
+  const idxs = state.docs.map((d, i)=> d.catId === state.activeCat ? i : -1).filter(i=> i !== -1);
+  const pos = idxs.findIndex(i=> state.docs[i].id === id);
+  const target = pos + dir;
+  if(pos === -1 || target < 0 || target >= idxs.length) return;
+  const a = idxs[pos], b = idxs[target];
+  const t = state.docs[a]; state.docs[a] = state.docs[b]; state.docs[b] = t;
+  save(true);
+  render();
+}
+
 // ---- misc ----
 function showOverlay(id){ document.getElementById(id).classList.add("open"); }
 function hideOverlay(id){ document.getElementById(id).classList.remove("open"); }
@@ -1598,6 +1827,9 @@ document.getElementById("eCancel2").onclick = ()=>{ quickPaste=false; hideOverla
 document.getElementById("eSave").onclick = saveEditor;
 document.getElementById("eDelete").onclick = deleteDoc;
 document.getElementById("undoBtn").onclick = undoPaste;
+document.getElementById("seqMainBtn").onclick = seqCopy;
+document.getElementById("seqBackBtn").onclick = seqBack;
+document.getElementById("seqChgBtn").onclick = seqChange;
 document.getElementById("eText").addEventListener("paste", ()=>{
   if(!quickPaste) return;
   setTimeout(()=>{
@@ -1628,6 +1860,7 @@ function updateSelBar(){
 }
 function setSelectMode(on){
   selectMode = on;
+  if(on) reorderMode = false;
   if(!on) selectedIds.clear();
   document.getElementById("multiCopyBtn").textContent = on ? "✕ 選択をやめる" : "☑ まとめてコピー";
   document.getElementById("selBar").classList.toggle("show", on);
@@ -2022,7 +2255,8 @@ function mergeStates(a, b){
     lastBackupAt: Math.max(a.lastBackupAt||0, b.lastBackupAt||0),
     markSeq: Math.max(a.markSeq||1, b.markSeq||1),
     customMarks: Array.from(new Set([...(a.customMarks||[]), ...(b.customMarks||[])])).slice(0, 50),
-    countReset: Math.max(ra, rb)
+    countReset: Math.max(ra, rb),
+    seqPos: a.seqPos || null // 連続コピーの位置はこの端末のものを維持
   };
 }
 
