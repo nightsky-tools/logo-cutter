@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1135,6 +1135,9 @@ function renderSky(){
 function looksLikeArticle(t){
   if(!t || t.length < 600) return false;
   if(!/【第1章】/.test(t) && !/【はじめに/.test(t)) return false;
+  // 命令書やその連結コピー(命令書+記事)は記事ではない
+  if(/命令書/.test(t.slice(0, 300))) return false;
+  if(t.includes("_START=====") || t.includes("━━━━━ 過去記事(記事保管庫より")) return false;
   return !!detectBest(t).signId;
 }
 async function tryAutoImport(text){
@@ -1150,6 +1153,7 @@ async function tryAutoImport(text){
   if(!t || !t.trim()) return;
   const fp = cfgFp(t);
   if(state.lastAutoFp === fp) return; // 同じ内容は一度しか取り込まない
+  try{ if(localStorage.getItem("nightsky-last-copy-fp") === String(fp)) return; }catch(e){} // 命令書保管庫が直前にコピーしたものも取り込まない
   if(!looksLikeArticle(t)) return;
   const det = detectBest(t);
   if(!det.signId) return;
