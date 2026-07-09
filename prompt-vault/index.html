@@ -309,7 +309,7 @@
 
 <div class="wrap">
   <header>
-    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-09d(自動化ブリッジ)</small></h1>
+    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-09e</small></h1>
   </header>
 
   <div class="cat-row" id="catRow"></div>
@@ -1822,11 +1822,11 @@ async function seqSetup(){
   }).sort().reverse().slice(0, 24);
   if(!monthKeys.length){ toast("記事保管庫にまだ記事がありません", true); return false; }
   const mk = await _modal({
-    title: "どの号の記事を使う?",
+    title: "どの号の記事を素材にする?(生成されるのはその翌月号)",
     buttons: monthKeys.map(k=>{
       const s = av.months[k].signs;
       const n = Object.keys(s).filter(id=> s[id] && s[id].body).length;
-      return { label: `${artLabelOf(k)}(${n}記事)`, value: k, style: "ghost" };
+      return { label: `素材:${artLabelOf(k)}(${n}記事) → 生成:${artLabelOf(nextMonthKey(k))}`, value: k, style: "ghost" };
     }).concat([{ label: "キャンセル", value: null }])
   });
   if(!mk) return false;
@@ -1856,7 +1856,7 @@ async function renderSeq(){
   }
   const steps = seqSteps().map(id=> seqDocOf(id)).filter(Boolean);
   const idx = seqIdx(items);
-  const head = `${esc(artLabelOf(state.seqPos.month))}・${steps.length}工程`;
+  const head = `素材:${esc(artLabelOf(state.seqPos.month))} → 生成:${esc(artLabelOf(nextMonthKey(state.seqPos.month)))}・${steps.length}工程`;
   if(idx >= items.length){
     btn.innerHTML = `✔ ${head}:すべてコピー済み<small>タップで次の号へ/もう一周。「変更」で設定し直し</small>`;
   }else{
