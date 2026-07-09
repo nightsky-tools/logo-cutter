@@ -309,13 +309,12 @@
 
 <div class="wrap">
   <header>
-    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-09a</small></h1>
+    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-09b(スッキリ版)</small></h1>
   </header>
 
   <div class="cat-row" id="catRow"></div>
 
   <div style="display:flex;justify-content:flex-end;gap:8px;margin:-6px 0 12px">
-    <button class="tool-btn" id="copyAllBtn" style="flex:0 0 auto;padding:9px 16px;font-size:12px">⧉ 全体コピー</button>
     <button class="tool-btn" id="multiCopyBtn" style="flex:0 0 auto;padding:9px 16px;font-size:12px">☑ まとめてコピー</button>
   </div>
 
@@ -327,19 +326,6 @@
 
   <div class="doc-list" id="docList"></div>
   <button class="add-doc" id="addDoc">＋ 命令書の枠を追加</button>
-
-  <div class="section-label">目印の発行(コピーして命令書に置く)</div>
-  <div class="backup-row">
-    <button class="tool-btn" id="markOneBtn">1行の目印をコピー</button>
-    <button class="tool-btn" id="markPairBtn">ここから/ここまでをコピー</button>
-  </div>
-  <div class="empty-note" id="markInfo" style="text-align:left;padding:8px 4px;font-size:12px;cursor:pointer"></div>
-
-  <div class="section-label">マイ目印(登録した文字列そのものを差し込み対象に)</div>
-  <div class="backup-row">
-    <button class="tool-btn" id="addMarkBtn">マイ目印を登録</button>
-  </div>
-  <div id="myMarkList" style="margin-top:8px"></div>
 
   <div class="section-label">バックアップ</div>
   <div class="backup-row">
@@ -388,7 +374,6 @@
   </div>
   <div class="ov-foot">
     <button class="big-btn ghost" id="vFill" style="display:none">差し込み</button>
-    <button class="big-btn ghost" id="vCopyArt" style="flex:0 0 auto;padding:16px 12px;font-size:13px">＋過去記事</button>
     <button class="big-btn accent" id="vCopy">本文をコピー</button>
   </div>
 </div>
@@ -449,7 +434,7 @@
     <div class="cat-row" id="bfChips" style="padding:2px 2px 10px"></div>
     <input class="title-input" id="bfFilter" placeholder="ワードで絞る場合はここに(例:星データ / 前回記事)空欄=全項目" autocomplete="off">
     <div class="empty-note" id="bfPreview" style="text-align:left;padding:4px 2px 14px;font-size:12px;line-height:2"></div>
-    <div class="ff-head"><span class="ff-label">差し込む共通の文</span><button class="hist-btn art" id="bfArt">記事</button><button class="hist-btn art" id="bfSky">☀星データ</button><button class="hist-btn" id="bfPaste">貼り付け</button></div>
+    <div class="ff-head"><span class="ff-label">差し込む共通の文</span><button class="hist-btn" id="bfPaste">貼り付け</button></div>
     <textarea class="editor" id="bfText" style="min-height:30vh" placeholder="ここに共通の文を入力(または貼り付け)"></textarea>
   </div>
   <div class="ov-foot">
@@ -889,7 +874,6 @@ function render(){
       </div>
       <div class="dc-actions" style="margin-top:8px">
         <button class="dc-act paste wpaste">全体ペースト${d.pastes ? ` <b class="copy-n">${d.pastes}</b>` : ""}</button>
-        ${hasBlocks ? `<button class="dc-act paste ppaste">部分ペースト${d.ppastes ? ` <b class="copy-n">${d.ppastes}</b>` : ""}</button>` : ""}
       </div>
       <div class="dc-actions" style="margin-top:8px">
         <button class="dc-act fill matcopy">⚡素材コピー(記事・星データ入り)</button>
@@ -907,7 +891,6 @@ function render(){
       attachLongPress(mb, ()=> matCopy(i, true)); // 長押しで星座を選び直せる
     }
     el.querySelector(".wpaste").onclick = ()=> pasteToDoc(i);
-    if(hasBlocks) el.querySelector(".ppaste").onclick = ()=> partialPaste(i);
     attachLongPress(el, ()=>{
       if(selectMode || reorderMode) return;
       reorderMode = true;
@@ -917,8 +900,6 @@ function render(){
     list.appendChild(el);
   });
   updateStats();
-  renderMarkInfo();
-  renderMyMarks();
   renderSeq();
 }
 function updateStats(){
@@ -947,8 +928,14 @@ function updateStats(){
 }
 
 // ---- copy / paste ----
+function cfgFp(t){
+  let h = 0;
+  for(let i = 0; i < t.length; i++){ h = ((h << 5) - h + t.charCodeAt(i)) | 0; }
+  return h;
+}
 // okMsg を渡すと成功時にトースト表示。null なら呼び出し側でトーストする(成否は戻り値で判定)
 async function copyText(text, okMsg){
+  try{ if(hasLocalStorage) localStorage.setItem("nightsky-last-copy-fp", String(cfgFp(text))); }catch(e){} // 記事保管庫の自動取り込みが拾わないよう指紋を共有
   try{
     await navigator.clipboard.writeText(text);
     if(okMsg) toast(okMsg);
@@ -1708,22 +1695,6 @@ async function pickArticle(){
   const nm = (ART_SIGNS.find(([id])=>id===sid)||[])[1] || "";
   return { label: `${artLabelOf(mk)} ${nm}`, body: signs[sid].body };
 }
-// 命令書本文+選んだ過去記事を連結してコピー(命令書ビューアーの「＋過去記事」)
-async function copyWithArticle(){
-  const d = state.docs[current];
-  if(!d || !d.body || !d.body.trim()){ toast("本文がありません", true); return; }
-  const art = await pickArticle();
-  if(!art) return;
-  const text = d.body + "\n\n━━━━━ 過去記事(記事保管庫より:" + art.label + ") ━━━━━\n\n" + art.body;
-  const ok = await copyText(text, null);
-  if(!ok) return;
-  if(countOnce("c:" + d.id)) d.copies = (d.copies || 0) + 1;
-  save(true);
-  render();
-  updateViewerMeta(d);
-  toast(`命令書+過去記事(${art.label})をコピーしました(${text.length.toLocaleString()}字)`);
-}
-
 // ---- 連続コピー(工程パイプライン:1つの緑ボタンで 生成→検品→修正→次の星座… と全部進む)----
 // 初回タップで「号」と「工程(命令書の並び)」を設定。以後は押すたびに、
 // いまの星座の次の工程の命令書(記事・星データ埋め込み済み)をコピーして前進。
@@ -2169,7 +2140,6 @@ function toast(msg, err){
 document.getElementById("vBack").onclick = ()=> hideOverlay("viewer");
 document.getElementById("vEdit").onclick = openEditor;
 document.getElementById("vCopy").onclick = ()=> copyDoc(current);
-document.getElementById("vCopyArt").onclick = copyWithArticle;
 document.getElementById("vFill").onclick = ()=> openFiller(current);
 document.getElementById("fBack").onclick = ()=> hideOverlay("filler");
 document.getElementById("fCopy").onclick = copyFilled;
@@ -2221,21 +2191,6 @@ function setSelectMode(on){
   if(on) toast("コピーしたい命令書をタップして選んでください(下の「全選択」で全部)");
 }
 document.getElementById("multiCopyBtn").onclick = ()=> setSelectMode(!selectMode);
-// 全体コピー:いまのカテゴリーの格納済み命令書を全部、1タップで連結コピー
-document.getElementById("copyAllBtn").onclick = async ()=>{
-  const docs = state.docs.filter(d=> d.catId === state.activeCat && d.body && d.body.trim());
-  if(!docs.length){ toast("このカテゴリーに格納済みの命令書がありません", true); return; }
-  const cat = state.cats.find(c=> c.id === state.activeCat);
-  const text = docs.length === 1
-    ? docs[0].body
-    : docs.map(d=> `━━━━━ 命令書:${d.name}${d.ver ? " " + d.ver : ""} ━━━━━\n\n${d.body}`).join("\n\n\n");
-  const ok = await copyText(text, null);
-  if(!ok) return;
-  for(const d of docs){ if(countOnce("c:" + d.id)) d.copies = (d.copies || 0) + 1; }
-  save(true);
-  render();
-  toast(`「${cat ? cat.name : ""}」の${docs.length}件を全体コピーしました(${text.length.toLocaleString()}字)`);
-};
 document.getElementById("selCancelBtn").onclick = ()=> setSelectMode(false);
 document.getElementById("selAllBtn").onclick = ()=>{
   const docs = state.docs.filter(d=>d.catId===state.activeCat && d.body && d.body.trim());
@@ -2323,6 +2278,7 @@ function bfRenderPreview(){
 }
 function openBulkFill(){
   if(!bfTargets().length){ toast("先に差し込みたい命令書をタップして選んでください", true); return; }
+  document.getElementById("selBar").classList.remove("show"); // 画面下のボタンと重ならないよう選択バーを隠す
   document.getElementById("bfNote").textContent =
     "選択した命令書の本文そのものは変更しません。共通の文を、各命令書の「差し込み」の下書きとして一括保存します。あとは各命令書を開いて「差し込み」→「完成文をコピー」を押すだけで、埋め込み済みの全文がコピーできます。絞り込みワードは、目印の名前と目印の前後の本文の両方から探します。";
   document.getElementById("bfFilter").value = "";
@@ -2333,8 +2289,8 @@ function openBulkFill(){
   showOverlay("bulkfill");
 }
 document.getElementById("selFillBtn").onclick = openBulkFill;
-document.getElementById("bfBack").onclick = ()=> hideOverlay("bulkfill");
-document.getElementById("bfCancel").onclick = ()=> hideOverlay("bulkfill");
+document.getElementById("bfBack").onclick = ()=>{ hideOverlay("bulkfill"); if(selectMode) document.getElementById("selBar").classList.add("show"); };
+document.getElementById("bfCancel").onclick = ()=>{ hideOverlay("bulkfill"); if(selectMode) document.getElementById("selBar").classList.add("show"); };
 document.getElementById("bfFilter").addEventListener("input", ()=>{
   if(bfSelectedName !== null){ bfSelectedName = null; bfRenderChips(); } // 打ち込みを始めたらチップ選択は解除
   bfRenderPreview();
@@ -2351,18 +2307,6 @@ document.getElementById("bfPaste").onclick = async ()=>{
   }catch(e){
     toast("読み取れません。欄を長押し→ペーストしてください", true);
   }
-};
-document.getElementById("bfSky").onclick = async ()=>{
-  const s = await pickSky();
-  if(!s) return;
-  document.getElementById("bfText").value = s.body;
-  toast(`${s.label}の星データを入れました(${s.body.length.toLocaleString()}字)。対象の項目を選んで差し込んでください`);
-};
-document.getElementById("bfArt").onclick = async ()=>{
-  const art = await pickArticle();
-  if(!art) return;
-  document.getElementById("bfText").value = art.body;
-  toast(`${art.label}の記事を入れました(${art.body.length.toLocaleString()}字)。対象の項目を選んで差し込んでください`);
 };
 document.getElementById("bfApply").onclick = ()=>{
   const q = document.getElementById("bfFilter").value.trim();
@@ -2415,81 +2359,6 @@ document.getElementById("addDoc").onclick = async ()=>{
   if(!name) return;
   state.docs.push({ id: uid(), catId: state.activeCat, name: name, body:"", ver:null, updated:null, history:[], copies:0, ts: Date.now() });
   if(await save()){ render(); toast(`「${name}」の枠を追加しました`); }
-};
-// ---- 目印の発行(手打ちゼロ・番号が自動で進む)----
-function renderMarkInfo(){
-  const n = state.markSeq || 1;
-  document.getElementById("markInfo").textContent =
-    `次にコピーされる目印:🥳${n}　　　　🥳(間の空白に説明を書いてOK。例:🥳${n}　前回記事　🥳)(この行をタップで番号を変更)`;
-}
-async function copyMark(pair){
-  const n = state.markSeq || 1;
-  const text = pair
-    ? `◆◆項目${n}ここから◆◆\n(ここに内容)\n◆◆項目${n}ここまで◆◆`
-    : `🥳${n}　　　　🥳`;
-  const ok = await copyText(text, null);
-  if(!ok) return;
-  state.markSeq = n + 1;
-  save(true);
-  renderMarkInfo();
-  toast(pair
-    ? `目印「項目${n}」(ここから/ここまで)をコピーしました。次は${n + 1}`
-    : `目印「🥳${n}」をコピーしました。間の空白に説明を書いてもOK。次は🥳${n + 1}`);
-}
-// ---- マイ目印(登録した文字列そのものが差し込み対象になる)----
-function renderMyMarks(){
-  const box = document.getElementById("myMarkList");
-  box.innerHTML = "";
-  const marks = state.customMarks || [];
-  if(!marks.length){
-    box.innerHTML = `<div class="empty-note" style="text-align:left;padding:4px;font-size:12px">未登録。登録した文字列(絵文字も可)が命令書の中にあると、差し込みの欄として自動で認識されます。</div>`;
-    return;
-  }
-  marks.forEach((mk, idx)=>{
-    const el = document.createElement("div");
-    el.className = "hist-item";
-    el.innerHTML = `
-      <span class="hi-info" style="word-break:break-all;color:var(--ink)"></span>
-      <button class="hist-btn mm-copy">コピー</button>
-      <button class="hist-btn mm-del">削除</button>`;
-    el.querySelector(".hi-info").textContent = mk;
-    el.querySelector(".mm-copy").onclick = ()=> copyText(mk, "マイ目印をコピーしました。命令書の入れたい場所に貼ってください");
-    el.querySelector(".mm-del").onclick = async ()=>{
-      const ok = await askConfirm("マイ目印の削除",
-        `「${mk}」を登録から外します。命令書の中の文字は消えませんが、差し込み欄として認識されなくなります。`,
-        "削除する", true);
-      if(!ok) return;
-      state.customMarks.splice(idx, 1);
-      if(await save()){ render(); toast("削除しました"); }
-    };
-    box.appendChild(el);
-  });
-}
-document.getElementById("addMarkBtn").onclick = async ()=>{
-  const v = await askText("マイ目印を登録(絵文字OK)", "例:🥳🥳🥳🥳1");
-  if(!v) return;
-  const mk = v.trim();
-  if(mk.length < 2){ toast("2文字以上にしてください(短いと本文と偶然一致します)", true); return; }
-  state.customMarks = state.customMarks || [];
-  if(state.customMarks.includes(mk)){ toast("すでに登録済みです", true); return; }
-  // 普通の文章に出てきそうな文字列には一言確認
-  if(/^[ぁ-んァ-ヶー一-龠a-zA-Z0-9 、。]{2,8}$/.test(mk)){
-    if(!confirm(`「${mk}」は普通の文章と偶然一致するかもしれません。\n記号や絵文字を混ぜた方が安全です。このまま登録しますか?`)) return;
-  }
-  state.customMarks.push(mk);
-  if(await save()){ render(); toast(`「${mk}」を登録しました。この文字列が命令書内にあれば差し込み欄になります`); }
-};
-
-document.getElementById("markOneBtn").onclick = ()=> copyMark(false);
-document.getElementById("markPairBtn").onclick = ()=> copyMark(true);
-document.getElementById("markInfo").onclick = async ()=>{
-  const v = await askText("次の目印の番号", "半角数字", String(state.markSeq || 1));
-  if(v === null || v === "") return;
-  const n = parseInt(v, 10);
-  if(!n || n < 1){ toast("1以上の半角数字で入力してください", true); return; }
-  state.markSeq = n;
-  save(true);
-  renderMarkInfo();
 };
 // 編集画面:カーソル位置に直接挿入(本文中の既存番号を見て次の番号を使う)
 function editorNextNum(){
