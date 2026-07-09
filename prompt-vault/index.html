@@ -309,7 +309,7 @@
 
 <div class="wrap">
   <header>
-    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-09b(スッキリ版)</small></h1>
+    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-09c</small></h1>
   </header>
 
   <div class="cat-row" id="catRow"></div>
@@ -944,9 +944,10 @@ async function copyText(text, okMsg){
     const ta = document.createElement("textarea");
     ta.value = text; document.body.appendChild(ta); ta.select();
     let ok = false;
-    try{ document.execCommand("copy"); if(okMsg) toast(okMsg); ok = true; }
-    catch(e2){ toast("コピーできませんでした", true); }
+    try{ ok = document.execCommand("copy") === true; }catch(e2){ ok = false; }
     document.body.removeChild(ta);
+    if(ok){ if(okMsg) toast(okMsg); }
+    else{ toast("コピーできませんでした(ブラウザに拒否されました)", true); }
     return ok;
   }
 }
