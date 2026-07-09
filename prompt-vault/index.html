@@ -309,7 +309,7 @@
 
 <div class="wrap">
   <header>
-    <h1>命令書保管庫<small>COMMAND ARCHIVE</small></h1>
+    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-09a</small></h1>
   </header>
 
   <div class="cat-row" id="catRow"></div>
@@ -2392,7 +2392,11 @@ document.getElementById("bfApply").onclick = ()=>{
     }
     plans.push({ id: d.id, names, values, n: hitIdxs.length });
   }
-  if(!plans.length){ toast("該当する項目がありませんでした。絞り込みワードを見直してください", true); return; }
+  if(!plans.length){
+    const crit = bfSelectedName !== null ? `選択中の目印「${bfSelectedName}」` : (q ? `絞り込みワード「${q}」` : "条件なし(全項目)");
+    toast(`該当する項目がありませんでした(${crit}・対象${bfTargets().length}冊)。チップを選び直すか、ワードを見直してください`, true);
+    return;
+  }
   if(overwrite && !confirm(`入力済みの下書きを${overwrite}箇所上書きします。よろしいですか?`)) return;
   let fieldCount = 0;
   for(const p of plans){
