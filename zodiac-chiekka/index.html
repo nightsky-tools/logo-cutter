@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>星座間重複チェッカー v1.6</title>
+<style>
+  :root {
+    --night: #0c0f22; --panel: #14182f; --panel-edge: #232849;
+    --moonlight: #e9e7f2; --dim: #8e8aa8;
+    --ok: #9fd8b4; --ng: #e8938f; --warn: #f0d9a0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--night); color: var(--moonlight);
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", sans-serif;
+    min-height: 100vh; padding: 28px 16px 64px;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 22px; }
+  h1 {
+    font-family: "Hiragino Mincho ProN", "Yu Mincho", serif;
+    font-weight: 600; font-size: 1.35rem; letter-spacing: .14em;
+  }
+  .sub { color: var(--dim); font-size: .74rem; letter-spacing: .18em; margin-top: 8px; line-height: 1.8; }
+  .slot { margin-bottom: 14px; }
+  .slot label { display: block; color: var(--dim); font-size: .76rem; letter-spacing: .12em; margin-bottom: 6px; }
+  .slot input {
+    width: 100%; background: var(--panel); border: 1px solid var(--panel-edge);
+    color: var(--moonlight); border-radius: 8px; padding: 8px 10px;
+    font-size: .85rem; font-family: inherit; margin-bottom: 6px;
+  }
+  .slot textarea {
+    width: 100%; min-height: 110px; resize: vertical;
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    color: var(--moonlight); border-radius: 10px; padding: 12px;
+    font-size: .8rem; line-height: 1.65; font-family: inherit;
+  }
+  :focus-visible { outline: 2px solid #a9c5e2; outline-offset: 2px; }
+  .btn-row { display: flex; gap: 10px; margin-top: 6px; }
+  .btn {
+    flex: 1; background: var(--panel); border: 1px solid var(--panel-edge);
+    color: var(--moonlight); border-radius: 10px; padding: 12px;
+    font-size: .9rem; font-family: inherit; letter-spacing: .1em; cursor: pointer;
+    transition: border-color .2s;
+  }
+  .btn:hover, .btn:focus-visible { border-color: var(--dim); }
+  .btn.vault { color: var(--ok); border-color: #3a5a4a; }
+  #result { margin-top: 26px; display: none; }
+  .summary {
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
+  }
+  .summary h2 { font-size: .8rem; color: var(--dim); letter-spacing: .16em; font-weight: normal; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--panel-edge); }
+  th { color: var(--dim); font-weight: normal; font-size: .72rem; letter-spacing: .1em; }
+  .rate-hi { color: var(--ng); }
+  .rate-mid { color: var(--warn); }
+  .rate-lo { color: var(--ok); }
+  details { margin-bottom: 10px; }
+  summary {
+    cursor: pointer; background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 10px; padding: 10px 14px; font-size: .84rem;
+  }
+  .pairbody { padding: 10px 6px; }
+  .match {
+    border-left: 2px solid var(--panel-edge); padding: 8px 12px; margin-bottom: 10px;
+    font-size: .8rem; line-height: 1.7;
+  }
+  .match.exact { border-color: var(--ng); }
+  .match.near { border-color: var(--warn); }
+  .match .tag { font-size: .68rem; letter-spacing: .12em; }
+  .match.exact .tag { color: var(--ng); }
+  .match.near .tag { color: var(--warn); }
+  .match .a, .match .b { display: block; opacity: .9; margin-top: 4px; }
+  .match .who { color: var(--dim); font-size: .7rem; }
+  footer { text-align: center; color: var(--dim); font-size: .68rem; letter-spacing: .1em; margin-top: 30px; line-height: 1.9; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>星座間重複チェッカー</h1>
+    <div class="sub">月次記事の横方向反復(星座間コピペ)検出 ・ v1.6(記事保管庫から号を選んで一括読み込みに対応)<br>同じ月の記事を2本以上貼って比較(貼るかわりに下の緑ボタンでも)</div>
+  </header>
+
+  <div id="slots"></div>
+  <div class="btn-row">
+    <button class="btn vault" id="loadVault">🗄 記事保管庫から読み込み</button>
+    <button class="btn vault" id="addPrevBtn">⬅ 前月の同星座を自動追加</button>
+  </div>
+  <div class="btn-row">
+    <button class="btn" id="addSlot">＋ 枠を追加</button>
+    <button class="btn" id="runBtn">重複をチェック</button>
+  </div>
+  <div id="autoNote" style="color:var(--dim);font-size:.72rem;letter-spacing:.08em;line-height:1.8;margin-top:8px;text-align:center"></div>
+
+  <div id="result">
+    <div class="summary">
+      <h2>ペア別サマリー(重複率 = 一致・類似文の文字数 ÷ 短い方の比較対象文の合計。3本以上貼ると過半数共通の定型文は自動除外)</h2>
+      <table><thead><tr><th>ペア</th><th>同文</th><th>ほぼ同文</th><th>重複率</th></tr></thead>
+      <tbody id="sumBody"></tbody></table>
+    </div>
+    <div id="pairs"></div>
+  </div>
+
+  <footer>
+    文単位の比較(「。」区切り・15字以上)。類似判定は文字2-gramのJaccard係数0.75以上。<br>
+    定型で意図的に共通の部分(固定文言・章見出し等)も検出されるため、最終判断は目視で。
+  </footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const SIGNS = ["牡羊座","牡牛座","双子座","蟹座","獅子座","乙女座","天秤座","蠍座","射手座","山羊座","水瓶座","魚座"];
+let slotCount = 0;
+
+function addSlot(labelGuess) {
+  if (slotCount >= 12) return;
+  slotCount++;
+  const div = document.createElement("div");
+  div.className = "slot";
+  div.innerHTML = `
+    <label>記事 ${slotCount} <span class="cnt" style="color:var(--dim);"></span></label>
+    <input type="text" placeholder="ラベル(例: 牡羊座)" value="${labelGuess || ""}">
+    <textarea placeholder="記事全文をまるごと貼り付け(見出し込みでOK・定型見出しは自動除外)"></textarea>`;
+  $("slots").appendChild(div);
+  const ta = div.querySelector("textarea"), cnt = div.querySelector(".cnt");
+  ta.addEventListener("input", () => {
+    const n = ta.value.replace(/[\s\u3000]/g, "").length;
+    cnt.textContent = n ? `読み込み ${n.toLocaleString()}字` : "";
+    const inp = div.querySelector("input");
+    if (!inp.value) inp.value = guessSign(ta.value);
+    // 手で貼り付けた時だけ、少し待ってから全自動(前月取得→チェック)を走らせる
+    if (!programmaticFill) scheduleAuto();
+  });
+}
+
+function guessSign(text) {
+  // タイトル行(【◯月限定】…)に星座名があれば最優先で採用
+  const tl = text.match(/^【[0-9０-９]{1,2}月限定】[^\n]*/m);
+  if (tl) {
+    for (const s of SIGNS) if (tl[0].includes(s)) return s;
+  }
+  for (const s of SIGNS) {
+    if (text.slice(0, 300).includes(s)) return s;
+  }
+  return "";
+}
+
+// ---- 記事保管庫との連携(同じサイトに置いた記事保管庫の保存データを読む・v1.6)----
+const SIGN_IDS = ["aries","taurus","gemini","cancer","leo","virgo","libra","scorpio","sagittarius","capricorn","aquarius","pisces"];
+function loadArticleVault() {
+  try {
+    const raw = localStorage.getItem("article-vault-v1") || localStorage.getItem("hoshino-article-vault-v1");
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (d && d.months && typeof d.months === "object") return d;
+    // 旧・記事保管庫の単一月形式にも対応
+    if (d && d.signs && typeof d.signs === "object" && Object.keys(d.signs).length) {
+      const m = String(d.month || "").match(/(20\d{2})\s*年\s*(\d{1,2})\s*月/);
+      const key = m ? `${m[1]}-${String(+m[2]).padStart(2, "0")}` : "0000-00";
+      return { months: { [key]: { signs: d.signs } } };
+    }
+    return null;
+  } catch (e) { return null; }
+}
+function monthLabel(k) { const p = k.split("-"); return +p[0] ? `${+p[0]}年${+p[1]}月号` : "号数不明"; }
+// 本文から「20XX年◯月」を検出(冒頭400字を優先、なければ全文の最初の出現)
+function detectYM(text) {
+  const m = text.slice(0, 400).match(/(20\d{2})\s*年\s*(\d{1,2})\s*月/) || text.match(/(20\d{2})\s*年\s*(\d{1,2})\s*月/);
+  return m ? { y: +m[1], mo: +m[2] } : null;
+}
+function prevKeyOf(y, mo) { mo--; if (mo < 1) { mo = 12; y--; } return `${y}-${String(mo).padStart(2, "0")}`; }
+function signIdOf(name) { const i = SIGNS.indexOf(name); return i === -1 ? null : SIGN_IDS[i]; }
+// 貼ってある記事の年月・星座を判定し、記事保管庫から前月の同星座を自動で隣に追加(縦比較用)
+function addPrevSlots(silent) {
+  const av = loadArticleVault();
+  if (!av) {
+    if (!silent) alert("記事保管庫のデータが見つかりません。同じサイト(同じドメイン)・同じブラウザで記事保管庫を開いて記事を保存してから使ってください");
+    return { added: [], missed: [], missedPrev: [] };
+  }
+  const cur = [...document.querySelectorAll(".slot")].map(d => ({
+    label: d.querySelector("input").value.trim(),
+    text: d.querySelector("textarea").value.trim()
+  })).filter(s => s.text);
+  if (!cur.length) { if (!silent) alert("先に今月の記事を貼ってください(タイトル行込み推奨)"); return { added: [], missed: [], missedPrev: [] }; }
+  const existing = new Set([...document.querySelectorAll(".slot input")].map(i => i.value.trim()));
+  const added = [], missed = [], missedPrev = [];
+  for (const s of cur) {
+    if (s.label.includes("前月:")) continue; // 追加済みの前月枠は対象外
+    const sign = SIGNS.includes(s.label) ? s.label : guessSign(s.text);
+    const ym = detectYM(s.text);
+    if (!sign || !ym) {
+      missed.push(`${s.label || "無名の記事"}(${!sign ? "星座" : ""}${(!sign && !ym) ? "と" : ""}${!ym ? "年月" : ""}を本文から判定できず)`);
+      continue;
+    }
+    const pk = prevKeyOf(ym.y, ym.mo);
+    const label = `${sign}(前月:${monthLabel(pk)})`;
+    if (existing.has(label)) continue; // 二重追加の防止
+    const pm = av.months[pk];
+    const pd = pm && pm.signs && pm.signs[signIdOf(sign)];
+    if (!(pd && pd.body)) { missed.push(`${sign}: ${monthLabel(pk)}の記事が保管庫にありません`); missedPrev.push(sign); continue; }
+    if (slotCount >= 12) { missed.push(`${sign}: 枠が12で満杯のため追加できません`); break; }
+    addSlot(label);
+    const div = $("slots").lastElementChild;
+    const ta = div.querySelector("textarea");
+    programmaticFill = true;
+    ta.value = pd.body;
+    ta.dispatchEvent(new Event("input"));
+    programmaticFill = false;
+    existing.add(label);
+    added.push(label);
+  }
+  if (!silent) {
+    alert((added.length ? `前月の記事を${added.length}件追加しました:\n${added.join("\n")}\n\n「重複をチェック」で前月との縦比較ができます(「◯◯座 × ◯◯座(前月:…)」のペア行を見てください)` : "追加できる前月記事がありませんでした")
+      + (missed.length ? `\n\n追加できなかったもの:\n${missed.join("\n")}` : ""));
+  }
+  return { added, missed, missedPrev };
+}
+$("addPrevBtn").addEventListener("click", () => addPrevSlots(false));
+function fillFromVault(key, av) {
+  // 手で貼り付け済みの内容があれば、消す前に確認する
+  const hasTyped = [...document.querySelectorAll(".slot textarea")].some(t => t.value.trim());
+  if (hasTyped && !confirm("いま貼り付けてある内容を消して、" + monthLabel(key) + "の記事に入れ替えます。よろしいですか?")) return;
+  const signs = av.months[key].signs;
+  $("slots").innerHTML = "";
+  slotCount = 0;
+  $("result").style.display = "none"; // 前回のチェック結果は古い記事のものなので消す
+  let n = 0;
+  SIGN_IDS.forEach((id, i) => {
+    const d = signs[id];
+    if (!d || !d.body) return;
+    addSlot(SIGNS[i]);
+    const div = $("slots").lastElementChild;
+    const ta = div.querySelector("textarea");
+    programmaticFill = true;
+    ta.value = d.body;
+    ta.dispatchEvent(new Event("input"));
+    programmaticFill = false;
+    n++;
+  });
+  const box = $("vaultPick");
+  if (box) box.remove();
+  if (n >= 2) {
+    runCheck();
+    setNote(`${monthLabel(key)}の${n}記事を読み込み、重複チェックを自動実行しました`);
+  } else {
+    setNote(`${monthLabel(key)}の${n}記事を読み込みました(比較には2本必要です)`);
+  }
+}
+$("loadVault").addEventListener("click", () => {
+  const old = $("vaultPick");
+  if (old) { old.remove(); return; } // 再タップで号選択を閉じる
+  const av = loadArticleVault();
+  if (!av) {
+    alert("記事保管庫のデータが見つかりません。同じサイト(同じドメイン)・同じブラウザで記事保管庫を開いて記事を保存してから使ってください");
+    return;
+  }
+  const keys = Object.keys(av.months).filter(k => {
+    const s = (av.months[k] || {}).signs || {};
+    return Object.keys(s).filter(id => s[id] && s[id].body).length >= 2;
+  }).sort().reverse().slice(0, 24);
+  if (!keys.length) {
+    alert("記事が2本以上ある号が記事保管庫にありません(比較には2本必要です)");
+    return;
+  }
+  if (keys.length === 1) { fillFromVault(keys[0], av); return; }
+  const box = document.createElement("div");
+  box.id = "vaultPick";
+  box.className = "summary";
+  box.innerHTML = `<h2>どの号を読み込む?(タップで全星座を一括セット)</h2>`;
+  keys.forEach(k => {
+    const s = av.months[k].signs;
+    const n = Object.keys(s).filter(id => s[id] && s[id].body).length;
+    const b = document.createElement("button");
+    b.className = "btn";
+    b.style.width = "100%";
+    b.style.marginBottom = "8px";
+    b.textContent = `${monthLabel(k)}(${n}記事)`;
+    b.addEventListener("click", () => fillFromVault(k, av));
+    box.appendChild(b);
+  });
+  $("slots").parentNode.insertBefore(box, $("slots"));
+});
+
+// v1.5: タイトル行からフック部を切り出す(「〇〇座のあなたへ。」と「1ヶ月【保存版】」の間)
+function titleHookOf(text) {
+  const m = text.match(/^【[0-9０-９]{1,2}月限定】[^\n]*【保存版】[^\n]*$/m);
+  if (!m) return null;
+  const h = m[0].match(/座のあなたへ。(.*)1ヶ月【保存版】/);
+  return h ? h[1] : null;
+}
+
+function sentences(text) {
+  return text.split(/[。\n]/)
+    .map(s => s.replace(/[\s\u3000]/g, ""))
+    .filter(s => s.length >= 15)
+    .filter(s => !s.startsWith("【"))          // 章・節の定型見出し
+    .filter(s => !s.startsWith("・キーワード")) // 週スケジュールの定型行
+    .filter(s => !s.startsWith("・相性"))      // 対人マニュアルの定型行
+    ; // 理由行(・理由1等)は内容差を見たいので意図的に残す(v1.5で無意味な恒真フィルタを削除・挙動不変)
+}
+
+function bigrams(s) {
+  const set = new Set();
+  for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
+  return set;
+}
+
+function jaccard(a, b) {
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter++;
+  return inter / (a.size + b.size - inter);
+}
+
+function charset(s) { return new Set(s); }
+function roughOverlap(a, b) {
+  let n = 0;
+  for (const c of a) if (b.has(c)) n++;
+  return n / Math.min(a.size, b.size);
+}
+function compare(sentA, sentB, bgA, bgB, csA, csB) {
+  const exact = [], near = [];
+  const usedB = new Set();
+  sentA.forEach((sa, i) => {
+    // 長さが近い文だけ比較して高速化
+    let best = -1, bestSim = 0;
+    sentB.forEach((sb, j) => {
+      if (usedB.has(j)) return;
+      if (Math.abs(sa.length - sb.length) > Math.max(sa.length, sb.length) * 0.5) return;
+      if (roughOverlap(csA[i], csB[j]) < 0.6) return;
+      const sim = jaccard(bgA[i], bgB[j]);
+      if (sim > bestSim) { bestSim = sim; best = j; }
+    });
+    if (best >= 0) {
+      if (sentA[i] === sentB[best]) { exact.push([sentA[i], sentB[best]]); usedB.add(best); }
+      else if (bestSim >= 0.75) { near.push([sentA[i], sentB[best], bestSim]); usedB.add(best); }
+    }
+  });
+  return { exact, near };
+}
+
+function runCheck() {
+  const slots = [...document.querySelectorAll(".slot")].map(d => ({
+    label: d.querySelector("input").value.trim(),
+    text: d.querySelector("textarea").value.trim()
+  })).filter(s => s.text.length > 0);
+  if (slots.length < 2) { alert("記事を2本以上貼ってください"); return; }
+  slots.forEach((s, i) => { if (!s.label) s.label = guessSign(s.text) || `記事${i+1}`; });
+
+  const sumBody = $("sumBody"); sumBody.innerHTML = "";
+  const pairsBox = $("pairs"); pairsBox.innerHTML = "";
+
+  // 全体定型: 過半数(3本以上貼付時)の記事に出現する文は意図的な共通定型として除外
+  const allSents = slots.map(s => sentences(s.text));
+  let boilerplate = new Set();
+  if (slots.length >= 3) {  // v1.5: UIの宣言どおり3本から有効化(v1.4は4本からで矛盾していた)
+    const counts = new Map();
+    allSents.forEach(list => {
+      new Set(list).forEach(s => counts.set(s, (counts.get(s) || 0) + 1));
+    });
+    const need = Math.max(3, Math.ceil(slots.length * 0.6));
+    counts.forEach((n, s) => { if (n >= need) boilerplate.add(s); });
+    if (boilerplate.size) {
+      const bp = document.createElement("details");
+      bp.innerHTML = `<summary>全体定型として除外した文(${boilerplate.size}文 ・ ${need}本以上の記事に共通)</summary>`;
+      const body = document.createElement("div");
+      body.className = "pairbody";
+      boilerplate.forEach(s => {
+        const m = document.createElement("div");
+        m.className = "match";
+        m.innerHTML = `<span class="a">${esc(s)}</span>`;
+        body.appendChild(m);
+      });
+      bp.appendChild(body);
+      pairsBox.appendChild(bp);
+    }
+  }
+  const cleaned = allSents.map(list => list.filter(s => !boilerplate.has(s)));
+  const bgCache = cleaned.map(list => list.map(bigrams));
+  const csCache = cleaned.map(list => list.map(charset));
+  // 異常サイズの警告(処理は続行)
+  const tooBig = slots.findIndex(s => s.text.length > 30000);
+  if (tooBig >= 0) alert(`注意: 記事${tooBig + 1}が3万字を超えています。月次記事1本の想定サイズを超えるため、貼り間違い(複数記事の混入)がないか確認してください。処理は続行します`);
+
+  // v1.5: タイトルフックの横比較(本文比較はタイトル行を見出しとして除外しているため、ここで別途照合)
+  {
+    const hooks = slots.map(s => titleHookOf(s.text));
+    const rows = [];
+    for (let i = 0; i < slots.length; i++) {
+      for (let j = i + 1; j < slots.length; j++) {
+        if (!hooks[i] || !hooks[j]) continue;
+        if (hooks[i] === hooks[j]) rows.push([i, j, 1, "同一"]);
+        else {
+          const sim = jaccard(bigrams(hooks[i]), bigrams(hooks[j]));
+          if (sim >= 0.55) rows.push([i, j, sim, "類似"]);
+        }
+      }
+    }
+    if (rows.length) {
+      const det = document.createElement("details");
+      det.open = true;
+      det.innerHTML = `<summary style="border-color:var(--ng)">⚠ タイトルフックの重複疑い(${rows.length}ペア ・ 同月の星座間でフックが同一/類似)</summary>`;
+      const body = document.createElement("div");
+      body.className = "pairbody";
+      rows.forEach(([i, j, sim, kind]) => {
+        const m = document.createElement("div");
+        m.className = "match " + (kind === "同一" ? "exact" : "near");
+        m.innerHTML = `<span class="tag">${kind}${kind==="類似" ? "(類似度" + (sim*100).toFixed(0) + "%)" : ""}</span>
+          <span class="who">${esc(slots[i].label)}:</span><span class="a">${esc(hooks[i])}</span>
+          <span class="who">${esc(slots[j].label)}:</span><span class="b">${esc(hooks[j])}</span>`;
+        body.appendChild(m);
+      });
+      det.appendChild(body);
+      pairsBox.appendChild(det);
+    }
+  }
+
+  for (let i = 0; i < slots.length; i++) {
+    for (let j = i + 1; j < slots.length; j++) {
+      const sA = cleaned[i], sB = cleaned[j];
+      const { exact, near } = compare(sA, sB, bgCache[i], bgCache[j], csCache[i], csCache[j]);
+      const dupChars = exact.reduce((s, [a]) => s + a.length, 0) +
+                       near.reduce((s, [a]) => s + a.length, 0);
+      // 分母 = 比較対象になった文の合計文字数(見出し・定型除外後)の短い方
+      const minChars = Math.min(
+        sA.reduce((s, x) => s + x.length, 0),
+        sB.reduce((s, x) => s + x.length, 0));
+      const rate = minChars ? (dupChars / minChars * 100) : 0;
+      const cls = rate >= 15 ? "rate-hi" : rate >= 5 ? "rate-mid" : "rate-lo";
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${esc(slots[i].label)} × ${esc(slots[j].label)}</td>
+        <td>${exact.length}文</td><td>${near.length}文</td>
+        <td class="${cls}">${rate.toFixed(1)}%</td>`;
+      sumBody.appendChild(tr);
+
+      if (exact.length || near.length) {
+        const det = document.createElement("details");
+        const sum = document.createElement("summary");
+        sum.textContent = `${slots[i].label} × ${slots[j].label} — 同文${exact.length} / ほぼ同文${near.length}`;
+        det.appendChild(sum);
+        const body = document.createElement("div");
+        body.className = "pairbody";
+        const CAP = 50;
+        exact.slice(0, CAP).forEach(([a]) => {
+          const m = document.createElement("div");
+          m.className = "match exact";
+          m.innerHTML = `<span class="tag">同文</span><span class="a">${esc(a)}</span>`;
+          body.appendChild(m);
+        });
+        if (exact.length > CAP) {
+          const more = document.createElement("div");
+          more.className = "match";
+          more.textContent = `…他${exact.length - CAP}文の同文(表示上限)`;
+          body.appendChild(more);
+        }
+        near.sort((x, y) => y[2] - x[2]).slice(0, CAP).forEach(([a, b, sim]) => {
+          const m = document.createElement("div");
+          m.className = "match near";
+          m.innerHTML = `<span class="tag">ほぼ同文(類似度${(sim*100).toFixed(0)}%)</span>
+            <span class="who">${esc(slots[i].label)}:</span><span class="a">${esc(a)}</span>
+            <span class="who">${esc(slots[j].label)}:</span><span class="b">${esc(b)}</span>`;
+          body.appendChild(m);
+        });
+        if (near.length > 50) {
+          const more = document.createElement("div");
+          more.className = "match";
+          more.textContent = `…他${near.length - 50}文のほぼ同文(表示上限)`;
+          body.appendChild(more);
+        }
+        det.appendChild(body);
+        pairsBox.appendChild(det);
+      }
+    }
+  }
+  $("result").style.display = "block";
+  if ($("result").scrollIntoView) $("result").scrollIntoView({ behavior: "smooth" });
+}
+$("runBtn").addEventListener("click", runCheck);
+
+// ---- 全自動パイプライン(貼り付け→前月取得→チェックまで無操作)----
+let programmaticFill = false;
+let autoTimer = null;
+function setNote(t) { $("autoNote").textContent = t; }
+function scheduleAuto() {
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(autoPipeline, 800);
+}
+function autoPipeline() {
+  const filled = [...document.querySelectorAll(".slot textarea")].filter(t => t.value.trim().length >= 500).length;
+  if (!filled) return; // 短い入力(手打ち途中など)では動かない
+  const r = addPrevSlots(true); // 前月の自動追加(保管庫が無い/前月が無い場合は静かにスキップ)
+  const total = [...document.querySelectorAll(".slot textarea")].filter(t => t.value.trim()).length;
+  let note = "";
+  if (r.added.length) note += `自動追加: ${r.added.join("、")} ／ `;
+  else if (r.missedPrev.length) note += `前月記事が保管庫に無いため縦比較なし(${r.missedPrev.join("、")}) ／ `;
+  if (total >= 2) {
+    runCheck();
+    note += "重複チェックを自動実行しました";
+  } else {
+    note += "もう1本貼るか、前月が保管庫にあれば自動で比較します";
+  }
+  setNote(note);
+}
+
+addSlot(); addSlot();
+$("addSlot").addEventListener("click", () => addSlot());
+</script>
+</body>
+</html>
