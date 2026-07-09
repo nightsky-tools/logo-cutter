@@ -309,7 +309,7 @@
 
 <div class="wrap">
   <header>
-    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-09c</small></h1>
+    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-09d(自動化ブリッジ)</small></h1>
   </header>
 
   <div class="cat-row" id="catRow"></div>
@@ -1864,6 +1864,29 @@ async function renderSeq(){
   }
   document.getElementById("seqBackBtn").style.opacity = idx > 0 ? "1" : ".35";
 }
+// Mac自動化ブリッジ用:次の工程の完成文を組み立てて返し、位置を前進させる(クリップボードには触らない)
+async function seqNextText(){
+  const sp = state.seqPos;
+  const items = sp ? await seqItems() : null;
+  if(!items) return { err: "連続コピーが未設定です。緑バーをタップして工程と号を設定してください" };
+  const idx = seqIdx(items);
+  if(idx >= items.length) return { err: "この号は全工程コピー済みです。タブで緑バーを押して「次の号へ」等を選んでください" };
+  const it = items[idx];
+  const av = await loadArticleVault();
+  const signs = av && av.months[sp.month] && av.months[sp.month].signs;
+  if(!signs || !signs[it.signId] || !signs[it.signId].body){
+    return { err: "記事が見つかりません。「変更」で設定し直してください" };
+  }
+  const r = composeDoc(it.doc, seqCfgOf(it.doc), signs[it.signId].body, it.signNm, sp.month, av);
+  if(countOnce("c:" + it.doc.id)) it.doc.copies = (it.doc.copies || 0) + 1;
+  state.seqPos.idx = idx + 1;
+  state.seqPos.label = items[idx + 1] ? items[idx + 1].label : null;
+  save(true);
+  toast(`${it.label}:自動化経由で受け渡しました(${r.text.length.toLocaleString()}字)`);
+  if(r.skyWarn) setTimeout(()=> toast(r.skyWarn, true), 2400);
+  render();
+  return { text: r.text };
+}
 async function seqCopy(){
   const sp = state.seqPos;
   const items = sp ? await seqItems() : null;
@@ -2136,6 +2159,31 @@ function toast(msg, err){
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=> t.className="toast", 2200);
 }
+
+// ---- 外部連携ブリッジ(Mac自動化用)----
+// AppleScriptがタブのURL末尾に #cmd-seqnext を付けると、ページ本体(この世界)で
+// 次の工程文を組み立てて隠し欄 #bridgeOut に置く。AppleScriptはそれを読み取り、
+// Mac側で直接クリップボードへ入れる(ブラウザのコピー許可を一切使わない)。
+(function(){
+  const out = document.createElement("textarea");
+  out.id = "bridgeOut";
+  out.style.display = "none";
+  out.setAttribute("aria-hidden", "true");
+  document.addEventListener("DOMContentLoaded", ()=> document.body.appendChild(out));
+  if(document.body) document.body.appendChild(out);
+  async function handle(){
+    if(!/^#cmd-seqnext/.test(location.hash || "")) return;
+    history.replaceState(null, "", location.pathname + location.search);
+    out.value = "__WORKING__";
+    try{
+      const r = await seqNextText();
+      out.value = r.text ? r.text : ("__ERR__:" + (r.err || "不明なエラー"));
+    }catch(e){
+      out.value = "__ERR__:" + (e && e.message ? e.message : String(e));
+    }
+  }
+  window.addEventListener("hashchange", handle);
+})();
 
 // ---- events ----
 document.getElementById("vBack").onclick = ()=> hideOverlay("viewer");
