@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>画像プロンプト分配</title>
+<style>
+:root{ --night:#0d1026; --panel:#151a38; --line:#2a3160; --gold:#e8c66a; --txt:#e8eaf6; --dim:#8890b5; --green:#7ee0a3; }
+*{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+body{ background:radial-gradient(ellipse at top, #171d42 0%, var(--night) 60%); min-height:100vh; color:var(--txt);
+  font-family:"Hiragino Mincho ProN","Yu Mincho",serif; padding:20px 14px 60px; }
+.wrap{ max-width:720px; margin:0 auto; }
+h1{ font-size:1.5rem; letter-spacing:.35em; color:var(--gold); font-weight:600; }
+h1 small{ display:block; font-size:.62rem; letter-spacing:.3em; color:var(--dim); margin-top:6px; font-family:sans-serif; }
+.note{ color:var(--dim); font-size:.78rem; line-height:1.9; margin:14px 0 18px; }
+.note b{ color:var(--gold); font-weight:600; }
+textarea{ width:100%; min-height:130px; background:#0f1330; border:1px dashed var(--line); border-radius:14px;
+  color:var(--txt); font-size:16px; line-height:1.7; padding:14px; font-family:sans-serif; }
+textarea:focus{ outline:none; border-color:var(--gold); }
+.btn{ display:block; width:100%; border:1px solid var(--line); background:var(--panel); color:var(--txt);
+  border-radius:14px; padding:14px; font-size:.95rem; font-family:inherit; letter-spacing:.12em; cursor:pointer; margin-top:10px; }
+.btn:active{ transform:scale(.985); }
+.btn.gold{ border-color:var(--gold); color:var(--gold); }
+#seqBtn{ border-color:var(--green); color:var(--green); background:#12203a; padding:18px 14px; font-size:1.02rem; line-height:1.6; }
+#seqBtn small{ display:block; color:var(--dim); font-size:.68rem; letter-spacing:.1em; margin-top:6px; font-family:sans-serif; }
+.row{ display:flex; gap:10px; }
+.row .btn{ flex:1; }
+.card{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; margin-top:12px; }
+.card.now{ border-color:var(--green); }
+.card.done-item{ opacity:.55; }
+.card .head{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.card .num{ color:var(--gold); font-size:.8rem; letter-spacing:.15em; }
+.card .badge{ color:var(--green); font-size:.72rem; font-family:sans-serif; }
+.card .body{ color:var(--dim); font-size:.78rem; line-height:1.8; margin-top:8px; font-family:sans-serif; word-break:break-all; }
+.card .cbtn{ margin-top:10px; padding:10px; font-size:.85rem; }
+#toast{ position:fixed; left:50%; bottom:90px; transform:translateX(-50%) translateY(20px); background:#1d2547; color:var(--txt);
+  border:1px solid var(--gold); border-radius:12px; padding:12px 18px; font-size:.85rem; opacity:0; pointer-events:none;
+  transition:.25s; max-width:88vw; text-align:center; z-index:30; font-family:sans-serif; }
+#toast.err{ border-color:#e08585; }
+#toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+.empty{ color:var(--dim); text-align:center; font-size:.8rem; padding:26px 0; line-height:2; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>画像プロンプト分配<small>PROMPT SPLITTER</small></h1>
+  <p class="note">Claudeが出した画像プロンプト(1つのかたまりに複数入り)を下に貼るだけ。<b>😀の目印で自動的に分割</b>し、絵文字を消して1個ずつ保存します。あとは緑のボタンを<b>押すたびに1個コピーして次へ</b>進みます。</p>
+
+  <textarea id="inBox" placeholder="ここに貼り付け(😀😀😀😀 が区切り)"></textarea>
+  <div class="row">
+    <button class="btn" id="pasteBtn">📋 貼り付けて分割</button>
+    <button class="btn" id="clearBtn">全消去</button>
+  </div>
+
+  <div class="row">
+    <button class="btn" id="syncSetupBtn">同期を設定</button>
+    <button class="btn" id="syncNowBtn">今すぐ同期</button>
+  </div>
+  <div id="syncStatus" style="color:var(--dim);font-size:.72rem;margin-top:8px;text-align:center;font-family:sans-serif"></div>
+
+  <button class="btn" id="seqBtn" style="margin-top:16px"></button>
+  <button class="btn" id="backBtn" style="display:none">← 1つ戻る</button>
+
+  <div id="list"></div>
+</div>
+<div id="toast"></div>
+<script>
+const KEY = "prompt-splitter-v1";
+let state = { items: [], idx: 0, copied: [], savedAt: 0 };
+try{
+  const raw = localStorage.getItem(KEY);
+  if(raw){
+    const s = JSON.parse(raw);
+    if(s && Array.isArray(s.items)) state = Object.assign(state, s);
+    state.items = state.items.map(x => (typeof x === "string") ? { label: "", text: x } : x);
+  }
+}catch(e){}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
+  if(typeof scheduleCloudPush === "function") scheduleCloudPush();
+}
+let toastTimer = null;
+function toast(m, err){
+  const t = document.getElementById("toast");
+  t.textContent = m;
+  t.className = err ? "err show" : "show";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.className = err ? "err" : "", 2600);
+}
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
+async function copyText(text){
+  try{
+    await navigator.clipboard.writeText(text);
+    return true;
+  }catch(e){
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try{ ok = document.execCommand("copy") === true; }catch(e2){ ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+// 分割: 😀が1個以上並んだ箇所を区切りとみなす。コードブロックの``` も除去。絵文字は全て消す
+// 各かたまりの1行目が「星座名」や「◯月」を含む短いラベル行なら、ラベルとして読み取り本文から外す
+const SIGNS = ["牡羊座","牡牛座","双子座","蟹座","獅子座","乙女座","天秤座","蠍座","射手座","山羊座","水瓶座","魚座"];
+function pickLabel(part){
+  const nl = part.indexOf("\n");
+  const first = (nl === -1 ? part : part.slice(0, nl)).trim();
+  const rest = nl === -1 ? "" : part.slice(nl + 1).trim();
+  const looksLabel = first.length <= 32 && SIGNS.some(z => first.includes(z));
+  if(looksLabel && rest){ return { label: first, text: rest }; }
+  return { label: "", text: part };
+}
+function splitPrompts(raw){
+  let t = String(raw || "");
+  t = t.replace(/```[a-zA-Z]*\n?/g, "");          // コードフェンス除去
+  return t.split(/😀+/)
+    .map(s => s.replace(/😀/g, "").trim())
+    .filter(s => s.length > 0)
+    .map(pickLabel);
+}
+function ingest(raw){
+  const parts = splitPrompts(raw);
+  if(!parts.length){ toast("😀の目印が見つからないか、中身が空です", true); return; }
+  if(!String(raw).includes("😀") && state.items.length){
+    toast("😀の目印が見つかりません。保存中のプロンプトはそのまま残しました(入れ替えるなら先に全消去してください)", true);
+    return;
+  }
+  const inProgress = state.items.length && (state.idx > 0 || state.copied.some(c=>c)) && state.idx < state.items.length;
+  if(inProgress){
+    if(!confirm(`進行中の束(${state.idx}/${state.items.length}まで済み)があります。新しい${parts.length}個に入れ替えますか?\n(キャンセルすると今の束と進捗を守ります)`)){
+      toast("入れ替えをやめました。今の束はそのままです");
+      return;
+    }
+  }
+  state.items = parts;
+  state.idx = 0;
+  state.copied = parts.map(()=> false);
+  state.savedAt = Date.now();
+  save();
+  render();
+  toast(`${parts.length}個のプロンプトに分割して保存しました。緑のボタンでどうぞ`);
+}
+document.getElementById("inBox").addEventListener("input", (e)=>{
+  const v = e.target.value;
+  if(v.includes("😀") && v.trim().length > 10){
+    ingest(v);
+    e.target.value = "";
+  }
+});
+document.getElementById("pasteBtn").onclick = async ()=>{
+  let v = document.getElementById("inBox").value;
+  if(!v.trim()){
+    try{ v = await navigator.clipboard.readText(); }catch(e){}
+  }
+  if(!v || !v.trim()){ toast("貼り付ける内容がありません。上の枠にペーストしてください", true); return; }
+  ingest(v);
+  document.getElementById("inBox").value = "";
+};
+document.getElementById("clearBtn").onclick = ()=>{
+  if(!state.items.length){ toast("保存されているプロンプトはありません"); return; }
+  if(!confirm("保存中のプロンプトを全部消しますか?")) return;
+  state = { items: [], idx: 0, copied: [], savedAt: 0 };
+  save();
+  render();
+  toast("全消去しました");
+};
+async function seqCopy(){
+  if(!state.items.length){ toast("先にプロンプトを貼り付けてください", true); return; }
+  if(state.idx >= state.items.length){
+    if(confirm("全部コピー済みです。最初(1個目)からもう一周しますか?")){
+      state.idx = 0;
+      state.copied = state.items.map(()=> false);
+      save(); render();
+    }
+    return;
+  }
+  const i = state.idx;
+  const ok = await copyText(state.items[i].text);
+  if(!ok){ toast("コピーできませんでした。もう一度押してください", true); return; }
+  state.copied[i] = true;
+  state.idx = i + 1;
+  save();
+  render();
+  toast(`${i + 1}個目${state.items[i].label ? "(" + state.items[i].label + ")" : ""}をコピーしました`);
+}
+document.getElementById("seqBtn").onclick = seqCopy;
+document.getElementById("backBtn").onclick = ()=>{
+  if(state.idx <= 0) return;
+  state.idx -= 1;
+  state.copied[state.idx] = false;
+  save();
+  render();
+  toast(`${state.idx + 1}個目に戻りました`);
+};
+async function copyOne(i){
+  const ok = await copyText(state.items[i].text);
+  if(!ok){ toast("コピーできませんでした", true); return; }
+  state.copied[i] = true;
+  save(); render();
+  toast(`${i + 1}個目をコピーしました`);
+}
+function render(){
+  const seq = document.getElementById("seqBtn");
+  const back = document.getElementById("backBtn");
+  const list = document.getElementById("list");
+  if(!state.items.length){
+    seq.innerHTML = `▶ プロンプト待ち<small>上に貼ると自動で分割されます</small>`;
+    back.style.display = "none";
+    list.innerHTML = `<div class="empty">まだ何も入っていません。<br>😀😀😀😀区切りのプロンプトを貼ってください。</div>`;
+    return;
+  }
+  if(state.idx >= state.items.length){
+    seq.innerHTML = `✔ 全${state.items.length}個コピー済み<small>タップで最初からもう一周。新しく貼れば入れ替わります</small>`;
+  }else{
+    const lb = state.items[state.idx].label;
+    seq.innerHTML = `▶ 次は ${state.idx + 1}個目${lb ? "「" + esc(lb) + "」" : ""}をコピー<small>${state.idx + 1}/${state.items.length}・押すとコピーして次へ進みます</small>`;
+  }
+  back.style.display = state.idx > 0 ? "block" : "none";
+  list.innerHTML = "";
+  state.items.forEach((p, i)=>{
+    const div = document.createElement("div");
+    div.className = "card" + (i === state.idx ? " now" : (state.copied[i] ? " done-item" : ""));
+    const preview = p.text.length > 120 ? p.text.slice(0, 120) + "…" : p.text;
+    div.innerHTML = `
+      <div class="head"><span class="num">${i + 1} / ${state.items.length}${p.label ? " ・ " + esc(p.label) : ""}</span>${state.copied[i] ? `<span class="badge">✔ コピー済み</span>` : (i === state.idx ? `<span class="badge">▶ 次はこれ</span>` : "")}</div>
+      <div class="body">${esc(preview)}</div>
+      <button class="btn cbtn">この${i + 1}個目だけコピー</button>`;
+    div.querySelector(".cbtn").onclick = ()=> copyOne(i);
+    list.appendChild(div);
+  });
+}
+render();
+// ---- クラウド同期(iPhone・Mac共用/暗号化・保管庫と同方式) ----
+const SYNC_KEY = "prompt-splitter-sync-v1";
+const GIST_FILE = "prompt-splitter.json";
+let sync = null;
+let pushTimer = null;
+let syncBusy = false;
+try{ const r = localStorage.getItem(SYNC_KEY); if(r) sync = JSON.parse(r); }catch(e){}
+function b64(buf){
+  let t = "", u = new Uint8Array(buf);
+  for(let i=0; i<u.length; i+=0x8000) t += String.fromCharCode.apply(null, u.subarray(i, i+0x8000));
+  return btoa(t);
+}
+function unb64(t){ return Uint8Array.from(atob(t), c=>c.charCodeAt(0)); }
+async function deriveKey(pass, salt){
+  const km = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name:"PBKDF2", salt, iterations:150000, hash:"SHA-256" }, km, { name:"AES-GCM", length:256 }, false, ["encrypt","decrypt"]);
+}
+async function encryptState(pass){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(pass, salt);
+  const ct = await crypto.subtle.encrypt({ name:"AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(state)));
+  return JSON.stringify({ enc:1, salt:b64(salt), iv:b64(iv), data:b64(ct) });
+}
+async function decryptPayload(text, pass){
+  const obj = JSON.parse(text);
+  if(!obj || !obj.enc) return obj;
+  try{
+    const key = await deriveKey(pass || "", unb64(obj.salt));
+    const pt = await crypto.subtle.decrypt({ name:"AES-GCM", iv:unb64(obj.iv) }, key, unb64(obj.data));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }catch(e){ throw new Error("pass"); }
+}
+function setSyncStatus(msg, err){
+  const el = document.getElementById("syncStatus");
+  el.textContent = msg;
+  el.style.color = err ? "#e2b25a" : "";
+}
+function syncOkStatus(extra){
+  const n = new Date();
+  setSyncStatus(`🔒暗号化して同期済み ${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")}${extra||""} ／ 同期ID: ${sync.gistId}`);
+}
+function gistHeaders(){
+  return { "Authorization": "Bearer " + sync.token, "Accept": "application/vnd.github+json", "Content-Type": "application/json" };
+}
+async function pullCloud(){
+  const r = await fetch("https://api.github.com/gists/" + sync.gistId, { headers: gistHeaders() });
+  if(r.status === 404) throw new Error("notfound");
+  if(r.status === 401 || r.status === 403) throw new Error("auth");
+  if(!r.ok) throw new Error("http" + r.status);
+  const g = await r.json();
+  const f = g.files && g.files[GIST_FILE];
+  if(!f) return null;
+  let text = f.content;
+  if(f.truncated){ const rr = await fetch(f.raw_url); text = await rr.text(); }
+  return await decryptPayload(text, sync.pass);
+}
+async function pushCloud(){
+  const payload = { description: "画像プロンプト分配の同期データ(暗号化済み)",
+    files: { [GIST_FILE]: { content: await encryptState(sync.pass) } } };
+  let r;
+  if(sync.gistId){
+    r = await fetch("https://api.github.com/gists/" + sync.gistId, { method: "PATCH", headers: gistHeaders(), body: JSON.stringify(payload) });
+  }else{
+    payload.public = false;
+    r = await fetch("https://api.github.com/gists", { method: "POST", headers: gistHeaders(), body: JSON.stringify(payload) });
+  }
+  if(r.status === 401 || r.status === 403) throw new Error("auth");
+  if(r.status === 404) throw new Error("notfound");
+  if(!r.ok) throw new Error("http" + r.status);
+  const g = await r.json();
+  sync.gistId = g.id;
+  sync.lastAt = Date.now();
+  try{ localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); }catch(e){}
+}
+function syncErrMsg(e){
+  if(e && e.message === "pass") return "⚠ 暗号化パスワードが違います(全端末で同じものを設定してください)";
+  if(e && e.message === "auth") return "⚠ トークンが無効です(gist権限つきで作り直してください)";
+  if(e && e.message === "notfound") return "⚠ 同期IDが見つかりません(IDを確認してください)";
+  return "⚠ 同期に失敗しました(通信を確認して「今すぐ同期」を)";
+}
+function scheduleCloudPush(){
+  if(!sync || !sync.token || syncBusy) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(async ()=>{
+    try{ await pushCloud(); syncOkStatus("(自動)"); }
+    catch(e){ setSyncStatus(syncErrMsg(e), true); }
+  }, 3000);
+}
+async function syncNow(){
+  if(!sync || !sync.token){ toast("先に「同期を設定」を行ってください", true); return; }
+  if(syncBusy) return;
+  syncBusy = true;
+  setSyncStatus("同期中…");
+  try{
+    if(sync.gistId){
+      const remote = await pullCloud();
+      // 束は号ごとの使い切りデータなので、全体を「保存時刻の新しい方」で採用する
+      if(remote && Array.isArray(remote.items) && (remote.savedAt||0) > (state.savedAt||0)){
+        state = remote;
+        state.items = state.items.map(x => (typeof x === "string") ? { label:"", text:x } : x);
+        save(); render();
+      }
+    }
+    await pushCloud();
+    syncOkStatus();
+  }catch(e){ setSyncStatus(syncErrMsg(e), true); }
+  finally{ syncBusy = false; }
+}
+document.getElementById("syncNowBtn").onclick = syncNow;
+document.getElementById("syncSetupBtn").onclick = async ()=>{
+  const t = prompt("GitHubトークンを入力(保管庫と同じものでOK)。解除する場合は「解除」と入力", sync ? sync.token : "");
+  if(t === null) return;
+  if(t.trim() === "解除"){
+    sync = null;
+    try{ localStorage.removeItem(SYNC_KEY); }catch(e){}
+    setSyncStatus("同期は解除されました(クラウド上のデータは残っています)");
+    return;
+  }
+  const p = prompt("暗号化パスワード(保管庫と同じでOK。全端末で同一に)", sync ? sync.pass : "");
+  if(p === null || !p.trim()){ toast("パスワードは必須です", true); return; }
+  const g = prompt("同期ID(2台目なら1台目に表示されるIDを入力。初回は空欄でOK)", sync ? (sync.gistId||"") : "");
+  if(g === null) return;
+  sync = { token: t.trim(), pass: p.trim(), gistId: (g||"").trim(), lastAt: 0 };
+  try{ localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); }catch(e){}
+  syncNow();
+};
+if(sync && sync.token && sync.gistId){ syncNow(); }
+// ---- Mac自動化ブリッジ(入稿ワンキーと同方式) ----
+// AppleScriptがURL末尾に #cmd-next を付けると、次のプロンプトを隠し欄 #bridgeOut に置いて前進する。
+(function(){
+  const out = document.createElement("textarea");
+  out.id = "bridgeOut";
+  out.style.display = "none";
+  out.setAttribute("aria-hidden", "true");
+  document.body.appendChild(out);
+  let pendingPeek = false; // 連打対策: peekなしのack(空撃ち)や二重ackを無視して「1個飛ばし」を防ぐ
+  function peekText(){
+    if(!state.items.length) return { err: "プロンプトが空です。先に😀区切りのかたまりを貼ってください" };
+    if(state.idx >= state.items.length) return { err: "全" + state.items.length + "個コピー済みです。タブで緑ボタンを押すともう一周できます" };
+    pendingPeek = true;
+    return { text: state.items[state.idx].text };
+  }
+  function ackNext(){
+    if(!pendingPeek) return; // 直前にpeekしていないackは無視(二重ack・空撃ち対策)
+    pendingPeek = false;
+    if(state.idx >= state.items.length) return;
+    state.copied[state.idx] = true;
+    state.idx += 1;
+    save();
+    render();
+    toast(state.idx + "個目を自動化経由で受け渡しました");
+  }
+  window.addEventListener("hashchange", ()=>{
+    const h = location.hash || "";
+    const isNext = /^#cmd-next/.test(h), isPeek = /^#cmd-peek/.test(h), isAck = /^#cmd-ack/.test(h);
+    if(!isNext && !isPeek && !isAck) return;
+    history.replaceState(null, "", location.pathname + location.search);
+    if(isAck){ ackNext(); out.value = "__ACKED__"; return; }
+    out.value = "__WORKING__";
+    try{
+      const r = peekText();
+      if(r.text && isNext){ pendingPeek = true; ackNext(); } // 旧方式(next)は従来通り即前進
+      out.value = r.text ? r.text : ("__ERR__:" + r.err);
+    }catch(e){
+      out.value = "__ERR__:" + (e && e.message ? e.message : String(e));
+    }
+  });
+})();
+</script>
+</body>
+</html>
