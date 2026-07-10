@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="投稿コピー機">
+<meta name="theme-color" content="#0f1420">
+<meta name="robots" content="noindex, nofollow">
+<title>Threads投稿コピー機</title>
+<style>
+  :root{
+    --night:#0f1420;
+    --night-2:#161c2e;
+    --card:#1b2338;
+    --card-edge:#2a3554;
+    --accent:#8fb3d9;
+    --accent-dim:#5a7a9e;
+    --ink:#eef1f6;
+    --ink-dim:#95a0bd;
+    --danger:#c96a6a;
+    --ok:#7ec9a2;
+    --serif:"Hiragino Mincho ProN","Yu Mincho","YuMincho","Noto Serif JP",serif;
+    --sans:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:
+      radial-gradient(1100px 550px at 85% -10%, #1e2a4a 0%, transparent 60%),
+      radial-gradient(800px 450px at -10% 100%, #16203c 0%, transparent 55%),
+      var(--night);
+    color:var(--ink);
+    font-family:var(--sans);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:640px;margin:0 auto;padding:calc(20px + env(safe-area-inset-top)) 16px 80px}
+  header{padding:14px 2px 16px}
+  h1{font-family:var(--serif);font-weight:600;font-size:22px;letter-spacing:.14em}
+  h1 small{display:block;font-size:11px;letter-spacing:.3em;color:var(--accent);margin-top:6px;font-family:var(--sans)}
+
+  .section-label{margin:24px 0 10px;font-size:11px;letter-spacing:.28em;color:var(--ink-dim)}
+
+  textarea.paste-area{
+    width:100%;min-height:120px;background:var(--night-2);border:1px solid var(--card-edge);
+    border-radius:12px;color:var(--ink);font-family:var(--serif);font-size:13px;line-height:1.9;
+    padding:14px;resize:vertical;
+  }
+  textarea.paste-area:focus{outline:2px solid var(--accent-dim);outline-offset:1px}
+  .row{display:flex;gap:8px;margin-top:10px}
+  .tool-btn{
+    flex:1;background:var(--card);border:1px solid var(--card-edge);color:var(--ink);
+    border-radius:12px;padding:13px;font-size:13px;cursor:pointer;font-family:var(--sans);
+  }
+  .tool-btn:active{background:var(--night-2)}
+  .tool-btn.accent{color:var(--accent);border-color:var(--accent-dim);font-weight:600}
+  .tool-btn.danger{color:var(--danger);border-color:#5a3040;flex:0 0 auto;padding:13px 16px}
+
+  /* ---- 開始星座 ---- */
+  .start-box{
+    background:var(--card);border:1px solid var(--card-edge);border-radius:12px;
+    padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px;
+  }
+  .start-box label{font-size:12px;color:var(--ink-dim);flex-shrink:0;letter-spacing:.05em}
+  .start-box select{
+    flex:1;background:var(--night-2);border:1px solid var(--accent-dim);border-radius:9px;
+    color:var(--accent);font-size:14px;font-weight:600;padding:10px 12px;font-family:var(--sans);
+    -webkit-appearance:none;appearance:none;text-align:center;
+  }
+
+  /* ---- メインの連続コピーボタン ---- */
+  .big-copy{
+    width:100%;background:var(--card);border:1px solid #3a5a4a;border-radius:16px;
+    padding:18px 16px;cursor:pointer;font-family:var(--sans);text-align:left;color:var(--ink);
+    margin-bottom:12px;
+  }
+  .big-copy:active{background:#1e2f26}
+  .big-copy .bc-head{font-size:12px;color:var(--ok);letter-spacing:.08em;font-weight:600;margin-bottom:8px}
+  .big-copy .bc-text{
+    font-family:var(--serif);font-size:15px;line-height:1.9;white-space:pre-wrap;word-break:break-word;
+  }
+  .big-copy .bc-foot{font-size:11px;color:var(--ink-dim);margin-top:10px}
+  .big-copy.done{border-color:var(--accent-dim)}
+  .big-copy.done .bc-head{color:var(--accent)}
+
+  .nav-row{display:flex;gap:8px;margin-bottom:20px}
+  .nav-btn{
+    flex:1;background:var(--night-2);border:1px solid var(--card-edge);color:var(--ink);
+    border-radius:12px;padding:13px;font-size:13px;cursor:pointer;font-family:var(--sans);
+  }
+  .nav-btn:active{background:var(--card)}
+
+  /* ---- 進捗バー ---- */
+  .prog-wrap{margin-bottom:16px}
+  .prog-bar{height:6px;background:var(--night-2);border-radius:999px;overflow:hidden;border:1px solid var(--card-edge)}
+  .prog-fill{height:100%;background:var(--ok);width:0%;transition:width .25s;border-radius:999px}
+  .prog-text{font-size:11px;color:var(--ink-dim);margin-top:6px;letter-spacing:.05em}
+
+  /* ---- 星座タブ ---- */
+  .sign-row{
+    display:flex;gap:6px;overflow-x:auto;padding:2px 2px 14px;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;
+  }
+  .sign-row::-webkit-scrollbar{display:none}
+  .sign-chip{
+    flex-shrink:0;background:var(--card);border:1px solid var(--card-edge);color:var(--ink-dim);
+    border-radius:999px;padding:8px 13px;font-size:12px;cursor:pointer;font-family:var(--sans);
+    white-space:nowrap;
+  }
+  .sign-chip.active{background:var(--accent);color:#0e1626;border-color:var(--accent);font-weight:600}
+  .sign-chip.alldone{color:var(--ok);border-color:#3a5a4a}
+  .sign-chip.alldone.active{background:var(--ok);color:#0e1a12}
+
+  /* ---- 星座ごとの見出し ---- */
+  .sign-head{
+    font-family:var(--serif);font-size:15px;letter-spacing:.1em;color:var(--accent);
+    margin:22px 0 10px;padding-bottom:8px;border-bottom:1px solid var(--card-edge);
+    display:flex;align-items:center;gap:10px;
+  }
+  .sign-head .sh-count{font-size:11px;color:var(--ink-dim);font-family:var(--sans);letter-spacing:.05em}
+  .sign-head .sh-done{font-size:11px;color:var(--ok);font-family:var(--sans)}
+
+  /* ---- 投稿リスト ---- */
+  .post-card{
+    background:var(--card);border:1px solid var(--card-edge);border-radius:14px;
+    padding:14px;margin-bottom:10px;
+  }
+  .post-card.copied{border-color:#3a5a4a}
+  .post-card.current{border-color:var(--ok);border-width:2px}
+  .pc-text{
+    font-family:var(--serif);font-size:14px;line-height:1.9;white-space:pre-wrap;
+    word-break:break-word;padding-bottom:10px;
+  }
+  .pc-foot{display:flex;align-items:center;gap:8px}
+  .pc-status{flex:1;font-size:11px;color:var(--ink-dim)}
+  .pc-status.done{color:var(--ok)}
+  .pc-copy{
+    background:var(--night-2);border:1px solid var(--accent-dim);color:var(--accent);
+    border-radius:9px;padding:10px 20px;font-size:12px;cursor:pointer;font-family:var(--sans);
+    letter-spacing:.05em;
+  }
+  .pc-copy:active{background:var(--night)}
+  .pc-here{
+    background:transparent;border:1px solid var(--card-edge);color:var(--ink-dim);
+    border-radius:9px;padding:10px 14px;font-size:12px;cursor:pointer;font-family:var(--sans);
+  }
+  .pc-here:active{background:var(--night-2)}
+
+  .empty-note{color:var(--ink-dim);font-size:13px;line-height:1.9;text-align:center;padding:24px 12px}
+
+  .toast{
+    position:fixed;left:50%;bottom:60px;transform:translateX(-50%) translateY(10px);
+    background:var(--accent);color:#0e1626;font-size:13px;font-weight:600;
+    padding:10px 22px;border-radius:999px;opacity:0;pointer-events:none;
+    transition:opacity .2s, transform .2s;z-index:20;letter-spacing:.05em;
+    box-shadow:0 4px 20px rgba(0,0,0,.4);max-width:92vw;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.err{background:var(--danger);color:#fff}
+</style>
+</head>
+<body>
+<div id="storageWarn" style="display:none;background:#5a3040;color:#ffd9d9;font-size:12px;line-height:1.7;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;text-align:center">
+  ⚠ この開き方では進み具合を保存できません(閉じるとリセットされます)。<br>SafariでURL(GitHub Pages)から開いてください。
+</div>
+<div class="wrap">
+  <header>
+    <h1>Threads投稿コピー機<small>SIGN BY SIGN ・ 12星座 連続コピー</small></h1>
+  </header>
+
+  <div class="section-label">① 投稿の全文を貼り付け(今回分はもう入っています)</div>
+  <textarea class="paste-area" id="pasteArea" placeholder="「牡羊座の皆さん…」から始まる全星座分のテキストをここに貼り付け(空行区切り)"></textarea>
+  <div class="row">
+    <button class="tool-btn" id="clipBtn">クリップボードから貼り付け</button>
+    <button class="tool-btn accent" id="parseBtn">▶ 分けて読み込む</button>
+  </div>
+
+  <div id="mainArea" style="display:none">
+    <div class="section-label">② 押すたびに1件コピー(開始星座から一周)</div>
+
+    <div class="start-box">
+      <label>開始星座</label>
+      <select id="startSel"></select>
+    </div>
+
+    <div class="prog-wrap">
+      <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+      <div class="prog-text" id="progText"></div>
+    </div>
+
+    <button class="big-copy" id="bigCopy"></button>
+    <div class="nav-row">
+      <button class="nav-btn" id="backBtn">← 1つ戻る</button>
+      <button class="nav-btn" id="skipBtn">コピーせず飛ばす →</button>
+      <button class="nav-btn" id="resetBtn">最初から</button>
+    </div>
+
+    <div class="section-label">③ 一覧(1星座ずつ・タップで個別コピーもOK)</div>
+    <div class="sign-row" id="signRow"></div>
+    <div id="postList"></div>
+
+    <div class="section-label">データ</div>
+    <div class="row" style="margin-top:0">
+      <button class="tool-btn danger" id="clearBtn">全部消して新しく貼る</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const KEY = "threads-copy-machine-v1";
+const SIGN_ORDER = ["牡羊座","牡牛座","双子座","蟹座","獅子座","乙女座","天秤座","蠍座","射手座","山羊座","水瓶座","魚座"];
+const DEFAULT_START = "乙女座";
+
+// ---- 今回分のプリセット(初回起動時に自動で読み込み)----
+const PRESET = `牡羊座の皆さん
+勢いで動いたあと、ふと我に返って、、、
+
+牡羊座の皆さん
+一番乗りしたいのに、誰も気づかない、、、
+
+牡羊座の皆さん
+熱が冷める前に、終わらせたいだけ、、、
+
+牡羊座の皆さん
+待つ時間が、何より苦手で、、、
+
+牡羊座の皆さん
+怒りはすぐ消える、なのに引きずられる、、、
+
+牡羊座の皆さん
+誰かの指図、それだけは無理、、、
+
+牡牛座の皆さん
+変えたほうがいいのは、わかってるけど、、、
+
+牡牛座の皆さん
+心地いい場所から、動けないのはなぜ、、、
+
+牡牛座の皆さん
+一度決めると、引き返せなくなる、、、
+
+牡牛座の皆さん
+急かされると、かえって動けなくなる、、、
+
+牡牛座の皆さん
+失うのが怖くて、握りしめたまま、、、
+
+牡牛座の皆さん
+自分のペース、それを乱されたくない、、、
+
+双子座の皆さん
+気になることが、多すぎて散らかる、、、
+
+双子座の皆さん
+飽きたわけじゃない、ただ次が見えた、、、
+
+双子座の皆さん
+ぜんぶ知りたくて、何も深まらない、、、
+
+双子座の皆さん
+本音を言葉にする手前で、はぐらかす、、、
+
+双子座の皆さん
+退屈、それがいちばんの敵で、、、
+
+双子座の皆さん
+軽く見られがち、でも考えてないわけじゃない、、、
+
+蟹座の皆さん
+平気なふりが、いちばん得意で、、、
+
+蟹座の皆さん
+守りたい人ほど、強く当たってしまう、、、
+
+蟹座の皆さん
+昔のことを、まだ抱えてるのはなぜ、、、
+
+蟹座の皆さん
+頼られると弱い、断れないのはなぜ、、、
+
+蟹座の皆さん
+帰れる場所が、ないと落ち着かない、、、
+
+蟹座の皆さん
+機嫌の波を、自分でも持て余す、、、
+
+獅子座の皆さん
+注目されたいのに、媚びたくはない、、、
+
+獅子座の皆さん
+本当はもっと、わかってほしいだけ、、、
+
+獅子座の皆さん
+弱音を吐く場所が、見つからなくて、、、
+
+獅子座の皆さん
+褒められないと、急にしぼんでしまう、、、
+
+獅子座の皆さん
+主役じゃない席は、どこか居心地が悪い、、、
+
+獅子座の皆さん
+プライドが、素直さの邪魔をする、、、
+
+乙女座の皆さん
+60点で出せば済むのに、手が止まる、、、
+
+乙女座の皆さん
+気づいたことを、全部抱え込んでしまう、、、
+
+乙女座の皆さん
+完璧じゃないと、始められないのはなぜ、、、
+
+乙女座の皆さん
+自分にだけ、採点が厳しすぎて、、、
+
+乙女座の皆さん
+役に立てないと、いる意味を疑う、、、
+
+乙女座の皆さん
+細かいと言われ、黙ってしまう癖、、、
+
+天秤座の皆さん
+どっちでもいい、が口癖になってる、、、
+
+天秤座の皆さん
+誰かに合わせて、自分の答えを見失う、、、
+
+天秤座の皆さん
+波風立てたくなくて、飲み込んだ本音、、、
+
+天秤座の皆さん
+ひとりの決断が、いちばん重くのしかかる、、、
+
+天秤座の皆さん
+嫌われたくなくて、いい顔をしすぎる、、、
+
+天秤座の皆さん
+比べてしまう、それが止められない、、、
+
+蠍座の皆さん
+全部か、ゼロか、で疲れてしまう、、、
+
+蠍座の皆さん
+深く繋がりたいのに、心を閉じてしまう、、、
+
+蠍座の皆さん
+本心を見せたら、終わる気がして、、、
+
+蠍座の皆さん
+一度疑うと、戻れなくなるのはなぜ、、、
+
+蠍座の皆さん
+忘れられない、許すのはもっと難しい、、、
+
+蠍座の皆さん
+浅い付き合いが、どうしても続かない、、、
+
+射手座の皆さん
+自由でいたいのに、どこか満たされない、、、
+
+射手座の皆さん
+次の景色を探して、また動き出す、、、
+
+射手座の皆さん
+熱く語ったのに、翌朝には冷めてる、、、
+
+射手座の皆さん
+縛られた瞬間、逃げたくなる、、、
+
+射手座の皆さん
+正直すぎて、刺してしまうことがある、、、
+
+射手座の皆さん
+細かい話は、途中で耳が滑る、、、
+
+山羊座の皆さん
+休むことに、罪悪感がついてくる、、、
+
+山羊座の皆さん
+頑張った先に、何があるんだろう、、、
+
+山羊座の皆さん
+弱さを見せられず、ひとりで抱える、、、
+
+山羊座の皆さん
+楽しむ前に、段取りを考えてしまう、、、
+
+山羊座の皆さん
+評価されても、まだ足りない気がする、、、
+
+山羊座の皆さん
+頼るより、抱えるほうが楽で、、、
+
+水瓶座の皆さん
+みんなと同じが、どうしても苦しい、、、
+
+水瓶座の皆さん
+近づきたいのに、一歩引いてしまう、、、
+
+水瓶座の皆さん
+頭ではわかる、でも心が動かない、、、
+
+水瓶座の皆さん
+感情を出すのが、どうにも不器用で、、、
+
+水瓶座の皆さん
+群れた瞬間、急に冷めてしまう、、、
+
+水瓶座の皆さん
+わかってもらえない前提で、話してる、、、
+
+魚座の皆さん
+人の感情を、もらいすぎて疲れる、、、
+
+魚座の皆さん
+線を引けなくて、いつも巻き込まれる、、、
+
+魚座の皆さん
+本当の気持ちが、自分でも掴めない、、、
+
+魚座の皆さん
+現実から、そっと目を逸らしたくなる、、、
+
+魚座の皆さん
+ノーが言えず、後から苦しくなる、、、
+
+魚座の皆さん
+気づけば、誰かの夢に巻き込まれてる、、、`;
+
+let state = { posts: [], idx: 0, rawSaved: "", startSign: DEFAULT_START };
+// posts: [{sign, text, copied}]
+
+const hasAppStorage = !!(window.storage && typeof window.storage.get === "function");
+let hasLocalStorage = false;
+try{ localStorage.setItem("__tcm__","1"); localStorage.removeItem("__tcm__"); hasLocalStorage = true; }catch(e){}
+const memoryOnly = !hasAppStorage && !hasLocalStorage;
+
+async function load(){
+  try{
+    let raw = null;
+    if(hasAppStorage){ try{ const r = await window.storage.get(KEY); raw = r && r.value; }catch(e){} }
+    else if(hasLocalStorage){ raw = localStorage.getItem(KEY); }
+    if(raw){
+      const d = JSON.parse(raw);
+      if(d && Array.isArray(d.posts)){
+        state = d;
+        // ---- 保存データのサニタイズ(壊れたデータでクラッシュしないための関門)----
+        state.posts = state.posts
+          .filter(p=> p && typeof p === "object" && typeof p.text === "string" && p.text.trim())
+          .map(p=> ({
+            sign: (SIGN_ORDER.includes(p.sign) || p.sign === "その他") ? p.sign : (detectSign(p.text) || "その他"),
+            text: p.text,
+            copied: p.copied === true
+          }));
+        if(!SIGN_ORDER.includes(state.startSign)) state.startSign = DEFAULT_START;
+        if(typeof state.rawSaved !== "string") state.rawSaved = "";
+        state.posts = sortPosts(state.posts); // 旧い並び(星座ごと連続)を周回順へ直す
+        const n = Number(state.idx);
+        state.idx = Number.isFinite(n) ? Math.max(0, Math.min(Math.floor(n), state.posts.length)) : 0;
+      }
+    }
+  }catch(e){}
+  // 初回:プリセットを自動で読み込み(乙女座はじまり)
+  if(!state.posts.length){
+    state.posts = sortPosts(parseText(PRESET));
+    state.rawSaved = PRESET;
+    state.idx = 0;
+    state.startSign = DEFAULT_START;
+    save();
+  }
+  if(memoryOnly) document.getElementById("storageWarn").style.display = "block";
+  document.getElementById("pasteArea").value = state.rawSaved || "";
+  document.getElementById("mainArea").style.display = "block";
+  render();
+}
+async function save(){
+  try{
+    const raw = JSON.stringify(state);
+    if(hasAppStorage) await window.storage.set(KEY, raw);
+    else if(hasLocalStorage) localStorage.setItem(KEY, raw);
+  }catch(e){}
+}
+
+// ---- 開始星座からの一周順 ----
+function rotatedOrder(){
+  const i = SIGN_ORDER.indexOf(state.startSign);
+  if(i === -1) return SIGN_ORDER;
+  return SIGN_ORDER.slice(i).concat(SIGN_ORDER.slice(0, i));
+}
+
+// ---- 解析 ----
+// 星座の判定:①「○○座の皆さん」の行を最優先 ②なければ本文で最初に登場した星座名
+// (本文中に別の星座名が出てきても誤分類しない)
+function detectSign(b){
+  for(const line of b.split("\n")){
+    if(!line.includes("皆さん")) continue;
+    for(const s of SIGN_ORDER){ if(line.includes(s)) return s; }
+  }
+  let best = null, pos = Infinity;
+  for(const s of SIGN_ORDER){
+    const p = b.indexOf(s);
+    if(p !== -1 && p < pos){ pos = p; best = s; }
+  }
+  return best;
+}
+// 「○○座の皆さん」の呼びかけ行か
+function isHeaderLine(line){
+  if(!line.includes("皆さん")) return false;
+  return SIGN_ORDER.some(s=> line.includes(s));
+}
+// まず空行で区切る。空行がなくても、ブロック内に呼びかけ行が2つ以上あれば
+// 呼びかけ行の直前でさらに分割する(空行なしのテキストにも対応)
+function parseText(raw){
+  const rough = raw.replace(/\r/g,"").split(/\n\s*\n+/).map(b=>b.trim()).filter(b=>b);
+  const blocks = [];
+  for(const b of rough){
+    const lines = b.split("\n");
+    const headCount = lines.filter(isHeaderLine).length;
+    if(headCount <= 1){ blocks.push(b); continue; }
+    // 呼びかけ行ごとに切り直す
+    let cur = [];
+    for(const line of lines){
+      if(isHeaderLine(line) && cur.some(l=>l.trim())){
+        blocks.push(cur.join("\n").trim());
+        cur = [];
+      }
+      cur.push(line);
+    }
+    if(cur.some(l=>l.trim())) blocks.push(cur.join("\n").trim());
+  }
+  return blocks.filter(b=>b).map(b=>({ sign: detectSign(b) || "その他", text: b, copied: false }));
+}
+// 各星座1本ずつの周回順に並べる:
+// 1周目=各星座の1本目(開始星座→次の星座→…)、2周目=各星座の2本目…
+// 同じ星座内は貼り付けた順のまま
+function sortPosts(posts){
+  const order = rotatedOrder();
+  const bySign = Object.create(null);
+  const extras = [];
+  for(const p of posts){
+    if(order.includes(p.sign)) (bySign[p.sign] = bySign[p.sign] || []).push(p);
+    else extras.push(p);
+  }
+  const out = [];
+  let round = 0;
+  while(true){
+    let added = false;
+    for(const s of order){
+      const arr = bySign[s];
+      if(arr && arr[round]){ out.push(arr[round]); added = true; }
+    }
+    if(!added) break;
+    round++;
+  }
+  return out.concat(extras);
+}
+// 何周あるか(=1星座あたりの最大本数)
+function maxRound(posts){
+  const cnt = Object.create(null);
+  let mx = 0;
+  for(const p of posts){ cnt[p.sign] = (cnt[p.sign] || 0) + 1; if(cnt[p.sign] > mx) mx = cnt[p.sign]; }
+  return mx;
+}
+
+// ---- コピー ----
+async function copyText(text){
+  try{ await navigator.clipboard.writeText(text); return true; }
+  catch(e){
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try{ ok = document.execCommand("copy") === true; }catch(e2){ ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+
+// ---- 描画 ----
+let filterSign = null;
+function render(){
+  const posts = state.posts;
+  const total = posts.length;
+  const done = posts.filter(p=>p.copied).length;
+  const idx = Math.max(0, Math.min(state.idx, total));
+
+  // 開始星座セレクト
+  const sel = document.getElementById("startSel");
+  if(sel.options.length !== SIGN_ORDER.length){
+    sel.innerHTML = "";
+    SIGN_ORDER.forEach(s=> sel.add(new Option(s + " はじまり", s)));
+  }
+  sel.value = state.startSign;
+
+  // 進捗
+  document.getElementById("progFill").style.width = total ? (done / total * 100) + "%" : "0%";
+  document.getElementById("progText").textContent =
+    `コピー済み ${done} / ${total} 件 ・ ${state.startSign}から星座順に1本ずつ × ${maxRound(posts)}周`;
+
+  // メインボタン
+  const btn = document.getElementById("bigCopy");
+  if(idx >= total){
+    btn.className = "big-copy done";
+    btn.innerHTML = `<div class="bc-head">✔ 全${total}件コピー完了</div>
+      <div class="bc-text">おつかれさまでした。タップで最初に戻ります。</div>`;
+  }else{
+    const p = posts[idx];
+    const inSign = posts.filter(x=>x.sign===p.sign);
+    const nth = inSign.indexOf(p) + 1;
+    btn.className = "big-copy";
+    btn.innerHTML = `<div class="bc-head">▶ 次:${esc(p.sign)}(${nth}周目・全体 ${idx+1}/${total})— 押すとコピーして次へ</div>
+      <div class="bc-text">${esc(p.text)}</div>
+      <div class="bc-foot">${p.text.length}字${p.copied ? "・コピー済み(再コピーします)" : ""}</div>`;
+  }
+
+  // 星座タブ(開始星座からの順で並べる)
+  const row = document.getElementById("signRow");
+  row.innerHTML = "";
+  const bySign = {};
+  posts.forEach(p=>{ (bySign[p.sign] = bySign[p.sign] || []).push(p); });
+  const allChip = document.createElement("button");
+  allChip.className = "sign-chip" + (filterSign === null ? " active" : "");
+  allChip.textContent = `全部 ${done}/${total}`;
+  allChip.onclick = ()=>{ filterSign = null; render(); };
+  row.appendChild(allChip);
+  const signList = rotatedOrder().filter(s=> bySign[s]).concat(Object.keys(bySign).filter(s=> !SIGN_ORDER.includes(s)));
+  for(const s of signList){
+    const arr = bySign[s];
+    const d = arr.filter(p=>p.copied).length;
+    const c = document.createElement("button");
+    c.className = "sign-chip" + (filterSign === s ? " active" : "") + (d === arr.length ? " alldone" : "");
+    c.textContent = `${s} ${d}/${arr.length}`;
+    c.onclick = ()=>{ filterSign = (filterSign === s) ? null : s; render(); };
+    row.appendChild(c);
+  }
+
+  // リスト(周回ごとに見出し。星座タブで絞ると星座見出し)
+  const list = document.getElementById("postList");
+  list.innerHTML = "";
+  let lastHead = null;
+  posts.forEach((p, i)=>{
+    if(filterSign !== null && p.sign !== filterSign) return;
+    const inSign = bySign[p.sign] || [];
+    const nth = inSign.indexOf(p) + 1;
+    const isOther = !SIGN_ORDER.includes(p.sign);
+    const headKey = filterSign !== null ? p.sign : (isOther ? "__other__" : "r" + nth);
+    if(headKey !== lastHead){
+      lastHead = headKey;
+      const h = document.createElement("div");
+      h.className = "sign-head";
+      if(filterSign !== null){
+        const d = inSign.filter(x=>x.copied).length;
+        h.innerHTML = `${esc(p.sign)} <span class="sh-count">${inSign.length}件</span>` +
+          (d === inSign.length ? `<span class="sh-done">✔ 全部コピー済み</span>` : (d ? `<span class="sh-count">${d}件コピー済み</span>` : ""));
+      }else if(isOther){
+        const otherArr = posts.filter(x=> !SIGN_ORDER.includes(x.sign));
+        const d = otherArr.filter(x=>x.copied).length;
+        h.innerHTML = `星座を判定できなかった投稿 <span class="sh-count">${otherArr.length}件</span>` +
+          (d === otherArr.length ? `<span class="sh-done">✔ 全部コピー済み</span>` : (d ? `<span class="sh-count">${d}件コピー済み</span>` : ""));
+      }else{
+        const roundArr = posts.filter(x=> SIGN_ORDER.includes(x.sign) && ((bySign[x.sign]||[]).indexOf(x) + 1) === nth);
+        const d = roundArr.filter(x=>x.copied).length;
+        h.innerHTML = `${nth}周目 <span class="sh-count">各星座の${nth}本目・${roundArr.length}件</span>` +
+          (d === roundArr.length ? `<span class="sh-done">✔ 全部コピー済み</span>` : (d ? `<span class="sh-count">${d}件コピー済み</span>` : ""));
+      }
+      list.appendChild(h);
+    }
+    const el = document.createElement("div");
+    el.className = "post-card" + (p.copied ? " copied" : "") + (i === idx ? " current" : "");
+    el.innerHTML = `
+      <div class="pc-text">${esc(p.text)}</div>
+      <div class="pc-foot">
+        <span class="pc-status ${p.copied ? "done" : ""}">${esc(p.sign)} ${nth}本目・${p.text.length}字${p.copied ? "・✔コピー済み" : ""}${i === idx ? "・◀ 次はここ" : ""}</span>
+        <button class="pc-here">ここから</button>
+        <button class="pc-copy">コピー</button>
+      </div>`;
+    el.querySelector(".pc-copy").onclick = async ()=>{
+      const ok = await copyText(p.text);
+      if(!ok){ toast("コピーできませんでした", true); return; }
+      p.copied = true;
+      save();
+      toast(`${p.sign} ${nth}本目をコピーしました`);
+      render();
+    };
+    el.querySelector(".pc-here").onclick = ()=>{
+      state.idx = i;
+      save();
+      toast(`次のコピーを ${p.sign} ${nth}本目 に合わせました`);
+      window.scrollTo({top: 0, behavior: "smooth"});
+      render();
+    };
+    list.appendChild(el);
+  });
+  if(!posts.length){
+    list.innerHTML = `<div class="empty-note">まだ投稿がありません。上に貼り付けて「分けて読み込む」を押してください。</div>`;
+  }
+}
+function esc(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+
+// ---- 連続コピー本体 ----
+let seqBusy = false; // 連打(ダブルタップ)で2件進んでしまうのを防ぐ
+async function seqCopy(){
+  if(seqBusy) return;
+  seqBusy = true;
+  try{
+    const total = state.posts.length;
+    if(state.idx >= total){
+      state.idx = 0;
+      save();
+      render();
+      toast("最初に戻りました。押すとコピーを開始します");
+      return;
+    }
+    const p = state.posts[state.idx];
+    const ok = await copyText(p.text);
+    if(!ok){ toast("コピーできませんでした(もう一度押してください)", true); return; }
+    p.copied = true;
+    state.idx++;
+    save();
+    toast(`${p.sign}をコピーしました(全体 ${state.idx}/${total})`);
+    render();
+  }finally{
+    setTimeout(()=>{ seqBusy = false; }, 400);
+  }
+}
+
+// ---- events ----
+document.getElementById("startSel").onchange = (ev)=>{
+  state.startSign = ev.target.value;
+  state.posts = sortPosts(state.posts); // コピー済みの印は保持したまま並べ直す
+  state.idx = 0;
+  save();
+  render();
+  toast(`${state.startSign}はじまりに並べ直しました(コピー済みの印はそのまま)`);
+};
+document.getElementById("bigCopy").onclick = seqCopy;
+document.getElementById("backBtn").onclick = ()=>{
+  if(state.idx <= 0){ toast("これより前はありません", true); return; }
+  state.idx--;
+  save(); render();
+  toast("1つ戻りました");
+};
+document.getElementById("skipBtn").onclick = ()=>{
+  if(state.idx >= state.posts.length){ toast("最後まで来ています", true); return; }
+  const p = state.posts[state.idx];
+  state.idx++;
+  save(); render();
+  toast(`${p.sign}をコピーせず飛ばしました`);
+};
+document.getElementById("resetBtn").onclick = ()=>{
+  if(!confirm("進み具合とコピー済みの印を全部リセットして、1件目からやり直しますか?\n(貼り付けた投稿は消えません)")) return;
+  state.idx = 0;
+  state.posts.forEach(p=>p.copied = false);
+  save(); render();
+  toast("最初からやり直します");
+};
+document.getElementById("clipBtn").onclick = async ()=>{
+  try{
+    const t = await navigator.clipboard.readText();
+    if(t && t.trim()){ document.getElementById("pasteArea").value = t; toast(`貼り付けました(${t.length.toLocaleString()}字)`); }
+    else toast("クリップボードが空です", true);
+  }catch(e){
+    toast("読み取れません。欄を長押し→ペーストしてください", true);
+  }
+};
+document.getElementById("parseBtn").onclick = ()=>{
+  const raw = document.getElementById("pasteArea").value;
+  if(!raw.trim()){ toast("先にテキストを貼り付けてください", true); return; }
+  const posts = sortPosts(parseText(raw));
+  if(!posts.length){ toast("投稿を見つけられませんでした(空行で区切られているか確認を)", true); return; }
+  state.posts = posts;
+  state.rawSaved = raw;
+  state.idx = 0;
+  filterSign = null;
+  save();
+  document.getElementById("mainArea").style.display = "block";
+  render();
+  const signs = new Set(posts.map(p=>p.sign));
+  toast(`${posts.length}件を${signs.size}星座に分けました(${state.startSign}はじまり)`);
+  document.getElementById("bigCopy").scrollIntoView({behavior:"smooth", block:"center"});
+};
+document.getElementById("clearBtn").onclick = ()=>{
+  if(!confirm("読み込んだ投稿を全部消して、新しく貼り付け直しますか?")) return;
+  state.posts = [];
+  state.rawSaved = "";
+  state.idx = 0;
+  filterSign = null;
+  save();
+  document.getElementById("pasteArea").value = "";
+  document.getElementById("mainArea").style.display = "none"; // 空の状態で操作画面を出さない
+  render();
+  toast("消しました。新しいテキストを貼り付けてください");
+  window.scrollTo({top: 0, behavior: "smooth"});
+};
+
+let toastTimer;
+function toast(msg, err){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show" + (err ? " err" : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.className = "toast", 2200);
+}
+
+load();
+</script>
+</body>
+</html>
