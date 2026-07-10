@@ -309,7 +309,7 @@
 
 <div class="wrap">
   <header>
-    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-09e</small></h1>
+    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-09f</small></h1>
   </header>
 
   <div class="cat-row" id="catRow"></div>
@@ -1864,8 +1864,9 @@ async function renderSeq(){
   }
   document.getElementById("seqBackBtn").style.opacity = idx > 0 ? "1" : ".35";
 }
-// Mac自動化ブリッジ用:次の工程の完成文を組み立てて返し、位置を前進させる(クリップボードには触らない)
-async function seqNextText(){
+// Mac自動化ブリッジ用(二段階): peek=完成文を組み立てて返すだけ(前進しない) / ack=貼れた合図で前進
+let bridgePendingPeek = false; // 連打対策: peekなしのackや二重ackを無視して工程飛ばしを防ぐ
+async function seqPeekText(){
   const sp = state.seqPos;
   const items = sp ? await seqItems() : null;
   if(!items) return { err: "連続コピーが未設定です。緑バーをタップして工程と号を設定してください" };
@@ -1878,14 +1879,25 @@ async function seqNextText(){
     return { err: "記事が見つかりません。「変更」で設定し直してください" };
   }
   const r = composeDoc(it.doc, seqCfgOf(it.doc), signs[it.signId].body, it.signNm, sp.month, av);
+  bridgePendingPeek = true;
+  if(r.skyWarn) setTimeout(()=> toast(r.skyWarn, true), 1200);
+  return { text: r.text };
+}
+async function seqAckNext(){
+  if(!bridgePendingPeek) return; // 直前にpeekしていないackは無視(二重ack対策)
+  bridgePendingPeek = false;
+  const sp = state.seqPos;
+  const items = sp ? await seqItems() : null;
+  if(!items) return;
+  const idx = seqIdx(items);
+  if(idx >= items.length) return;
+  const it = items[idx];
   if(countOnce("c:" + it.doc.id)) it.doc.copies = (it.doc.copies || 0) + 1;
   state.seqPos.idx = idx + 1;
   state.seqPos.label = items[idx + 1] ? items[idx + 1].label : null;
   save(true);
-  toast(`${it.label}:自動化経由で受け渡しました(${r.text.length.toLocaleString()}字)`);
-  if(r.skyWarn) setTimeout(()=> toast(r.skyWarn, true), 2400);
+  toast(`${it.label}:自動化経由で受け渡しました`);
   render();
-  return { text: r.text };
 }
 async function seqCopy(){
   const sp = state.seqPos;
@@ -2172,11 +2184,15 @@ function toast(msg, err){
   document.addEventListener("DOMContentLoaded", ()=> document.body.appendChild(out));
   if(document.body) document.body.appendChild(out);
   async function handle(){
-    if(!/^#cmd-seqnext/.test(location.hash || "")) return;
+    const h = location.hash || "";
+    const isNext = /^#cmd-seqnext/.test(h), isPeek = /^#cmd-seqpeek/.test(h), isAck = /^#cmd-seqack/.test(h);
+    if(!isNext && !isPeek && !isAck) return;
     history.replaceState(null, "", location.pathname + location.search);
+    if(isAck){ await seqAckNext(); out.value = "__ACKED__"; return; }
     out.value = "__WORKING__";
     try{
-      const r = await seqNextText();
+      const r = await seqPeekText();
+      if(r.text && isNext){ await seqAckNext(); } // 旧方式(seqnext)は従来通り即前進
       out.value = r.text ? r.text : ("__ERR__:" + (r.err || "不明なエラー"));
     }catch(e){
       out.value = "__ERR__:" + (e && e.message ? e.message : String(e));
