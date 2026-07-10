@@ -46,6 +46,23 @@
   }
   input[type=text]:focus{outline:2px solid var(--amber-deep);outline-offset:1px}
   .field-hint{font-size:11px;color:var(--ink-dim);margin-top:7px;line-height:1.7}
+  /* アカウント名のロック */
+  .acct-row{display:flex;gap:8px;align-items:stretch}
+  .acct-row input{flex:1;min-width:0}
+  .acct-row input[readonly]{opacity:.55;background:#0c0d13}
+  .lock-btn{
+    flex-shrink:0;width:52px;background:#0f1017;border:1px solid var(--line-2);border-radius:10px;
+    font-size:18px;cursor:pointer;color:var(--ink);
+  }
+  .lock-btn:active{border-color:var(--amber)}
+  .lock-btn.open{border-color:var(--amber);background:#241d10}
+  .acct-reset{
+    display:none;width:100%;margin-top:9px;background:transparent;border:1px solid var(--amber-deep);
+    border-radius:10px;color:var(--amber);font-family:var(--sans);font-size:13px;font-weight:700;
+    padding:12px;cursor:pointer;
+  }
+  .acct-reset.show{display:block}
+  .acct-reset:active{background:var(--amber);color:#20180a}
   .repo-hist{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
   .repo-hist button{
     background:#0f1017;border:1px solid var(--line-2);border-radius:999px;
@@ -175,7 +192,12 @@
   <div class="config">
     <div class="row">
       <label for="acct">GitHubアカウント名</label>
-      <input type="text" id="acct" value="nightsky-tools" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <div class="acct-row">
+        <input type="text" id="acct" value="nightsky-tools" readonly autocapitalize="off" autocorrect="off" spellcheck="false">
+        <button type="button" class="lock-btn" id="acctLock">🔒</button>
+      </div>
+      <div class="field-hint" id="acctHint"></div>
+      <button type="button" class="acct-reset" id="acctReset">↩ 初期値(nightsky-tools)に戻す</button>
     </div>
     <div class="row">
       <label for="repo">リポジトリ名</label>
@@ -309,6 +331,10 @@ function safeUrl(u){
     if(/\/{2}[^\/]*\/\//.test(u)) return "#"; // https:// の後に別の // が来る=空要素
     // 生成した文字列が、パースし直しても同じホストに戻ること(正規化ズレ攻撃の検出)
     if(new URL(u).hostname.toLowerCase() !== host) return "#";
+    // パストラバーサルは「生の文字列」で判定する。new URL() は foo/../../evil を
+    // /evil に畳んでしまうため、url.pathname を見ても手遅れになる。
+    if(/(^|\/)\.\.?(\/|$)/.test(u.replace(/^https?:\/\/[^\/]+/i, ""))) return "#";
+    if(/[^:]\/\//.test(u.replace(/^https?:\/\//i, ""))) return "#"; // パス内の連続スラッシュ
     return u;
   }catch(e){ return "#"; }
 }
@@ -868,8 +894,37 @@ function render(){
   applyAppFilter();
 }
 
+// ===== アカウント名のロック(誤操作防止)=====
+// 通常はロック(readonly)。🔒をタップした時だけ編集可能。
+// 初期値と違う値になっている時は「初期値に戻す」ボタンが出て、ワンタップで復元できる。
+let acctLocked = true;
+function syncAcctLock(){
+  const el = $("acct");
+  el.readOnly = acctLocked;
+  const lockBtn = $("acctLock");
+  lockBtn.textContent = acctLocked ? "🔒" : "🔓";
+  lockBtn.classList.toggle("open", !acctLocked);
+  const differs = (el.value || "").trim() !== DEFAULT_ACCT;
+  $("acctHint").textContent = acctLocked
+    ? (differs ? "⚠ 初期値と違う名前になっています。下のボタンで戻せます。" : "誤操作防止のためロック中。変える必要がある時だけ 🔒 をタップ。")
+    : "編集できます。終わったら 🔓 をタップしてロックし直してください。";
+  $("acctReset").classList.toggle("show", differs);
+}
+$("acctLock").addEventListener("click", ()=>{
+  acctLocked = !acctLocked;
+  syncAcctLock();
+  if(!acctLocked) $("acct").focus();
+});
+$("acctReset").addEventListener("click", ()=>{
+  $("acct").value = DEFAULT_ACCT;
+  acctLocked = true;
+  syncAcctLock();
+  render();
+  toast("アカウント名を初期値に戻しました");
+});
+
 // 入力の変化で再描画
-$("acct").addEventListener("input", render);
+$("acct").addEventListener("input", ()=>{ syncAcctLock(); render(); });
 $("repo").addEventListener("input", render);
 // リポジトリ名は「入力を確定した時(欄から離れた時・候補を選んだ時)」に履歴へ自動登録
 // ※blurの瞬間に画面を作り直すと、直後のタップ(コピー等)が空振りするため一拍おいて実行
@@ -887,6 +942,7 @@ $("folderReset").addEventListener("click", ()=>{
 // 検索欄:一覧の絞り込みだけ行う(画面全体は作り直さないので入力中もフォーカスが飛ばない)
 $("appSearch").addEventListener("input", applyAppFilter);
 // よく使うアプリのボタンでも手直しリセット
+syncAcctLock();
 render();
 </script>
 </body>
