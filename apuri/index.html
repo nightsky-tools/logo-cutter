@@ -45,6 +45,14 @@
     color:var(--ink);font-family:var(--mono);font-size:15px;padding:13px 14px;
   }
   input[type=text]:focus{outline:2px solid var(--amber-deep);outline-offset:1px}
+  .field-hint{font-size:11px;color:var(--ink-dim);margin-top:7px;line-height:1.7}
+  .repo-hist{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .repo-hist button{
+    background:#0f1017;border:1px solid var(--line-2);border-radius:999px;
+    color:var(--ink-dim);font-family:var(--mono);font-size:11.5px;padding:7px 12px;cursor:pointer;
+  }
+  .repo-hist button.on{border-color:var(--amber);color:var(--amber)}
+  .repo-hist button:active{border-color:var(--amber);color:var(--amber)}
   .seg{display:flex;flex-wrap:wrap;gap:7px}
   .seg button{
     flex:1 1 auto;min-width:104px;background:#0f1017;border:1px solid var(--line-2);border-radius:10px;
@@ -107,6 +115,7 @@
   .copy.wide .val{white-space:normal;word-break:break-all;line-height:1.6}
 
   .caption{font-family:var(--mono);font-size:10px;color:var(--ink-dim);letter-spacing:.1em;margin:2px 0 7px;text-transform:uppercase}
+  .caption .where{color:#6a6d85;letter-spacing:.02em;margin-left:8px;text-transform:none}
 
   .open-row{margin-top:4px}
   .open-btn{
@@ -141,7 +150,10 @@
     </div>
     <div class="row">
       <label for="repo">リポジトリ名</label>
-      <input type="text" id="repo" value="logo-cutter" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <input type="text" id="repo" value="logo-cutter" autocapitalize="off" autocorrect="off" spellcheck="false" list="repoList">
+      <datalist id="repoList"></datalist>
+      <div class="repo-hist" id="repoHist"></div>
+      <div class="field-hint">一度使ったリポジトリ名は自動でここに並びます。タップすると全く同じ名前が入ります(打ち間違い防止)。</div>
     </div>
     <div class="row">
       <label for="appName">アプリの名前(日本語でOK)</label>
@@ -168,8 +180,17 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// クリックジャッキング対策:第三者サイトにiframe埋め込みされたら、自分をトップに引き上げる
+try{ if(window.top !== window.self){ window.top.location = window.self.location; } }catch(e){ document.documentElement.style.display="none"; }
+</script>
+<script>
+// ===== 固定の初期値(既存アプリはこの場所に設置済み) =====
+const DEFAULT_ACCT = "nightsky-tools";
+const DEFAULT_REPO = "logo-cutter";
+
 // 既存アプリ(日本語名 → 実際のフォルダ名を固定)
 // ※既に設置済みのものは、自動生成ではなく既存のフォルダ名に合わせる
+// ※これらは DEFAULT_ACCT / DEFAULT_REPO に設置済み。上の入力を変えてもURLは変わらない。
 const KNOWN = [
   { name:"記事保管庫",         folder:"article-vault" },
   { name:"命令書保管庫",       folder:"prompt-vault" },
@@ -209,8 +230,9 @@ function romanizeKana(input){
 }
 function slugifyRaw(input){
   if(!input) return "";
-  // 全角英数字を半角に正規化
-  let s = input.replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  // 半角カナ→全角カナ、全角英数→半角英数などをまとめて正規化(NFKC)
+  let s = String(input).normalize("NFKC");
+  s = s.replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
   const keys = Object.keys(WORD_DICT).sort((a,b)=>b.length-a.length);
   for(const k of keys){ s = s.split(k).join(" "+WORD_DICT[k]+" "); }
   s = romanizeKana(s);
@@ -230,17 +252,38 @@ function nameToFolder(name){
 
 const $ = (id)=>document.getElementById(id);
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-// hrefに入れる前に:http(s)のみ許可し、不正な文字を含むURLはリンクを無効化(#)する
+// hrefに入れる前に検証:正規ホスト(github.com / *.github.io)へのhttpsリンク以外は
+// すべて無効化(#)する。アカウント名やリポジトリ名に / \ @ などを混ぜてホストを
+// すり替える攻撃(例: foo/../../evil, foo@evil.com)を確実に止める。
 function safeUrl(u){
   try{
-    // 二重スラッシュ(空のアカウント/リポジトリ名)を含むURLは無効化
-    if(/github\.(com|io)\/\//.test(u) || /\/\/[^\/]*\.github\.io\/\//.test(u)) return "#";
     const url = new URL(u);
-    if(url.protocol !== "http:" && url.protocol !== "https:") return "#";
-    if(/["'<>\s]/.test(u)) return "#";
+    if(url.protocol !== "https:") return "#";
+    // ユーザー情報(user:pass@)やポート指定は許さない
+    if(url.username || url.password || url.port) return "#";
+    const host = url.hostname.toLowerCase();
+    const hostOk = (host === "github.com" || host === "www.github.com" || host.endsWith(".github.io"));
+    if(!hostOk) return "#";
+    // *.github.io は「1ラベルのみ」のサブドメインだけ許可(evil.foo.github.io 等を弾く)
+    if(host.endsWith(".github.io")){
+      const label = host.slice(0, -".github.io".length);
+      if(!/^[a-z0-9\-]+$/.test(label)) return "#";
+    }
+    // パスやURL全体に制御文字・空白・引用符・バックスラッシュ・二重スラッシュが無いこと
+    if(/[\u0000-\u001f\u007f-\u009f\u2000-\u200f\u2028\u2029"'<>\s\\]/.test(u)) return "#";
+    if(/\/{2}[^\/]*\/\//.test(u)) return "#"; // https:// の後に別の // が来る=空要素
+    // 生成した文字列が、パースし直しても同じホストに戻ること(正規化ズレ攻撃の検出)
+    if(new URL(u).hostname.toLowerCase() !== host) return "#";
     return u;
   }catch(e){ return "#"; }
 }
+
+// localStorageが使えるか先に確認
+let storageOk = true;
+try{
+  const t = "__t" + Date.now();
+  localStorage.setItem(t, "1"); localStorage.removeItem(t);
+}catch(e){ storageOk = false; }
 
 // セグメント生成(タップで日本語名を入力欄に流し込む)
 const seg = $("appSeg");
@@ -256,32 +299,130 @@ for(const a of KNOWN){
 }
 
 // ===== 設置の記録(この端末に保存し、次回の衝突チェックに使う) =====
+// 記録には「どのアカウント・どのリポジトリに置いたか」も一緒に保存する。
+// → 上のリポジトリ欄を変えても、過去の記録のURLは絶対に変わらない。
 const REG_KEY = "deploy-helper-registry-v1";
 let registry = [];
-let storageOk = true;
-try{
-  const t = "__t" + Date.now();
-  localStorage.setItem(t, "1"); localStorage.removeItem(t);
-  const raw = localStorage.getItem(REG_KEY);
-  if(raw){
-    const parsed = JSON.parse(raw);
-    if(Array.isArray(parsed)){
-      registry = parsed.filter(x => x && typeof x.name === "string" && typeof x.folder === "string").slice(0, 200);
+if(storageOk){
+  try{
+    const raw = localStorage.getItem(REG_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(Array.isArray(parsed)){
+        registry = parsed
+          .filter(x => x && typeof x.name === "string" && typeof x.folder === "string")
+          .slice(0, 200)
+          // 古い記録(場所の情報なし)は、当時の設置先=初期値だったはずなので初期値で補完
+          .map(x => ({
+            ...x,
+            acct: (typeof x.acct === "string" && x.acct.trim()) ? x.acct.trim() : DEFAULT_ACCT,
+            repo: (typeof x.repo === "string" && x.repo.trim()) ? x.repo.trim() : DEFAULT_REPO,
+          }));
+      }
     }
-  }
-}catch(e){ storageOk = false; }
+  }catch(e){}
+}
 function saveRegistry(){
   if(!storageOk) return;
   try{ localStorage.setItem(REG_KEY, JSON.stringify(registry.slice(0, 200))); }catch(e){}
 }
-function registerDeploy(name, folder){
-  registry = registry.filter(r => normFolder(r.folder) !== normFolder(folder));
-  registry.push({ name: String(name).slice(0,60), folder: normFolder(folder), ts: Date.now() });
+function normFolder(f){ return String(f||"").trim().toLowerCase().replace(/^\/+|\/+$/g,""); }
+function normPlace(acct, repo){ return String(acct||"").trim().toLowerCase() + "/" + String(repo||"").trim().toLowerCase(); }
+function samePlace(r, acct, repo){ return normPlace(r.acct, r.repo) === normPlace(acct, repo); }
+
+function registerDeploy(name, folder, acct, repo){
+  const a = (acct||"").trim() || DEFAULT_ACCT;
+  const rp = (repo||"").trim() || DEFAULT_REPO;
+  registry = registry.filter(r => !(normFolder(r.folder) === normFolder(folder) && samePlace(r, a, rp)));
+  registry.push({ name: String(name).slice(0,60), folder: normFolder(folder), acct: a, repo: rp, ts: Date.now() });
+  saveRegistry();
+  rememberRepo(rp);
+}
+function unregisterDeploy(folder, acct, repo){
+  registry = registry.filter(r => !(normFolder(r.folder) === normFolder(folder) && samePlace(r, acct, repo)));
   saveRegistry();
 }
-function unregisterDeploy(folder){
-  registry = registry.filter(r => normFolder(r.folder) !== normFolder(folder));
-  saveRegistry();
+
+// ===== リポジトリ名の履歴(一度使ったものは全部並べる。全く同じ名前で選べる) =====
+const REPO_HIST_KEY = "deploy-helper-repo-history-v1";
+let repoHist = [];
+if(storageOk){
+  try{
+    const raw = localStorage.getItem(REPO_HIST_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(Array.isArray(parsed)) repoHist = parsed.filter(x => typeof x === "string" && x.trim()).slice(0, 30);
+    }
+  }catch(e){}
+}
+// 過去の設置記録に出てくるリポジトリ名も履歴に取り込む(記録済み=一度使った)
+for(const r of registry){ if(r.repo && !repoHist.some(x => x.toLowerCase() === r.repo.toLowerCase())) repoHist.push(r.repo); }
+function saveRepoHist(){
+  if(!storageOk) return;
+  try{ localStorage.setItem(REPO_HIST_KEY, JSON.stringify(repoHist.slice(0, 30))); }catch(e){}
+}
+function rememberRepo(repo){
+  const rp = (repo||"").trim();
+  if(!rp) return;
+  // 使えない文字が混ざったままの打ちかけは記録しない
+  if(!/^[a-zA-Z0-9._\-]+$/.test(rp)) return;
+  repoHist = [rp, ...repoHist.filter(x => x.toLowerCase() !== rp.toLowerCase())].slice(0, 30);
+  saveRepoHist();
+  renderRepoChoices();
+}
+// 履歴を候補として表示(datalist=入力欄の候補、チップ=タップで即入力)
+let repoEditMode = false; // 整理モード:チップをタップすると履歴から削除
+function forgetRepo(repo){
+  repoHist = repoHist.filter(x => x.toLowerCase() !== String(repo).toLowerCase());
+  saveRepoHist();
+  renderRepoChoices();
+}
+function repoChoiceList(){
+  const list = [];
+  const seen = new Set();
+  for(const r of [DEFAULT_REPO, ...repoHist]){
+    const k = r.toLowerCase();
+    if(seen.has(k)) continue;
+    seen.add(k); list.push(r);
+  }
+  return list;
+}
+function renderRepoChoices(){
+  const dl = $("repoList");
+  dl.innerHTML = "";
+  const cur = ($("repo").value || "").trim().toLowerCase();
+  const hist = $("repoHist");
+  hist.innerHTML = "";
+  const items = repoChoiceList();
+  for(const r of items){
+    const o = document.createElement("option");
+    o.value = r;
+    dl.appendChild(o);
+    const b = document.createElement("button");
+    b.type = "button";
+    const isDefault = r.toLowerCase() === DEFAULT_REPO.toLowerCase();
+    if(repoEditMode && !isDefault){
+      b.textContent = "✕ " + r;
+      b.style.color = "#e0a0a0";
+      b.onclick = ()=>{ forgetRepo(r); toast(`「${r}」を履歴から消しました`); };
+    }else{
+      b.textContent = r;
+      if(r.toLowerCase() === cur) b.classList.add("on");
+      b.onclick = ()=>{ $("repo").value = r; rememberRepo(r); render(); };
+    }
+    hist.appendChild(b);
+  }
+  // 整理モードの切り替え(履歴が2つ以上ある時だけ出す。初期値は消せない)
+  if(items.length > 1){
+    const t = document.createElement("button");
+    t.type = "button";
+    t.textContent = repoEditMode ? "整理を終える" : "履歴を整理";
+    t.style.borderStyle = "dashed";
+    t.onclick = ()=>{ repoEditMode = !repoEditMode; renderRepoChoices(); };
+    hist.appendChild(t);
+  }else{
+    repoEditMode = false;
+  }
 }
 
 // 手直し中のフォルダ名(ユーザーが上書きしたら優先)
@@ -301,16 +442,19 @@ function current(){
   return { name, folder, info, overridden };
 }
 
-// このフォルダ名が既存アプリと衝突していないか(大文字/空白/末尾スラッシュを正規化して比較)
-function normFolder(f){ return String(f||"").trim().toLowerCase().replace(/^\/+|\/+$/g,""); }
-function collisionOf(name, folder){
+// このフォルダ名が「同じ設置先(アカウント/リポジトリ)の中で」衝突していないか
+// 別のリポジトリに同じフォルダ名があっても衝突にはならない
+function collisionOf(name, folder, acct, repo){
   const nf = normFolder(folder);
-  const self = KNOWN.find(k => k.name === name.trim());
-  if(self && normFolder(self.folder) === nf) return null;
-  const hit = KNOWN.find(k => normFolder(k.folder) === nf);
-  if(hit) return hit.name;
-  // 自分で設置した記録との衝突(同じ日本語名での再設置=上書き更新は許可)
-  const reg = registry.find(r => normFolder(r.folder) === nf);
+  const inDefaultPlace = normPlace(acct, repo) === normPlace(DEFAULT_ACCT, DEFAULT_REPO);
+  if(inDefaultPlace){
+    const self = KNOWN.find(k => k.name === name.trim());
+    if(self && normFolder(self.folder) === nf) return null;
+    const hit = KNOWN.find(k => normFolder(k.folder) === nf);
+    if(hit) return hit.name;
+  }
+  // 自分で設置した記録との衝突(同じ場所・同じ日本語名での再設置=上書き更新は許可)
+  const reg = registry.find(r => normFolder(r.folder) === nf && samePlace(r, acct, repo));
   if(reg && reg.name !== name.trim()) return reg.name + "(設置記録)";
   return null;
 }
@@ -376,9 +520,13 @@ function render(){
   const steps = $("steps");
   steps.innerHTML = "";
 
-  // 手直し欄の表示制御(アプリ名が入っていて、既存の設置済みでない時だけ出す)
+  renderRepoChoices();
+
+  // 手直し欄の表示制御(既存アプリを「元の場所に」置く時だけ隠す。
+  // 別リポジトリに置く時は衝突回避のため手直しできるようにする)
+  const inDefaultPlace = normPlace(acct, repo) === normPlace(DEFAULT_ACCT, DEFAULT_REPO);
   const feBox = $("folderEdit");
-  if(name && !(info && info.known && !overridden)){
+  if(name && !(info && info.known && !overridden && inDefaultPlace)){
     feBox.classList.add("show");
     // 自動生成の値をプレースホルダ的に反映(手直ししていない時のみ同期)
     if(folderOverride === null) $("folderOverride").value = info ? info.folder : "";
@@ -404,8 +552,20 @@ function render(){
   const base = `https://github.com/${acct}/${repo}`;
   const pageUrl = `https://${acct}.github.io/${repo}/${folder}/`;
 
+  // アカウント名・リポジトリ名がGitHubの命名規則に沿うか検証
+  // (/ \ @ 空白などでのホスト乗っ取りを入口で止める)
+  const acctValid = acct === "" || /^[a-zA-Z0-9\-]+$/.test(acct);   // GitHubユーザー名は英数字とハイフンのみ
+  const repoValid = repo === "" || /^[a-zA-Z0-9._\-]+$/.test(repo); // リポジトリ名は英数字 . _ - を許容
+  if((acct && !acctValid) || (repo && !repoValid)){
+    const w = document.createElement("div");
+    w.className = "warn-box danger";
+    const which = (!acctValid && !repoValid) ? "アカウント名とリポジトリ名" : (!acctValid ? "アカウント名" : "リポジトリ名");
+    w.innerHTML = `⚠ ${which}に使えない文字が入っています。GitHubの名前は<b>半角の英数字と「-」（リポジトリは「.」「_」も可）</b>だけです。<br><b>「/」「\\」「@」「空白」などが混ざったURLは開かないでください</b>（別サイトに飛ばされる恐れがあります）。`;
+    steps.appendChild(w);
+  }
+
   // 衝突・不正フォルダ名の警告(STEP2の前に大きく出す)
-  const collision = name ? collisionOf(name, folder) : null;
+  const collision = name ? collisionOf(name, folder, acct, repo) : null;
   if(name && folder && !validFolder){
     const w = document.createElement("div");
     w.className = "warn-box danger";
@@ -414,7 +574,7 @@ function render(){
   }else if(collision){
     const w = document.createElement("div");
     w.className = "warn-box danger";
-    w.innerHTML = `⚠ このフォルダ名 <b>${esc(folder)}</b> は、既に「${esc(collision)}」で使われています。<br>このまま設置すると<b>「${esc(collision)}」を上書きして壊してしまいます</b>。下の手直し欄で別の名前(例:${esc(folder)}-2)にしてください。`;
+    w.innerHTML = `⚠ このフォルダ名 <b>${esc(folder)}</b> は、このリポジトリ内で既に「${esc(collision)}」で使われています。<br>このまま設置すると<b>「${esc(collision)}」を上書きして壊してしまいます</b>。下の手直し欄で別の名前(例:${esc(folder)}-2)にしてください。`;
     steps.appendChild(w);
   }
 
@@ -498,21 +658,23 @@ function render(){
       on.textContent = "↑ ボタンで開けない時は、上のURLをコピーしてSafariのアドレス欄に貼ってください。";
       s.appendChild(on);
       // 設置完了の記録(新規アプリのみ・記録済みなら表示を変える)
-      if(!(info && info.known)){
-        const already = registry.find(r => normFolder(r.folder) === normFolder(folder));
+      // ※記録する時に「今のアカウント名・リポジトリ名」も一緒に保存する
+      if(!(info && info.known && normPlace(acct, repo) === normPlace(DEFAULT_ACCT, DEFAULT_REPO))){
+        const already = registry.find(r => normFolder(r.folder) === normFolder(folder) && samePlace(r, acct, repo));
         const regBtn = document.createElement("button");
         regBtn.className = "reg-btn" + (already ? " done" : "");
         regBtn.textContent = already
           ? `✓ 記録済み(「${already.name}」として)`
-          : "✓ 設置が終わったら押す(記録して、今後の上書き事故を防ぐ)";
+          : "✓ 設置が終わったら押す(設置先ごと記録して、今後の上書き事故を防ぐ)";
         regBtn.onclick = ()=>{
+          if(!acct || !repo){ toast("先にアカウント名とリポジトリ名を入れてください"); return; }
           if(!storageOk){ toast("この開き方では記録を保存できません"); return; }
-          if(collisionOf(name, folder)){
+          if(collisionOf(name, folder, acct, repo)){
             toast("⚠ このフォルダ名は既存アプリと衝突しています。先に手直しで別名にしてください");
             return;
           }
-          registerDeploy(name, folder);
-          toast("記録しました。次からこのフォルダ名への衝突を警告します");
+          registerDeploy(name, folder, acct, repo);
+          toast("記録しました。この設置先のURLはもう変わりません");
           render();
         };
         s.appendChild(regBtn);
@@ -528,18 +690,19 @@ function render(){
   }
 
   // ---- 設置済みアプリの全リンク集(控え用)----
+  // ここのURLは「設置した時の場所」で固定。上の入力欄を変えても影響しない。
   const foot = $("foot");
   foot.innerHTML = "";
   const ft = document.createElement("div");
-  ft.innerHTML = `<div style="color:var(--amber);font-family:var(--mono);letter-spacing:.14em;font-size:10px;margin-bottom:10px">設置済みアプリのURL — まとめて控える用</div>`;
+  ft.innerHTML = `<div style="color:var(--amber);font-family:var(--mono);letter-spacing:.14em;font-size:10px;margin-bottom:10px">設置済みアプリのURL — まとめて控える用(上の入力を変えても変わりません)</div>`;
   foot.appendChild(ft);
   KNOWN.forEach(a=>{
     const cap = document.createElement("div");
     cap.className = "caption"; cap.textContent = a.name;
     foot.appendChild(cap);
-    foot.appendChild(copyRow(`https://${acct}.github.io/${repo}/${a.folder}/`, {wide:true}));
+    foot.appendChild(copyRow(`https://${DEFAULT_ACCT}.github.io/${DEFAULT_REPO}/${a.folder}/`, {wide:true}));
   });
-  // 自分で設置した記録
+  // 自分で設置した記録(保存してある設置先でURLを組み立てる)
   if(registry.length){
     const rt = document.createElement("div");
     rt.innerHTML = `<div style="color:var(--amber);font-family:var(--mono);letter-spacing:.14em;font-size:10px;margin:18px 0 10px">自分で設置したアプリ(この端末の記録)</div>`;
@@ -548,6 +711,13 @@ function render(){
       const cap = document.createElement("div");
       cap.className = "caption";
       cap.textContent = r.name;
+      // どのリポジトリに置いたか小さく表示(初期値と違う時だけ)
+      if(normPlace(r.acct, r.repo) !== normPlace(DEFAULT_ACCT, DEFAULT_REPO)){
+        const where = document.createElement("span");
+        where.className = "where";
+        where.textContent = `(${r.repo})`;
+        cap.appendChild(where);
+      }
       const del = document.createElement("span");
       del.textContent = " ✕記録を消す";
       del.style.cssText = "color:#8a6a6a;cursor:pointer;margin-left:8px";
@@ -560,13 +730,13 @@ function render(){
           setTimeout(()=>{ del.dataset.arm = ""; del.textContent = " ✕記録を消す"; del.style.color = "#8a6a6a"; }, 2500);
           return;
         }
-        unregisterDeploy(r.folder);
+        unregisterDeploy(r.folder, r.acct, r.repo);
         toast(`「${r.name}」の記録を消しました`);
         render();
       };
       cap.appendChild(del);
       foot.appendChild(cap);
-      foot.appendChild(copyRow(`https://${acct}.github.io/${repo}/${r.folder}/`, {wide:true}));
+      foot.appendChild(copyRow(`https://${r.acct}.github.io/${r.repo}/${r.folder}/`, {wide:true}));
     }
   }
 }
@@ -574,6 +744,9 @@ function render(){
 // 入力の変化で再描画
 $("acct").addEventListener("input", render);
 $("repo").addEventListener("input", render);
+// リポジトリ名は「入力を確定した時(欄から離れた時・候補を選んだ時)」に履歴へ自動登録
+// ※blurの瞬間に画面を作り直すと、直後のタップ(コピー等)が空振りするため一拍おいて実行
+$("repo").addEventListener("change", (e)=>{ const v = e.target.value; setTimeout(()=>{ rememberRepo(v); render(); }, 0); });
 // アプリ名を変えたら手直しをリセット(新しい名前の自動生成に戻す)
 $("appName").addEventListener("input", ()=>{ folderOverride = null; render(); });
 // フォルダ名の手直し
