@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>説明書保管庫 | nightsky-tools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0d1226;
+    --panel:#151c38;
+    --panel-2:#1b2447;
+    --line:#2a3560;
+    --text:#e8eaf4;
+    --sub:#9aa5c8;
+    --gold:#e3b855;
+    --gold-dim:#b8933f;
+    --danger:#e07070;
+    --radius:14px;
+    font-size:16px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN",sans-serif;
+    min-height:100vh;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  /* ---- 星空 ---- */
+  .sky{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+  .star{position:absolute;background:#fff;border-radius:50%;opacity:.5;animation:tw 4s ease-in-out infinite}
+  @keyframes tw{0%,100%{opacity:.15}50%{opacity:.7}}
+  @media (prefers-reduced-motion: reduce){.star{animation:none;opacity:.3}}
+
+  .wrap{position:relative;z-index:1;max-width:860px;margin:0 auto;padding:0 16px 80px}
+
+  header{padding:28px 0 14px;text-align:center}
+  header h1{
+    font-family:"Shippori Mincho",serif;
+    font-weight:600;font-size:1.5rem;letter-spacing:.14em;
+    color:var(--gold);
+  }
+  header p{font-size:.75rem;color:var(--sub);letter-spacing:.2em;margin-top:6px}
+
+  /* ---- 検索・操作列 ---- */
+  .toolbar{display:flex;gap:8px;margin:10px 0 12px}
+  .search{
+    flex:1;display:flex;align-items:center;gap:8px;
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:10px 14px;position:relative;
+  }
+  .sugg{
+    display:none;position:absolute;left:0;right:0;top:calc(100% + 6px);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;z-index:6;box-shadow:0 8px 24px rgba(0,0,0,.4);
+  }
+  .sugg.show{display:block}
+  .sugg-item{
+    display:flex;align-items:center;gap:8px;width:100%;
+    background:none;border:none;border-bottom:1px solid var(--line);
+    padding:11px 14px;color:var(--text);font-family:inherit;font-size:.9rem;
+    cursor:pointer;text-align:left;
+  }
+  .sugg-item:last-child{border-bottom:none}
+  .sugg-item:hover,.sugg-item:focus-visible{background:var(--panel)}
+  .sugg-item .s-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sugg-item .s-name b,.sugg-item .s-yomi b{color:var(--gold);font-weight:700}
+  .sugg-item .s-cat{
+    font-size:.68rem;color:var(--gold);border:1px solid var(--gold-dim);
+    border-radius:999px;padding:1px 8px;white-space:nowrap;
+  }
+  .sugg-item .s-yomi{font-size:.7rem;color:var(--sub);white-space:nowrap}
+  .search input{
+    flex:1;background:none;border:none;outline:none;color:var(--text);font-size:1rem;
+    font-family:inherit;
+  }
+  .search input::placeholder{color:var(--sub)}
+  .btn{
+    border:1px solid var(--line);background:var(--panel);color:var(--text);
+    border-radius:var(--radius);padding:10px 14px;font-size:.9rem;cursor:pointer;
+    font-family:inherit;transition:border-color .15s;
+    white-space:nowrap;
+  }
+  .btn:hover{border-color:var(--gold-dim)}
+  .btn:focus-visible,.chip:focus-visible,.card:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  .btn.gold{background:var(--gold);border-color:var(--gold);color:#1a1408;font-weight:700}
+  .btn.gold:hover{background:#eec86a}
+  .btn.danger{color:var(--danger);border-color:#5a3040}
+
+  /* ---- カテゴリ ---- */
+  .chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{
+    border:1px solid var(--line);background:transparent;color:var(--sub);
+    border-radius:999px;padding:6px 14px;font-size:.82rem;cursor:pointer;
+    white-space:nowrap;font-family:inherit;transition:.15s;
+  }
+  .chip.on{background:var(--panel-2);color:var(--gold);border-color:var(--gold-dim)}
+
+  /* ---- カード ---- */
+  .list{display:flex;flex-direction:column;gap:10px}
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;cursor:pointer;transition:border-color .15s;
+  }
+  .card:hover{border-color:var(--gold-dim)}
+  .card .top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .card .name{font-weight:700;font-size:1.02rem;word-break:break-word}
+  .card .cat{
+    font-size:.7rem;color:var(--gold);border:1px solid var(--gold-dim);
+    border-radius:999px;padding:2px 10px;letter-spacing:.05em;
+  }
+  .card .prev{
+    margin-top:8px;font-size:.83rem;color:var(--sub);line-height:1.6;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .card .meta{margin-top:8px;font-size:.7rem;color:#6b76a0}
+
+  .empty{
+    text-align:center;color:var(--sub);padding:60px 20px;font-size:.9rem;line-height:2;
+    border:1px dashed var(--line);border-radius:var(--radius);
+  }
+
+  /* ---- モーダル ---- */
+  .overlay{
+    position:fixed;inset:0;background:rgba(5,8,20,.75);backdrop-filter:blur(3px);
+    display:none;align-items:flex-end;justify-content:center;z-index:10;
+  }
+  .overlay.show{display:flex}
+  .modal{
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:18px 18px 0 0;width:100%;max-width:860px;
+    max-height:92dvh;display:flex;flex-direction:column;
+  }
+  @media(min-width:700px){
+    .overlay{align-items:center;padding:24px}
+    .modal{border-radius:18px;max-height:88dvh}
+  }
+  .m-head{
+    display:flex;align-items:center;gap:10px;padding:16px 18px;
+    border-bottom:1px solid var(--line);flex-wrap:wrap;
+  }
+  .m-head h2{
+    font-family:"Shippori Mincho",serif;font-size:1.1rem;font-weight:600;
+    flex:1;min-width:120px;word-break:break-word;
+  }
+  .m-body{padding:16px 18px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .m-foot{
+    display:flex;gap:8px;padding:12px 18px calc(12px + env(safe-area-inset-bottom));
+    border-top:1px solid var(--line);flex-wrap:wrap;
+  }
+  .m-foot .spacer{flex:1}
+
+  label{display:block;font-size:.78rem;color:var(--sub);margin:14px 0 6px;letter-spacing:.05em}
+  label:first-child{margin-top:0}
+  input[type=text],textarea{
+    width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;
+    color:var(--text);padding:10px 12px;font-size:1rem;font-family:inherit;outline:none;
+  }
+  input[type=text]:focus,textarea:focus{border-color:var(--gold-dim)}
+  textarea{min-height:220px;line-height:1.8;resize:vertical}
+
+  /* ---- 閲覧表示 ---- */
+  .view-cat{font-size:.72rem;color:var(--gold);letter-spacing:.1em;margin-bottom:6px}
+  .view-body{white-space:pre-wrap;line-height:1.9;font-size:.94rem;word-break:break-word}
+  .view-body a{color:var(--gold);word-break:break-all}
+  .view-meta{margin-top:18px;font-size:.72rem;color:#6b76a0}
+  .applink{
+    display:inline-block;margin:4px 0 14px;font-size:.85rem;color:var(--gold);
+    text-decoration:none;border-bottom:1px dashed var(--gold-dim);word-break:break-all;
+  }
+
+  .toast{
+    position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);
+    background:var(--gold);color:#1a1408;font-weight:700;font-size:.85rem;
+    padding:10px 22px;border-radius:999px;opacity:0;pointer-events:none;
+    transition:.25s;z-index:20;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto}
+  .toast button{
+    background:none;border:none;color:#1a1408;font-weight:700;font-family:inherit;
+    text-decoration:underline;margin-left:10px;cursor:pointer;font-size:.85rem;
+  }
+
+  .menu-usage{font-size:.8rem;color:var(--sub);margin-bottom:14px;line-height:1.8}
+  .menu-actions{display:flex;flex-direction:column;gap:10px}
+  .menu-actions .btn{text-align:left;padding:14px 16px;font-size:.95rem}
+  .trash-item{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+  .trash-item .t-name{font-weight:700;word-break:break-word}
+  .trash-item .t-meta{font-size:.7rem;color:#6b76a0;margin:4px 0 10px}
+  .trash-item .t-btns{display:flex;gap:8px}
+
+  .fab{
+    position:fixed;right:18px;bottom:calc(22px + env(safe-area-inset-bottom));
+    width:56px;height:56px;border-radius:50%;
+    background:var(--gold);color:#1a1408;font-size:1.9rem;line-height:1;
+    border:none;cursor:pointer;z-index:5;
+    box-shadow:0 4px 18px rgba(227,184,85,.35);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .fab:hover{background:#eec86a}
+</style>
+</head>
+<body>
+<div class="sky" id="sky" aria-hidden="true"></div>
+
+<div class="wrap">
+  <header>
+    <h1>説明書保管庫</h1>
+    <p>APP MANUAL VAULT ・ nightsky-tools</p>
+  </header>
+
+  <div class="toolbar">
+    <div class="search">
+      <span aria-hidden="true">🔍</span>
+      <input type="text" id="q" placeholder="アプリ名・よみがな・本文を検索" aria-label="検索" autocomplete="off">
+      <div class="sugg" id="sugg" role="listbox" aria-label="検索候補"></div>
+    </div>
+    <button class="btn" id="menuBtn" aria-label="バックアップメニュー">⋯</button>
+  </div>
+
+  <div class="chips" id="chips" role="tablist" aria-label="カテゴリ絞り込み"></div>
+
+  <div class="list" id="list"></div>
+</div>
+
+<button class="fab" id="addBtn" aria-label="説明書を追加">＋</button>
+
+<!-- 閲覧モーダル -->
+<div class="overlay" id="viewOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="viewTitle">
+    <div class="m-head">
+      <h2 id="viewTitle"></h2>
+      <button class="btn" id="viewClose">閉じる</button>
+    </div>
+    <div class="m-body">
+      <div class="view-cat" id="viewCat"></div>
+      <a class="applink" id="viewUrl" target="_blank" rel="noopener"></a>
+      <div class="view-body" id="viewBody"></div>
+      <div class="view-meta" id="viewMeta"></div>
+    </div>
+    <div class="m-foot">
+      <button class="btn danger" id="delBtn">削除</button>
+      <span class="spacer"></span>
+      <button class="btn" id="editBtn">編集</button>
+      <button class="btn gold" id="copyBtn">本文をコピー</button>
+    </div>
+  </div>
+</div>
+
+<!-- 編集モーダル -->
+<div class="overlay" id="editOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+    <div class="m-head">
+      <h2 id="editTitle">説明書を追加</h2>
+      <button class="btn" id="editClose">閉じる</button>
+    </div>
+    <div class="m-body">
+      <label for="fName">アプリ名 *</label>
+      <input type="text" id="fName" placeholder="例:記事保管庫">
+      <label for="fYomi">よみがな(検索候補用・任意)</label>
+      <input type="text" id="fYomi" placeholder="例:きじほかんこ">
+      <label for="fCat">カテゴリ</label>
+      <input type="text" id="fCat" list="catList" placeholder="例:星野ソラ / 資産管理 / せどり">
+      <datalist id="catList"></datalist>
+      <label for="fUrl">アプリURL(GitHub Pagesなど)</label>
+      <input type="text" id="fUrl" placeholder="https://…" inputmode="url">
+      <label for="fBody">説明書本文 *</label>
+      <textarea id="fBody" placeholder="使い方・注意点・更新履歴などを自由に記載"></textarea>
+    </div>
+    <div class="m-foot">
+      <span class="spacer"></span>
+      <button class="btn gold" id="saveBtn">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- メニューモーダル -->
+<div class="overlay" id="menuOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="menuTitle">
+    <div class="m-head">
+      <h2 id="menuTitle">メニュー</h2>
+      <button class="btn" id="menuClose">閉じる</button>
+    </div>
+    <div class="m-body">
+      <div class="menu-usage" id="usageInfo"></div>
+      <div class="menu-actions">
+        <button class="btn" id="exportBtn">📤 JSONで書き出し(バックアップ)</button>
+        <button class="btn" id="importBtn">📥 JSONを読み込み(復元)</button>
+        <button class="btn" id="trashBtn">🗑 ゴミ箱 <span id="trashCount"></span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ゴミ箱モーダル -->
+<div class="overlay" id="trashOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="trashTitle">
+    <div class="m-head">
+      <h2 id="trashTitle">ゴミ箱</h2>
+      <button class="btn" id="trashClose">閉じる</button>
+    </div>
+    <div class="m-body" id="trashList"></div>
+    <div class="m-foot">
+      <button class="btn danger" id="trashEmptyBtn">ゴミ箱を空にする</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="importFile" accept=".json" hidden>
+
+<script>
+const KEY = 'app_manual_vault_v1';
+const TRASH_KEY = 'app_manual_vault_trash_v1';
+let items = [];
+let trash = [];
+let currentCat = 'すべて';
+let currentId = null;   // 閲覧中
+let editingId = null;   // 編集中(nullなら新規)
+
+/* ---- 保存/読込 ---- */
+function sanitizeItem(i){
+  if(!i || typeof i !== 'object' || !i.id || !i.name || !i.body) return null;
+  const now = Date.now();
+  const cat = i.category ? String(i.category) : '';
+  return {
+    id: String(i.id),
+    name: String(i.name),
+    reading: i.reading ? String(i.reading) : '',
+    category: cat === 'すべて' ? '' : cat,
+    url: i.url ? String(i.url) : '',
+    body: String(i.body),
+    createdAt: Number(i.createdAt) || now,
+    updatedAt: Number(i.updatedAt) || now
+  };
+}
+function load(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(KEY));
+    items = Array.isArray(raw) ? raw.map(sanitizeItem).filter(Boolean) : [];
+  }catch(e){ items = []; }
+}
+function loadTrash(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(TRASH_KEY));
+    trash = Array.isArray(raw) ? raw.map(t=>{
+      const s = sanitizeItem(t);
+      if(!s) return null;
+      s.deletedAt = Number(t && t.deletedAt) || Date.now();
+      return s;
+    }).filter(Boolean).slice(0,20) : [];
+  }catch(e){ trash = []; }
+}
+/* 保存に成功した場合のみメモリ側を更新する(食い違い防止) */
+function persist(nextItems, nextTrash){
+  try{
+    localStorage.setItem(KEY, JSON.stringify(nextItems ?? items));
+    localStorage.setItem(TRASH_KEY, JSON.stringify(nextTrash ?? trash));
+  }catch(e){
+    try{
+      localStorage.setItem(KEY, JSON.stringify(items));
+      localStorage.setItem(TRASH_KEY, JSON.stringify(trash));
+    }catch(_){}
+    toast('容量不足で保存できません。メニューから書き出し後、古い項目を整理してください');
+    return false;
+  }
+  if(nextItems) items = nextItems;
+  if(nextTrash) trash = nextTrash;
+  return true;
+}
+
+/* ---- 便利関数 ---- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = t => { const d = new Date(t); if(isNaN(d.getTime())) return '不明'; return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+function toast(msg, actionLabel, actionFn){
+  const t = $('toast');
+  t.innerHTML = esc(msg) + (actionLabel ? ` <button id="toastAct">${esc(actionLabel)}</button>` : '');
+  if(actionLabel){
+    $('toastAct').onclick = ()=>{ t.classList.remove('show'); actionFn(); };
+  }
+  t.classList.add('show');
+  clearTimeout(t._tm);
+  t._tm = setTimeout(()=>t.classList.remove('show'), actionLabel ? 5000 : 1800);
+}
+/* かな正規化:カタカナ→ひらがな、全角英数記号→半角、小文字化(全て1文字→1文字変換) */
+function norm(s){
+  return String(s).toLowerCase()
+    .replace(/[\uFF01-\uFF5E]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+}
+/* 一致部分を<b>で強調(正規化前後で長さが変わる文字が混ざる場合は強調なしで安全に返す) */
+function hl(text, rawQ){
+  const t = String(text), n = norm(t), q = norm(String(rawQ));
+  if(!q || n.length !== t.length) return esc(t);
+  const idx = n.indexOf(q);
+  if(idx < 0) return esc(t);
+  return esc(t.slice(0,idx)) + '<b>' + esc(t.slice(idx, idx+q.length)) + '</b>' + esc(t.slice(idx+q.length));
+}
+function autolink(text){
+  return esc(text).replace(/(https?:\/\/[^\s<>、。()「」]+)/g, m=>{
+    const url = m.replace(/[.,!?)]+$/,'');
+    const rest = m.slice(url.length);
+    return `<a href="${url}" target="_blank" rel="noopener">${url}</a>${esc(rest)}`;
+  });
+}
+
+/* ---- 描画 ---- */
+function cats(){
+  return ['すべて', ...[...new Set(items.map(i=>i.category).filter(c=>c && c!=='すべて'))]];
+}
+function renderChips(){
+  const cs = cats();
+  if(!cs.includes(currentCat)) currentCat = 'すべて';
+  $('chips').innerHTML = cs.map(c =>
+    `<button class="chip ${c===currentCat?'on':''}" data-cat="${esc(c)}" role="tab" aria-selected="${c===currentCat}">${esc(c)}</button>`
+  ).join('');
+  $('catList').innerHTML = cats().slice(1).map(c=>`<option value="${esc(c)}">`).join('');
+}
+function renderList(){
+  const q = norm($('q').value.trim());
+  let arr = [...items].sort((a,b)=>b.updatedAt-a.updatedAt);
+  if(currentCat !== 'すべて') arr = arr.filter(i=>i.category===currentCat);
+  if(q) arr = arr.filter(i=>norm(i.name + (i.reading||'') + (i.category||'') + i.body).includes(q));
+
+  if(!arr.length){
+    $('list').innerHTML = items.length
+      ? `<div class="empty">条件に一致する説明書がありません。<br>検索語やカテゴリを見直してください。</div>`
+      : `<div class="empty">まだ説明書がありません。<br>右下の「＋」から最初の説明書を登録できます。</div>`;
+    return;
+  }
+  $('list').innerHTML = arr.map(i=>`
+    <div class="card" data-id="${esc(i.id)}" tabindex="0" role="button" aria-label="${esc(i.name)}を開く">
+      <div class="top">
+        <span class="name">${esc(i.name)}</span>
+        ${i.category?`<span class="cat">${esc(i.category)}</span>`:''}
+      </div>
+      <div class="prev">${esc(i.body)}</div>
+      <div class="meta">更新 ${fmt(i.updatedAt)}</div>
+    </div>`).join('');
+}
+function renderAll(){ renderChips(); renderList(); }
+
+/* ---- 検索候補 ---- */
+function renderSugg(){
+  const raw = $('q').value.trim();
+  const box = $('sugg');
+  if(!raw){ box.classList.remove('show'); box.innerHTML=''; return; }
+  const q = norm(raw);
+  const scored = [];
+  items.forEach(i=>{
+    const name = norm(i.name), yomi = norm(i.reading||''), cat = norm(i.category||'');
+    let score = -1;
+    if(yomi && yomi.startsWith(q)) score = 0;        // よみがな前方一致
+    else if(name.startsWith(q)) score = 1;           // 名前前方一致
+    else if(yomi && yomi.includes(q)) score = 2;     // よみがな部分一致
+    else if(name.includes(q)) score = 3;             // 名前部分一致
+    else if(cat && cat.includes(q)) score = 4;       // カテゴリ一致
+    if(score >= 0) scored.push([score, i]);
+  });
+  scored.sort((a,b)=>a[0]-b[0] || b[1].updatedAt-a[1].updatedAt);
+  const top = scored.slice(0,7);
+  if(!top.length){ box.classList.remove('show'); box.innerHTML=''; return; }
+  box.innerHTML = top.map(([s,i])=>`
+    <button class="sugg-item" data-id="${esc(i.id)}" role="option">
+      <span class="s-name">${hl(i.name, raw)}</span>
+      ${(s===0||s===2)&&i.reading?`<span class="s-yomi">${hl(i.reading, raw)}</span>`:''}
+      ${i.category?`<span class="s-cat">${esc(i.category)}</span>`:''}
+    </button>`).join('');
+  box.classList.add('show');
+}
+
+/* ---- 閲覧 ---- */
+function openView(id){
+  const it = items.find(i=>i.id===id); if(!it) return;
+  currentId = id;
+  $('viewTitle').textContent = it.name;
+  $('viewCat').textContent = it.category ? `カテゴリ:${it.category}` : '';
+  const u = $('viewUrl');
+  if(it.url && /^https?:\/\//i.test(it.url.trim())){
+    u.href = it.url.trim(); u.textContent = it.url.trim(); u.style.display='inline-block';
+  }else if(it.url){
+    u.removeAttribute('href');
+    u.textContent = it.url + '(http/https以外のためリンク無効)';
+    u.style.display='inline-block';
+  }else u.style.display='none';
+  $('viewBody').innerHTML = autolink(it.body);
+  $('viewMeta').textContent = `作成 ${fmt(it.createdAt)} / 更新 ${fmt(it.updatedAt)}`;
+  $('viewOverlay').classList.add('show');
+}
+
+/* ---- 編集 ---- */
+let editSnapshot = '';
+function snapEdit(){
+  return JSON.stringify([$('fName').value, $('fYomi').value, $('fCat').value, $('fUrl').value, $('fBody').value]);
+}
+function closeEdit(force){
+  if(!force && snapEdit() !== editSnapshot &&
+     !confirm('編集内容が保存されていません。破棄しますか?')) return;
+  $('editOverlay').classList.remove('show');
+}
+function openEdit(id){
+  editingId = id;
+  const it = id ? items.find(i=>i.id===id) : null;
+  $('editTitle').textContent = it ? '説明書を編集' : '説明書を追加';
+  $('fName').value = it?.name || '';
+  $('fYomi').value = it?.reading || '';
+  $('fCat').value  = it?.category || (currentCat!=='すべて'?currentCat:'');
+  $('fUrl').value  = it?.url || '';
+  $('fBody').value = it?.body || '';
+  editSnapshot = snapEdit();
+  $('viewOverlay').classList.remove('show');
+  $('editOverlay').classList.add('show');
+}
+function saveEdit(){
+  const name = $('fName').value.trim();
+  const body = $('fBody').value.trim();
+  const category = $('fCat').value.trim();
+  if(!name || !body){ toast('アプリ名と本文は必須です'); return; }
+  if(category === 'すべて'){ toast('カテゴリ名「すべて」は使えません'); return; }
+  const now = Date.now();
+  const data = { name, reading:$('fYomi').value.trim(), category, url:$('fUrl').value.trim(), body };
+  const it = editingId ? items.find(i=>i.id===editingId) : null;
+  let next;
+  if(it){
+    next = items.map(i => i.id===editingId ? {...i, ...data, updatedAt:now} : i);
+  }else{
+    next = [...items, { id: editingId || ('m'+now+Math.random().toString(36).slice(2,7)), ...data, createdAt:now, updatedAt:now }];
+  }
+  if(!persist(next, null)) return;
+  renderAll();
+  $('editOverlay').classList.remove('show');
+  toast('保存しました');
+}
+
+/* ---- バックアップ ---- */
+function exportJSON(){
+  const blob = new Blob([JSON.stringify(items,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  a.download = `manual_vault_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('書き出しました');
+}
+function importJSON(file){
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const arr = JSON.parse(r.result);
+      if(!Array.isArray(arr)) throw 0;
+      const map = new Map(items.map(i=>[i.id,i]));
+      let count = 0;
+      arr.forEach(raw=>{
+        const it = sanitizeItem(raw);
+        if(!it) return;
+        map.set(it.id, it);
+        count++;
+      });
+      if(!persist([...map.values()], null)) return;
+      renderAll();
+      toast(`${count}件読み込みました(同IDは上書き)`);
+    }catch(e){ toast('読み込めないファイルです'); }
+  };
+  r.readAsText(file);
+}
+
+/* ---- イベント ---- */
+$('q').addEventListener('input', ()=>{ renderList(); renderSugg(); });
+$('q').addEventListener('focus', renderSugg);
+$('q').addEventListener('keydown', e=>{
+  if(e.key!=='Enter') return;
+  if(e.isComposing || e.keyCode === 229) return; /* IME変換確定のEnterは無視 */
+  const box = $('sugg');
+  if(!box.classList.contains('show')) return;    /* 候補が見えている時だけ */
+  const first = box.querySelector('.sugg-item');
+  if(first){ e.preventDefault(); first.click(); }
+});
+$('sugg').addEventListener('click', e=>{
+  const b = e.target.closest('.sugg-item'); if(!b) return;
+  $('sugg').classList.remove('show');
+  openView(b.dataset.id);
+});
+document.addEventListener('click', e=>{
+  if(!e.target.closest('.search')) $('sugg').classList.remove('show');
+});
+$('chips').addEventListener('click', e=>{
+  const b = e.target.closest('.chip'); if(!b) return;
+  currentCat = b.dataset.cat; renderAll();
+});
+$('list').addEventListener('click', e=>{
+  const c = e.target.closest('.card'); if(c) openView(c.dataset.id);
+});
+$('list').addEventListener('keydown', e=>{
+  if(e.key==='Enter'||e.key===' '){
+    const c = e.target.closest('.card');
+    if(c){ e.preventDefault(); openView(c.dataset.id); }
+  }
+});
+$('addBtn').onclick = ()=>openEdit(null);
+$('editBtn').onclick = ()=>openEdit(currentId);
+$('saveBtn').onclick = saveEdit;
+$('viewClose').onclick = ()=>$('viewOverlay').classList.remove('show');
+$('editClose').onclick = ()=>closeEdit(false);
+$('delBtn').onclick = ()=>{
+  const it = items.find(i=>i.id===currentId);
+  if(!it || !confirm(`「${it.name}」の説明書をゴミ箱に移動しますか?`)) return;
+  const nextItems = items.filter(i=>i.id!==currentId);
+  const nextTrash = [{...it, deletedAt:Date.now()}, ...trash].slice(0,20);
+  if(!persist(nextItems, nextTrash)) return;
+  renderAll();
+  $('viewOverlay').classList.remove('show');
+  toast('ゴミ箱に移動しました', '元に戻す', ()=>restoreTrashAt(0));
+};
+
+/* ---- ゴミ箱 ---- */
+function renderTrash(){
+  $('trashCount').textContent = trash.length ? `(${trash.length}件)` : '';
+  $('trashList').innerHTML = trash.length ? trash.map((t,idx)=>`
+    <div class="trash-item">
+      <div class="t-name">${esc(t.name)}</div>
+      <div class="t-meta">削除 ${fmt(t.deletedAt)}${t.category?` / ${esc(t.category)}`:''}</div>
+      <div class="t-btns">
+        <button class="btn" data-act="restore" data-idx="${idx}">復元</button>
+        <button class="btn danger" data-act="purge" data-idx="${idx}">完全削除</button>
+      </div>
+    </div>`).join('')
+    : `<div class="empty">ゴミ箱は空です。<br>削除した説明書は最新20件までここに保管されます。</div>`;
+}
+function restoreTrashAt(idx){
+  const t = trash[idx]; if(!t) return;
+  const item = {...t}; delete item.deletedAt;
+  if(items.some(i=>i.id===item.id)){
+    item.id = 'm'+Date.now()+Math.random().toString(36).slice(2,7);
+  }
+  if(!persist([...items, item], trash.filter((_,i)=>i!==idx))) return;
+  renderAll(); renderTrash();
+  toast('復元しました');
+}
+function purgeTrashAt(idx){
+  if(!trash[idx]) return;
+  if(!persist(null, trash.filter((_,i)=>i!==idx))) return;
+  renderTrash();
+  toast('完全に削除しました');
+}
+$('trashList').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-act]'); if(!b) return;
+  const idx = Number(b.dataset.idx);
+  const t = trash[idx]; if(!t) return;
+  if(b.dataset.act==='restore') restoreTrashAt(idx);
+  else if(confirm(`「${t.name}」を完全に削除しますか?(元に戻せません)`)) purgeTrashAt(idx);
+});
+$('trashEmptyBtn').onclick = ()=>{
+  if(!trash.length){ toast('ゴミ箱は空です'); return; }
+  if(confirm(`ゴミ箱の${trash.length}件をすべて完全削除しますか?(元に戻せません)`)){
+    if(persist(null, [])){ renderTrash(); toast('ゴミ箱を空にしました'); }
+  }
+};
+$('trashClose').onclick = ()=>$('trashOverlay').classList.remove('show');
+$('copyBtn').onclick = async ()=>{
+  const it = items.find(i=>i.id===currentId); if(!it) return;
+  try{ await navigator.clipboard.writeText(it.body); toast('本文をコピーしました'); }
+  catch(e){
+    const ta = document.createElement('textarea');
+    ta.value = it.body; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); ta.remove();
+    toast('本文をコピーしました');
+  }
+};
+$('menuBtn').onclick = ()=>{
+  const bytes = new Blob([
+    localStorage.getItem(KEY) || '[]',
+    localStorage.getItem(TRASH_KEY) || '[]'
+  ]).size;
+  const kb = (bytes/1024).toFixed(1);
+  $('usageInfo').textContent =
+    `説明書:${items.length}件 / ゴミ箱:${trash.length}件 / 使用量:約${kb} KB(ブラウザの目安上限は約5MB)`;
+  renderTrash();
+  $('menuOverlay').classList.add('show');
+};
+$('menuClose').onclick = ()=>$('menuOverlay').classList.remove('show');
+$('exportBtn').onclick = exportJSON;
+$('importBtn').onclick = ()=>$('importFile').click();
+$('trashBtn').onclick = ()=>{
+  renderTrash();
+  $('menuOverlay').classList.remove('show');
+  $('trashOverlay').classList.add('show');
+};
+$('importFile').onchange = e=>{
+  if(e.target.files[0]) importJSON(e.target.files[0]);
+  e.target.value = '';
+};
+document.querySelectorAll('.overlay').forEach(o=>{
+  o.addEventListener('click', e=>{
+    if(e.target !== o) return;
+    if(o.id === 'editOverlay') closeEdit(false);
+    else o.classList.remove('show');
+  });
+});
+document.addEventListener('keydown', e=>{
+  if(e.key !== 'Escape') return;
+  const sg = $('sugg');
+  if(sg.classList.contains('show')){ sg.classList.remove('show'); return; }
+  if($('editOverlay').classList.contains('show')) closeEdit(false);
+  else document.querySelectorAll('.overlay.show').forEach(o=>o.classList.remove('show'));
+});
+
+/* ---- 星空生成 ---- */
+(function(){
+  const sky = $('sky'), n = 40;
+  for(let i=0;i<n;i++){
+    const s = document.createElement('div');
+    s.className = 'star';
+    const size = Math.random()*2+1;
+    s.style.cssText = `width:${size}px;height:${size}px;left:${Math.random()*100}%;top:${Math.random()*100}%;animation-delay:${Math.random()*4}s`;
+    sky.appendChild(s);
+  }
+})();
+
+window.addEventListener('storage', e=>{
+  if(e.key === KEY || e.key === TRASH_KEY){
+    load(); loadTrash(); renderAll(); renderTrash();
+  }
+});
+
+load(); loadTrash(); renderAll(); renderTrash();
+</script>
+</body>
+</html>
