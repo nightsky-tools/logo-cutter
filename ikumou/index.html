@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>育毛スレッズ検品スキャナ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@700&family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1117;
+  --panel:#161c26;
+  --panel2:#1c2432;
+  --line:#2a3446;
+  --text:#e8ebf2;
+  --sub:#8d97a8;
+  --ok:#43b58c;
+  --warn:#e2a63d;
+  --err:#e2584d;
+  --accent:#e2a63d;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:"Noto Sans JP",sans-serif;
+  font-size:15px;
+  line-height:1.7;
+  padding-bottom:150px;
+}
+.wrap{max-width:720px;margin:0 auto;padding:0 16px}
+header{
+  padding:28px 0 14px;
+  border-bottom:1px solid var(--line);
+  margin-bottom:14px;
+}
+.brand{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:11px;
+  color:var(--sub);
+  letter-spacing:.12em;
+  margin-bottom:6px;
+}
+h1{
+  font-family:"Shippori Mincho B1",serif;
+  font-size:23px;
+  font-weight:700;
+  letter-spacing:.04em;
+}
+h1 .v{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--sub);margin-left:8px}
+.lead{color:var(--sub);font-size:12.5px;margin-top:4px}
+
+/* タブ */
+.tabs{display:flex;gap:8px;margin-bottom:18px}
+.tab{
+  flex:1;padding:11px 0;text-align:center;
+  background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;color:var(--sub);
+  font-weight:700;font-size:14px;cursor:pointer;
+}
+.tab.active{background:var(--accent);color:#151515;border-color:var(--accent)}
+
+.card{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:16px;
+  margin-bottom:16px;
+}
+.card h2{
+  font-size:13px;
+  font-weight:700;
+  color:var(--sub);
+  letter-spacing:.08em;
+  margin-bottom:10px;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+}
+.card h2 .num{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:11px;color:var(--accent);
+}
+textarea{
+  width:100%;
+  background:var(--panel2);
+  border:1px solid var(--line);
+  border-radius:8px;
+  color:var(--text);
+  font-family:"Noto Sans JP",sans-serif;
+  font-size:15px;
+  line-height:1.8;
+  padding:12px;
+  resize:vertical;
+}
+textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+#hookInput{min-height:72px}
+#bodyInput{min-height:220px}
+.counter{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:12px;color:var(--sub);
+  text-align:right;margin-top:6px;
+}
+.counter.over{color:var(--err);font-weight:700}
+.counter.ideal{color:var(--ok)}
+
+.toolrow{display:flex;gap:8px;margin:0 0 14px}
+.toolbtn{
+  flex:1;background:var(--panel2);color:var(--sub);
+  border:1px solid var(--line);border-radius:8px;
+  padding:9px 0;font-size:12.5px;font-weight:700;
+  font-family:"Noto Sans JP",sans-serif;cursor:pointer;
+}
+.toolbtn:active{transform:scale(.97)}
+.toolbtn.done{color:var(--ok);border-color:var(--ok)}
+
+.btnrow{display:flex;gap:10px;margin:4px 0 24px}
+button{
+  font-family:"Noto Sans JP",sans-serif;
+  font-size:15px;font-weight:700;
+  border:none;border-radius:10px;
+  padding:14px 0;cursor:pointer;
+  transition:transform .08s;
+}
+button:active{transform:scale(.97)}
+.btn-main{flex:2;background:var(--accent);color:#151515}
+.btn-sub{flex:1;background:var(--panel2);color:var(--sub);border:1px solid var(--line)}
+
+/* 判定スタンプ */
+.stamp-area{
+  display:none;
+  justify-content:center;
+  padding:8px 0 20px;
+}
+.stamp{
+  width:118px;height:118px;
+  border:3.5px solid var(--ok);
+  border-radius:50%;
+  color:var(--ok);
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  transform:rotate(-8deg);
+  font-family:"Shippori Mincho B1",serif;
+  animation:stampIn .25s cubic-bezier(.2,1.4,.5,1);
+}
+.stamp.ng{border-color:var(--err);color:var(--err)}
+.stamp .big{font-size:30px;font-weight:700;letter-spacing:.1em}
+.stamp .small{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;margin-top:2px}
+@keyframes stampIn{from{transform:rotate(-8deg) scale(1.6);opacity:0}to{transform:rotate(-8deg) scale(1);opacity:1}}
+@media (prefers-reduced-motion: reduce){.stamp{animation:none}}
+
+/* 結果リスト */
+#results{display:none}
+.check{
+  display:flex;gap:10px;
+  padding:10px 4px;
+  border-bottom:1px solid var(--line);
+  font-size:13.5px;
+}
+.check:last-child{border-bottom:none}
+.check .icon{flex-shrink:0;width:20px;text-align:center;font-weight:700}
+.check.ok .icon{color:var(--ok)}
+.check.warn .icon{color:var(--warn)}
+.check.err .icon{color:var(--err)}
+.check .label{font-weight:700;flex-shrink:0;min-width:104px}
+.check .detail{color:var(--sub)}
+.check.err .detail{color:#f0a8a2}
+.check.warn .detail{color:#e8c88f}
+.hitword{
+  background:rgba(226,88,77,.18);
+  color:#f2b0aa;
+  border-radius:4px;padding:0 4px;
+  font-weight:700;
+}
+
+/* クリーン出力・修正命令書 */
+.clean-block{
+  background:var(--panel2);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:12px;
+  white-space:pre-wrap;
+  font-size:14px;line-height:1.8;
+  margin-bottom:8px;
+}
+.fix-block{
+  background:var(--panel2);
+  border:1px solid rgba(226,88,77,.5);
+  border-radius:8px;
+  padding:12px;
+  white-space:pre-wrap;
+  font-size:12.5px;line-height:1.7;
+  margin-bottom:8px;
+  max-height:300px;overflow-y:auto;
+  color:#c9d0dc;
+}
+.copybtn{
+  width:100%;background:var(--panel2);
+  color:var(--accent);border:1px solid var(--accent);
+  border-radius:8px;padding:10px 0;font-size:13.5px;
+  margin-bottom:14px;
+}
+.copybtn.red{color:var(--err);border-color:var(--err)}
+.copybtn.copied{background:var(--ok);border-color:var(--ok);color:#101418}
+#fixCard{display:none}
+#fixCard h2{color:var(--err)}
+
+/* 履歴 */
+.hist-item{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 2px;border-bottom:1px solid var(--line);
+  font-size:13px;
+}
+.hist-item:last-child{border-bottom:none}
+.hist-item .hk{flex:1}
+.hist-item .views{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:11px;flex-shrink:0;
+  padding:1px 7px;border-radius:20px;
+  background:var(--panel2);color:var(--sub);
+  border:1px solid var(--line);
+}
+.hist-item .views.big{color:var(--ok);border-color:var(--ok)}
+.hist-item .views.dead{color:var(--err);border-color:rgba(226,88,77,.4)}
+.hist-item .del{
+  background:none;border:none;color:var(--sub);
+  font-size:15px;padding:2px 6px;flex-shrink:0;
+}
+.hist-add{display:flex;gap:8px;margin-top:12px}
+.hist-add input{
+  background:var(--panel2);border:1px solid var(--line);
+  border-radius:8px;color:var(--text);
+  font-family:"Noto Sans JP",sans-serif;
+  font-size:13px;padding:8px 10px;
+}
+.hist-add .f1{flex:3}
+.hist-add .f2{flex:1;min-width:70px}
+.hist-add button{flex-shrink:0;padding:8px 14px;font-size:13px;background:var(--panel2);color:var(--accent);border:1px solid var(--accent);border-radius:8px}
+.hist-add select{
+  background:var(--panel2);border:1px solid var(--line);
+  border-radius:8px;color:var(--text);
+  font-family:"Noto Sans JP",sans-serif;
+  font-size:13px;padding:8px 6px;flex-shrink:0;
+}
+.cw-badge{
+  font-size:11px;flex-shrink:0;
+  padding:1px 8px;border-radius:20px;
+  border:1px solid var(--line);
+}
+.cw-badge.err{color:var(--err);border-color:rgba(226,88,77,.5)}
+.cw-badge.warn{color:var(--warn);border-color:rgba(226,166,61,.5)}
+.hist-note{font-size:11.5px;color:var(--sub);margin-top:10px}
+.toggle-hist{
+  background:none;border:none;color:var(--sub);
+  font-size:12px;text-decoration:underline;padding:4px;
+}
+
+/* 命令書タブ */
+#tab-meirei{display:none}
+.mei-section{
+  background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;margin-bottom:10px;overflow:hidden;
+}
+.mei-section summary{
+  cursor:pointer;padding:13px 16px;
+  font-size:13.5px;font-weight:700;color:var(--text);
+  display:flex;align-items:center;gap:8px;
+  list-style:none;
+}
+.mei-section summary::-webkit-details-marker{display:none}
+.mei-section summary .mnum{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:11px;color:var(--accent);flex-shrink:0;
+}
+.mei-section .mbody{
+  padding:0 16px 14px;
+  font-size:13px;color:#c9d0dc;line-height:1.9;
+  white-space:pre-wrap;
+  border-top:1px solid var(--line);
+  padding-top:12px;
+}
+.mei-section .mcopy{
+  margin:10px 16px 14px;width:calc(100% - 32px);
+  background:var(--panel2);color:var(--accent);
+  border:1px solid var(--line);border-radius:8px;
+  padding:8px 0;font-size:12.5px;
+}
+footer{
+  text-align:center;color:var(--sub);
+  font-family:"IBM Plex Mono",monospace;
+  font-size:10px;letter-spacing:.1em;
+  margin-top:32px;
+}
+#fab{
+  position:fixed;left:0;right:0;bottom:0;
+  background:rgba(13,17,23,.97);
+  border-top:1px solid var(--line);
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  display:none;z-index:50;
+}
+#fab .inner{max-width:720px;margin:0 auto;display:flex;gap:10px}
+#fab button{
+  flex:1;padding:14px 0;border-radius:10px;
+  font-size:14.5px;font-weight:700;
+}
+#fabCopy{background:var(--accent);color:#151515}
+#fabFix{background:var(--err);color:#fff;display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand">NIGHTSKY-TOOLS</div>
+  <h1>育毛スレッズ検品スキャナ<span class="v">v1.6</span></h1>
+  <div class="lead">検品・命令書・修正指示の三位一体 — このアプリだけで運用が完結します</div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" id="tabBtn1" onclick="switchTab(1)">検品</div>
+  <div class="tab" id="tabBtn2" onclick="switchTab(2)">命令書</div>
+</div>
+
+<!-- ============ タブ1:検品 ============ -->
+<div id="tab-scan">
+
+<div class="card">
+  <h2><span class="num">00</span>一括貼り付け(貼るだけで自動整形→分割)</h2>
+  <button class="btn-main" style="width:100%;margin-bottom:12px" onclick="oneTouch(this)">ワンタッチ検品(貼り付け→整形→分割→検品)</button>
+  <textarea id="bulkInput" style="min-height:140px" placeholder="ここに手動で貼ってもOK。&#10;貼った瞬間に「、」と不可視文字を自動削除して&#10;分割→検品まで自動で走ります"></textarea>
+  <div class="toolrow" style="margin-top:10px;margin-bottom:0">
+    <button class="toolbtn" onclick="splitBulk(this)">手動で分割する(予備)</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">01</span>1投稿目(フック)</h2>
+  <textarea id="hookInput" placeholder="例:夏に頭皮が弱る人がやりがちなこと"></textarea>
+  <div class="counter" id="hookCounter">0字 / 上限20字(理想15字前後)</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">02</span>2投稿目(本文)</h2>
+  <textarea id="bodyInput" placeholder="・箇条書き5個(異物1個)&#10;&#10;締めの解説&#10;&#10;名古屋で育毛鍼をしています。&#10;気になる方はプロフを見てみてください。"></textarea>
+</div>
+
+<div class="toolrow">
+  <button class="toolbtn" onclick="removeTouten(this)">読点「、」を全部消す</button>
+  <button class="toolbtn" onclick="removeInvisible(this)">不可視文字を消す</button>
+</div>
+
+<div class="btnrow">
+  <button class="btn-main" onclick="runScan()">検品する</button>
+  <button class="btn-sub" onclick="clearAll()">クリア</button>
+</div>
+
+<div class="stamp-area" id="stampArea">
+  <div class="stamp" id="stamp">
+    <div class="big" id="stampBig">合格</div>
+    <div class="small" id="stampSmall">PASSED</div>
+  </div>
+</div>
+
+<div class="card" id="cleanCard" style="display:none">
+  <h2><span class="num">04</span>投稿用テキスト(整形済み)</h2>
+  <button class="btn-main" style="width:100%;margin-bottom:14px" onclick="copyBothSequential(this)">ワンタッチで順番にコピー(1投稿目→2投稿目)</button>
+  <div class="clean-block" id="cleanHook"></div>
+  <button class="copybtn" onclick="copyText('cleanHook',this)">1投稿目だけコピー</button>
+  <div class="clean-block" id="cleanBody"></div>
+  <button class="copybtn" onclick="copyText('cleanBody',this)">2投稿目だけコピー</button>
+  <button class="copybtn" onclick="saveToHistory(this)">この投稿を履歴に登録する</button>
+</div>
+
+<div class="card" id="results">
+  <h2><span class="num">03</span>検品結果</h2>
+  <div id="checkList"></div>
+</div>
+
+<div class="card" id="fixCard">
+  <h2><span class="num">!!</span>AIに送る修正命令書(自動生成)</h2>
+  <div class="fix-block" id="fixPrompt"></div>
+  <button class="copybtn red" onclick="copyText('fixPrompt',this)">修正命令書をコピーしてAIに貼る</button>
+</div>
+
+<div class="card">
+  <h2><span class="num">05</span>使用済みフック履歴(重複チェック用)<button class="toggle-hist" onclick="toggleHist()">開閉</button></h2>
+  <div id="histList" style="display:none"></div>
+  <div class="hist-add">
+    <input class="f1" id="histHook" placeholder="フックを手動追加">
+    <input class="f2" id="histViews" placeholder="表示数">
+    <button onclick="addHistManual()">追加</button>
+  </div>
+  <div class="hist-note">検品時、ここにあるフックと類似60%以上で警告。投稿後に表示回数を追記すると資産になります(8万以上=緑/1000未満=赤)。</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">06</span>禁止ワード管理(手動追加)</h2>
+  <div id="cwList"></div>
+  <div class="hist-add">
+    <input class="f1" id="cwInput" placeholder="追加する語(例:老化)">
+    <select id="cwLevel">
+      <option value="err">禁止</option>
+      <option value="warn">要注意</option>
+    </select>
+    <button onclick="addCustomWord()">追加</button>
+  </div>
+  <div class="hist-note">ここに追加した語は、次回の検品から自動で検出されます(禁止=不合格/要注意=警告)。標準の禁止語(白髪・断定・脅し等)は命令書側で固定です。</div>
+</div>
+
+</div><!-- /tab-scan -->
+
+<!-- ============ タブ2:命令書 ============ -->
+<div id="tab-meirei">
+  <div class="card" style="padding:12px 16px">
+    <button class="copybtn" style="margin-bottom:0" onclick="copyAllMeirei(this)">命令書 全文コピー(新しいAIトークの冒頭に貼る用)</button>
+  </div>
+  <div id="meireiList"></div>
+</div>
+
+<footer>IKUMOU THREADS SCANNER v1.6 / FIXED COPY BAR</footer>
+</div>
+
+<div id="fab">
+  <div class="inner">
+    <button id="fabCopy" onclick="copyBothSequential(this)">①1投稿目をコピー</button>
+    <button id="fabFix" onclick="copyText('fixPrompt',this)">修正命令書をコピー</button>
+  </div>
+</div>
+
+<script>
+/* ============ 保存 ============ */
+var memStore = {};
+function store(key, val){
+  try{ localStorage.setItem(key, JSON.stringify(val)); }
+  catch(e){ memStore[key] = JSON.stringify(val); }
+}
+function load(key){
+  try{ var v = localStorage.getItem(key); if(v!==null) return JSON.parse(v); }
+  catch(e){ if(memStore[key]) return JSON.parse(memStore[key]); }
+  return null;
+}
+
+/* ============ 命令書データ(アプリ内蔵・分割) ============ */
+var MEIREI = [
+{t:"役割・アカウント情報", b:"■ AIの役割\nThreads運用の伴走者として次の2つを行う。\n1. この命令書のルール通りに投稿文を作成\n2. 結果スクショの分析(勝因・敗因の特定と次の一手)\n\n■ アカウント\n・@ikumou_yuto/薬を使わない育毛のプロ|Yuto|名古屋\n・名古屋で育毛鍼をしている鍼灸師\n・軸:血のめぐり。頭皮に血を届けることが専門\n・目的:バズ→プロフ→LINE→来店"},
+{t:"文体ルール(絶対)", b:"・一人称は「僕」\n・横文字(カタカナ語)は極力使わない\n・伝聞禁止。自分の経験として語る\n 決まり文句「僕がたくさんの頭皮に触れてきて気づいたことがあります」\n・効果の断定・誇張禁止。「生えます」ではなく「変わってきます」「〜かもしれません」「〜が多いです」\n・脅さない、責めない。気づきを渡す姿勢\n・漢字はほどよく(額・硬い・緩める等は漢字、動作の「さわる」等はひらがな可)\n・読点「、」に頼らない文にする(貼り付け時にスキャナが「、」を自動削除するため、削除されても読める文で書く)\n・投稿文は必ず1個のコードブロックにまとめて出す(1行目からフック→空行→本文の順。1投稿目と2投稿目を分けない。分割は検品スキャナが行う)"},
+{t:"投稿の基本形(F型)", b:"1投稿目:フックのみ。20字以内厳守(理想15字前後)\n2投稿目:\n・箇条書き5個(チェックリスト)\n・うち1個は「異物」=髪と関係なさそうな意外な項目\n・締めの解説3〜6行(血のめぐりに回収)\n・最後に固定2行:\n名古屋で育毛鍼をしています。\n気になる方はプロフを見てみてください。\n\n■ 異物ネタ在庫\n笑った記憶がない/考えごとで眠れない/寝る向きがいつも同じ/歯の食いしばり/頬づえ/眉間のしわ/枕の高さ/冷房の冷え/水をほとんど飲まない/きつい帽子/メガネの跡/自然乾燥/寝ぐせがつかない/お腹の冷え/寝る前の一杯の水\n\n■ 納品形式\n必ず1個のコードブロックで出す。1行目からフック→空行→本文の順。検品スキャナの一括貼り付けで自動分割される"},
+{t:"禁止ワード・禁止事項一覧", b:"■ ネタ・単語の禁止\n・白髪(関連語含む)→ネタごと全面禁止\n・横文字/カタカナ語(最小限のみ可)\n・「○○だの」という言い回し\n\n■ 1投稿目(フック)での禁止\n・地域名(名古屋/愛知/東海 等)→全国配信が絞られる(141回で実証)\n・年齢+地域+悩みの3つ重ね(絞りは2つまで)\n・情緒だけのフック(40回で実証)→情報の匂い(サイン/習慣/癖/勘違い)必須\n\n■ 断定・誇張の禁止(薬機法・Aルート)\n・生えます/治る/治ります/改善します/効果があります\n・必ず/絶対/100%/誰でも\n・○ヶ月で実感/−10歳/成功事例○件\n→言い換え:変わってきます/〜かもしれません/〜が多いです/〜の合図です\n\n■ 伝聞・借り物の禁止\n・と聞いた/らしい/によると/と言われ\n→すべて自分の経験として語る\n\n■ 脅し・責めの禁止\n・手遅れ/後悔/取り返しのつかない\n・不安を煽って誘導する構成\n\n■ 画像の禁止\n・ビフォーアフター(変化の比較)\n・効果を証明する写真\n→状態説明の1枚のみ可"},
+{t:"型のローテーション", b:"・ダメ出し型(弱っている/危険/やりがちなサイン)と良い状態型(元気な人のサイン)を交互に\n・どちらも「今の自分をチェックできる」角度にする\n →「改善後の変化」を並べるのは弱い(7,564回で実証)\n →現状チェックできる形は強い(15.3万回で実証)\n・切り口は毎回変える。同じ角度の連続は沈む\n・「髪×体の不調」は太い鉱脈(19.1万回で実証)\n\n■ 切り口の在庫\n頭皮の状態(硬さ/冷え/色/におい)、髪そのもの(細さ/抜け毛/コシ)、場所(生え際/つむじ/こめかみ)、習慣(洗い方/乾かし方/食事/睡眠/朝昼夜/季節)、体(冷え/疲れ/ストレス/姿勢/食いしばり)、無意識の癖\n・一巡したら二巡目は型と異物と言葉を変えて再利用可"},
+{t:"封印事項", b:"・A型(長い語りの2投稿構成)は数字が出ない(49回/366回で実証)。どうしても語りたい時だけ沈む覚悟で使う\n・情緒だけのフックは沈む(40回で実証)\n・白髪ネタは本人の方針で全面禁止"},
+{t:"事実整合(確定定義・矛盾禁止)", b:"・青白い頭皮=血が足りないサイン(悪い)\n・赤い頭皮=炎症のサイン(悪い)\n・明るく均一な肌色=血がめぐっている(良い)\n・寝ぐせがつかない=髪のコシ低下のサイン(悪い)\n・根元がぷっくり丸い抜け毛=自然に抜けた毛(良い)\n・根元が細い抜け毛=育ちきる前に抜けた毛(悪い)\n・順番=首が先、頭皮が後\n・髪が一番もろいのは濡れているとき\n・髪が育つのは眠っている間\n※投稿で新しい定義を使ったらこの一覧に追記すること"},
+{t:"分析基準(スクショが来たら)", b:"・表示回数の判定:\n 1,000回未満=沈み(原因特定必須)\n 1,000〜1万=やや弱い\n 1万〜4万=安定ヒット(正常運転)\n 4万〜8万=準大ヒット(勝因を言語化)\n 8万以上=大ヒット(勝因を言語化して資産化)\n・勝因/敗因は「フックの長さ」「切り口の新鮮さ」「現状チェックできるか」「型のかぶり」「地域の位置」から特定\n・単発の数字は運の要素も大きい。一喜一憂させず下限の安定を評価\n・分析の最後に必ず次の投稿の方針を一言添える"},
+{t:"返信トーン・宿題", b:"■ コメント返信\n・宣伝臭くしない、説教しない\n・自虐系の常連には受け止めつつ専門家の優しさで返す\n・相手の言葉の真意をよく読んでから返す\n\n■ 残っている宿題\n・プロフィール/固定投稿の強い表現(3ヶ月で実感/−10歳等)は薬機法・景表法の観点で専門家チェック推奨"}
+];
+
+/* ============ 履歴の初期データ ============ */
+var SEED = [
+  {h:"髪が増える人がやめた習慣", v:141},
+  {h:"頭皮が元気を取り戻したサイン", v:8724},
+  {h:"髪が細くなる人の夜の習慣", v:82000},
+  {h:"白髪が増えてきた人に共通すること", v:248000},
+  {h:"生え際が気になり出した人へ", v:3453},
+  {h:"髪が薄くなる人の意外な姿勢の癖", v:33000},
+  {h:"頭頂部が元気な人に共通すること", v:41000},
+  {h:"最近鏡をまっすぐ見られなくなった人へ", v:40},
+  {h:"シャンプーを変えても髪が変わらなかった人へ", v:366},
+  {h:"髪が抜けやすい人のお風呂上がりの癖", v:137000},
+  {h:"頭皮マッサージを続けても効かない人が見落としていること", v:49},
+  {h:"頭皮が弱っている人の体に出るサイン", v:191000},
+  {h:"頭皮に血が届いていない人の冷えのサイン", v:36000},
+  {h:"髪が元気な人がよく食べているもの", v:90000},
+  {h:"シャンプー中に出る頭皮の危険サイン", v:25000},
+  {h:"髪が育ち始めた人の手ざわりの変化", v:7564},
+  {h:"頭皮が弱っている人の朝のサイン", v:153000},
+  {h:"頭皮が硬くなる人のストレスサイン", v:18000},
+  {h:"血がめぐっている頭皮の見た目", v:28000},
+  {h:"頭皮が疲れている人のサイン", v:15000},
+  {h:"頭皮を硬くする無意識の癖", v:24000},
+  {h:"髪が細くなる習慣", v:16000},
+  {h:"頭皮が冷える習慣", v:83},
+  {h:"頭皮が固い人がよくしている姿勢", v:7744},
+  {h:"髪が薄くなる人の口ぐせ", v:18000},
+  {h:"髪を諦めた人が最後に言う言い訳", v:134},
+  {h:"頭皮の血が止まっているサイン", v:5102},
+  {h:"実は頭皮を冷やしている意外なもの", v:328},
+  {h:"髪が薄い人ほど信じている思い込み", v:1571},
+  {h:"髪が気になる人が後回しにしがちなこと", v:731},
+  {h:"頭皮が硬い人が無意識にやっていること", v:1610},
+  {h:"頭皮が元気な人に共通するサイン", v:24000},
+  {h:"夏に頭皮が弱る人がやりがちなこと", v:0}
+];
+
+var history_ = load("ikumou_hooks");
+if(!history_){ history_ = SEED; store("ikumou_hooks", history_); }
+
+/* ============ カスタム禁止ワード ============ */
+var customWords = load("ikumou_custom_words") || [];
+function errWordsAll(){
+  return ERR_WORDS.concat(customWords.filter(function(c){return c.lv==="err";}).map(function(c){return c.w;}));
+}
+function warnWordsAll(){
+  return WARN_WORDS.concat(customWords.filter(function(c){return c.lv==="warn";}).map(function(c){return c.w;}));
+}
+function renderCustomWords(){
+  var el = document.getElementById("cwList");
+  if(customWords.length===0){
+    el.innerHTML = "<div class='hist-note' style='margin-top:0'>手動追加された語はまだありません</div>";
+    return;
+  }
+  el.innerHTML = customWords.map(function(c,i){
+    var lvName = c.lv==="err" ? "禁止" : "要注意";
+    return "<div class='hist-item'><div class='hk'>"+esc(c.w)+"</div><div class='cw-badge "+c.lv+"'>"+lvName+"</div><button class='del' onclick='delCustomWord("+i+")'>✕</button></div>";
+  }).join("");
+}
+function addCustomWord(){
+  var w = document.getElementById("cwInput").value.trim();
+  var lv = document.getElementById("cwLevel").value;
+  if(!w) return;
+  var exists = customWords.some(function(c){return c.w===w;}) || ERR_WORDS.indexOf(w)>=0 || WARN_WORDS.indexOf(w)>=0;
+  if(exists){ document.getElementById("cwInput").value=""; return; }
+  customWords.push({w:w, lv:lv});
+  store("ikumou_custom_words", customWords);
+  document.getElementById("cwInput").value = "";
+  renderCustomWords();
+}
+function delCustomWord(i){
+  customWords.splice(i,1);
+  store("ikumou_custom_words", customWords);
+  renderCustomWords();
+}
+
+/* ============ 検査定義 ============ */
+var REGIONS = ["名古屋在住","名古屋","愛知","東海"];
+var ERR_WORDS = ["白髪","治ります","治る","完治","効果があります","必ず","絶対","100%","誰でも","生えます","生やし","手遅れ","後悔","取り返しのつかない"];
+var WARN_WORDS = ["生える","改善","実感","と聞い","らしい","によると","と言われ"];
+var CLOSE1 = "名古屋で育毛鍼をしています。";
+var CLOSE2 = "気になる方はプロフを見てみてください。";
+var KATA_ALLOW = ["シャンプー","ドライヤー","タオル","スマホ","サイン","プロフ","ピンク","コシ","ハリ","フケ","ガチガチ","ゴシゴシ","ピリッ","ベタ","テカ","ヘルメット","メガネ","サプリ","ストレス","マッサージ","ホース","ブラシ","コーヒー"];
+var INFO_SMELL = ["サイン","習慣","癖","勘違い","共通","やりがち","見落と","特徴","理由","もの","こと","方法","順番","選び","変化","食べ","人の","人へ","時間","場所"];
+var INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g;
+var lastChecks = [];
+
+/* ============ ユーティリティ ============ */
+function bigrams(s){
+  s = s.replace(/\s/g,"");
+  var out = [];
+  for(var i=0;i<s.length-1;i++) out.push(s.substr(i,2));
+  return out;
+}
+function similarity(a,b){
+  var A = bigrams(a), B = bigrams(b);
+  if(A.length===0||B.length===0) return 0;
+  var m = 0, used = {};
+  for(var i=0;i<A.length;i++){
+    for(var j=0;j<B.length;j++){
+      if(!used[j] && A[i]===B[j]){ m++; used[j]=true; break; }
+    }
+  }
+  return 2*m/(A.length+B.length);
+}
+function esc(s){
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function stripTags(s){ return s.replace(/<[^>]*>/g,""); }
+function fmtViews(v){
+  if(!v) return "未計測";
+  if(v>=10000) return (v/10000).toFixed(1).replace(/\.0$/,"")+"万";
+  return v.toLocaleString();
+}
+
+/* ============ タブ切替 ============ */
+function switchTab(n){
+  document.getElementById("tab-scan").style.display = n===1 ? "block" : "none";
+  document.getElementById("tab-meirei").style.display = n===2 ? "block" : "none";
+  document.getElementById("tabBtn1").className = "tab"+(n===1?" active":"");
+  document.getElementById("tabBtn2").className = "tab"+(n===2?" active":"");
+  window.scrollTo(0,0);
+}
+
+/* ============ 命令書描画 ============ */
+function renderMeirei(){
+  var el = document.getElementById("meireiList");
+  el.innerHTML = MEIREI.map(function(m,i){
+    var num = ("0"+(i+1)).slice(-2);
+    return "<details class='mei-section'><summary><span class='mnum'>"+num+"</span>"+esc(m.t)+"</summary><div class='mbody'>"+esc(m.b)+"</div><button class='mcopy' onclick='copyMeireiSection("+i+",this)'>この項目をコピー</button></details>";
+  }).join("");
+}
+function fullMeireiText(){
+  var out = "【育毛Threads投稿 作成・分析命令書 v1.1】\nこの命令書に従って、投稿の作成と結果分析を行ってください。\n\n";
+  MEIREI.forEach(function(m,i){
+    out += "■■ "+(i+1)+". "+m.t+" ■■\n"+m.b+"\n\n";
+  });
+  return out.trim();
+}
+function copyAllMeirei(btn){
+  doCopy(fullMeireiText(), btn, "コピーしました。AIトークの冒頭に貼ってください");
+}
+function copyMeireiSection(i, btn){
+  doCopy("【命令書抜粋:"+MEIREI[i].t+"】\n"+MEIREI[i].b, btn, "コピーしました");
+}
+
+/* ============ 読点・不可視文字の削除 ============ */
+function removeTouten(btn){
+  var h = document.getElementById("hookInput");
+  var b = document.getElementById("bodyInput");
+  var count = (h.value.match(/、/g)||[]).length + (b.value.match(/、/g)||[]).length;
+  h.value = h.value.replace(/、/g,"");
+  b.value = b.value.replace(/、/g,"");
+  h.dispatchEvent(new Event("input"));
+  flashBtn(btn, count>0 ? "「、」を"+count+"個消しました" : "「、」はありません");
+}
+function removeInvisible(btn){
+  var h = document.getElementById("hookInput");
+  var b = document.getElementById("bodyInput");
+  var count = (h.value.match(INVISIBLE)||[]).length + (b.value.match(INVISIBLE)||[]).length;
+  h.value = h.value.replace(INVISIBLE,"");
+  b.value = b.value.replace(INVISIBLE,"");
+  flashBtn(btn, count>0 ? "不可視文字を"+count+"個消しました" : "不可視文字はありません");
+}
+function flashBtn(btn, msg){
+  var orig = btn.textContent;
+  btn.textContent = msg;
+  btn.classList.add("done");
+  setTimeout(function(){ btn.textContent = orig; btn.classList.remove("done"); }, 1600);
+}
+
+/* ============ 一括貼り付けの自動分割 ============ */
+function cleanText(s){
+  return s.replace(INVISIBLE,"").replace(/、/g,"");
+}
+function doSplit(raw){
+  var hook = "", body = "";
+  if(/\n-{3,}\n/.test("\n"+raw+"\n")){
+    var parts = raw.split(/\n?-{3,}\n?/);
+    hook = parts[0]||"";
+    body = parts.slice(1).join("\n");
+  }else{
+    var lines = raw.split("\n");
+    var idx = -1;
+    for(var i=0;i<lines.length;i++){
+      if(lines[i].trim().indexOf("・")===0){ idx = i; break; }
+    }
+    if(idx>0){
+      hook = lines.slice(0, idx).join("\n");
+      body = lines.slice(idx).join("\n");
+    }else{
+      var m = raw.split(/\n\s*\n/);
+      hook = m[0]||"";
+      body = m.slice(1).join("\n\n");
+    }
+  }
+  return [hook.trim(), body.trim()];
+}
+function applySplitAndScan(raw){
+  var cleaned = cleanText(raw);
+  document.getElementById("bulkInput").value = cleaned;
+  var r = doSplit(cleaned);
+  document.getElementById("hookInput").value = r[0];
+  document.getElementById("bodyInput").value = r[1];
+  hookInput.dispatchEvent(new Event("input"));
+  if(r[0]!=="" || r[1]!==""){ runScan(); }
+}
+function oneTouch(btn){
+  if(navigator.clipboard && navigator.clipboard.readText){
+    navigator.clipboard.readText().then(function(t){
+      if(!t || t.trim()===""){ flashMain(btn,"クリップボードが空です"); return; }
+      applySplitAndScan(t);
+    }).catch(function(){
+      flashMain(btn,"貼り付け許可がありません。下の欄に手動で貼ってください");
+    });
+  }else{
+    flashMain(btn,"この端末は非対応。下の欄に手動で貼ってください");
+  }
+}
+function flashMain(btn, msg){
+  var orig = btn.textContent;
+  btn.textContent = msg;
+  setTimeout(function(){ btn.textContent = orig; }, 2000);
+}
+function splitBulk(btn){
+  var raw = document.getElementById("bulkInput").value;
+  if(raw.trim()===""){ flashBtn(btn,"先に貼り付けてください"); return; }
+  applySplitAndScan(raw);
+  flashBtn(btn, "分割・検品しました");
+}
+/* 貼り付けた瞬間に自動整形→分割→検品 */
+document.getElementById("bulkInput").addEventListener("paste", function(){
+  var el = this;
+  setTimeout(function(){ applySplitAndScan(el.value); }, 60);
+});
+/* 個別欄も貼り付け時に「、」と不可視文字を自動削除 */
+["hookInput","bodyInput"].forEach(function(id){
+  document.getElementById(id).addEventListener("paste", function(){
+    var el = this;
+    setTimeout(function(){
+      el.value = cleanText(el.value);
+      if(id==="hookInput") hookInput.dispatchEvent(new Event("input"));
+    }, 60);
+  });
+});
+
+/* ============ 文字数カウンタ ============ */
+var hookInput = document.getElementById("hookInput");
+hookInput.addEventListener("input", function(){
+  var len = hookInput.value.replace(/\s/g,"").length;
+  var c = document.getElementById("hookCounter");
+  c.textContent = len + "字 / 上限20字(理想15字前後)";
+  c.className = "counter" + (len>20 ? " over" : (len>0&&len<=15 ? " ideal" : ""));
+});
+
+/* ============ メイン検品 ============ */
+function runScan(){
+  var hookRaw = hookInput.value;
+  var bodyRaw = document.getElementById("bodyInput").value;
+  var hook = hookRaw.replace(INVISIBLE,"");
+  var body = bodyRaw.replace(INVISIBLE,"");
+  var checks = [];
+
+  function add(level, label, detail){ checks.push({level:level,label:label,detail:detail}); }
+
+  /* --- フック検査 --- */
+  var hlen = hook.replace(/\s/g,"").length;
+  if(hlen===0){ add("err","フック","1投稿目が空です"); }
+  else if(hlen>20){ add("err","フック文字数", hlen+"字。上限20字を超過。削ってください"); }
+  else if(hlen>15){ add("warn","フック文字数", hlen+"字。合格圏だが理想は15字前後"); }
+  else{ add("ok","フック文字数", hlen+"字。理想圏内"); }
+
+  var regionHit = REGIONS.filter(function(r){ return hook.indexOf(r)>=0; });
+  if(regionHit.length){ add("err","フック地域名","1投稿目に<span class='hitword'>"+regionHit[0]+"</span>。全国配信が絞られます(141回で実証)。2投稿目の締めへ移動を"); }
+  else{ add("ok","フック地域名","地域名なし。全国配信OK"); }
+
+  var smell = INFO_SMELL.some(function(w){ return hook.indexOf(w)>=0; });
+  if(hlen>0 && !smell){ add("warn","情報の匂い","フックに情報の予告(サイン/習慣/癖など)が見当たりません。情緒フックは沈みます(40回で実証)"); }
+  else if(hlen>0){ add("ok","情報の匂い","予告型フックOK"); }
+
+  /* --- 重複チェック --- */
+  if(hlen>0){
+    var best = null, bestSim = 0;
+    for(var i=0;i<history_.length;i++){
+      var s = similarity(hook, history_[i].h);
+      if(s>bestSim){ bestSim=s; best=history_[i]; }
+    }
+    if(bestSim>=0.6){ add("err","重複チェック","類似"+Math.round(bestSim*100)+"%:「"+esc(best.h)+"」("+fmtViews(best.v)+")。かぶりは沈みます。切り口を変えてください"); }
+    else if(bestSim>=0.4){ add("warn","重複チェック","やや類似"+Math.round(bestSim*100)+"%:「"+esc(best.h)+"」("+fmtViews(best.v)+")。角度が近くないか確認を"); }
+    else{ add("ok","重複チェック","過去フックとのかぶりなし(最大類似"+Math.round(bestSim*100)+"%)"); }
+  }
+
+  /* --- 禁止ワード(両投稿) --- */
+  var all = hook + "\n" + body;
+  var errHits = errWordsAll().filter(function(w){ return all.indexOf(w)>=0; });
+  if(errHits.length){ add("err","禁止ワード","検出:"+errHits.map(function(w){return "<span class='hitword'>"+w+"</span>";}).join(" ")+"(白髪禁止/断定禁止/脅し禁止/手動追加語)"); }
+  else{ add("ok","禁止ワード","白髪・断定・誇張・脅し・手動追加語なし"); }
+
+  var warnHits = warnWordsAll().filter(function(w){ return all.indexOf(w)>=0; });
+  if(warnHits.length){ add("warn","要注意ワード","検出:"+warnHits.join("、")+"。断定・伝聞になっていないか文脈確認を"); }
+
+  if(/だの/.test(all)){
+    var idx = all.indexOf("だの");
+    var ctx = all.substring(Math.max(0,idx-6), idx+8);
+    add("warn","「だの」検出","「…"+esc(ctx)+"…」。禁止の言い回しでないか確認(「からだの」等は誤検出)");
+  }
+
+  /* --- カタカナ検査 --- */
+  var kataRuns = all.match(/[ァ-ヶー]{2,}/g) || [];
+  var kataNG = [];
+  kataRuns.forEach(function(k){
+    var allowed = KATA_ALLOW.some(function(a){ return k.indexOf(a)>=0 || a.indexOf(k)>=0; });
+    if(!allowed && kataNG.indexOf(k)<0) kataNG.push(k);
+  });
+  if(kataNG.length){ add("warn","横文字チェック","要確認:"+kataNG.join("、")+"。和語に置換できないか検討を"); }
+  else{ add("ok","横文字チェック","許容外のカタカナ語なし"); }
+
+  /* --- 2投稿目構成 --- */
+  if(body.replace(/\s/g,"").length===0){
+    add("err","2投稿目","本文が空です");
+  }else{
+    var bullets = body.split("\n").filter(function(l){ return l.trim().indexOf("・")===0; });
+    if(bullets.length===5){ add("ok","箇条書き","5個。基本形OK(異物1個が入っているか目視確認を)"); }
+    else if(bullets.length===0){ add("warn","箇条書き","0個。A型(長語り)は封印中(49回/366回で実証)。意図的なら可"); }
+    else{ add("warn","箇条書き",bullets.length+"個。基本形は5個です"); }
+
+    var lines = body.split("\n").map(function(l){return l.trim();}).filter(function(l){return l.length>0;});
+    var lastTwo = lines.slice(-2);
+    if(lastTwo.length===2 && lastTwo[0]===CLOSE1 && lastTwo[1]===CLOSE2){
+      add("ok","締め固定2行","完全一致OK");
+    }else{
+      var has1 = body.indexOf(CLOSE1)>=0, has2 = body.indexOf(CLOSE2)>=0;
+      if(has1&&has2){ add("warn","締め固定2行","文言はあるが最後の2行になっていません"); }
+      else{ add("err","締め固定2行","不一致。正:「"+CLOSE1+"」「"+CLOSE2+"」"); }
+    }
+
+    var nagoyaCount = (body.match(/名古屋/g)||[]).length;
+    if(nagoyaCount===1 && body.indexOf(CLOSE1)>=0){ add("ok","地域の位置","名古屋は締めの1回のみ。OK"); }
+    else if(nagoyaCount>1){ add("warn","地域の位置","名古屋が"+nagoyaCount+"回。締めの1回に絞るのが基本"); }
+    else if(nagoyaCount===0){ add("err","地域の位置","名古屋がありません。締め2行を確認"); }
+  }
+
+  /* --- 事実整合 --- */
+  var aoIdx = all.indexOf("青白");
+  if(aoIdx>=0){
+    var after = all.substring(aoIdx, aoIdx+8);
+    if(after.indexOf("なく")<0 && after.indexOf("ない")<0){
+      add("err","事実整合","<span class='hitword'>青白</span>を肯定的に使っていないか確認。青白い=血不足(悪いサイン)が確定定義です");
+    }else{
+      add("ok","事実整合","「青白くなく/ない」の否定形。定義と整合");
+    }
+  }
+  if(/寝ぐせ|寝癖/.test(all)){
+    add("warn","事実整合","寝ぐせ言及あり。定義=「寝ぐせがつかない」は髪のコシ低下(悪いサイン)。逆に書いていないか確認");
+  }
+
+  /* --- 不可視文字 --- */
+  var invCount = (hookRaw.match(INVISIBLE)||[]).length + (bodyRaw.match(INVISIBLE)||[]).length;
+  if(invCount>0){ add("warn","不可視文字",invCount+"個検出。下の投稿用テキストでは除去済み"); }
+  else{ add("ok","不可視文字","なし"); }
+
+  /* --- 描画 --- */
+  lastChecks = checks;
+  var listEl = document.getElementById("checkList");
+  listEl.innerHTML = checks.map(function(c){
+    var icon = c.level==="ok" ? "○" : c.level==="warn" ? "△" : "×";
+    return "<div class='check "+c.level+"'><div class='icon'>"+icon+"</div><div class='label'>"+c.label+"</div><div class='detail'>"+c.detail+"</div></div>";
+  }).join("");
+  document.getElementById("results").style.display = "block";
+
+  var errCount = checks.filter(function(c){return c.level==="err";}).length;
+  var warnCount = checks.filter(function(c){return c.level==="warn";}).length;
+  var stamp = document.getElementById("stamp");
+  document.getElementById("stampArea").style.display = "flex";
+  if(errCount>0){
+    stamp.className = "stamp ng";
+    document.getElementById("stampBig").textContent = "要修正";
+    document.getElementById("stampSmall").textContent = errCount+" ERROR";
+  }else if(warnCount>0){
+    stamp.className = "stamp";
+    document.getElementById("stampBig").textContent = "合格";
+    document.getElementById("stampSmall").textContent = warnCount+" WARN";
+  }else{
+    stamp.className = "stamp";
+    document.getElementById("stampBig").textContent = "合格";
+    document.getElementById("stampSmall").textContent = "ALL CLEAR";
+  }
+
+  document.getElementById("cleanHook").textContent = hook.trim();
+  document.getElementById("cleanBody").textContent = body.trim();
+  document.getElementById("cleanCard").style.display = errCount>0 ? "none" : "block";
+  resetSeq();
+
+  /* 画面下の固定バー */
+  var fab = document.getElementById("fab");
+  var fabCopy = document.getElementById("fabCopy");
+  var fabFix = document.getElementById("fabFix");
+  fab.style.display = "block";
+  if(errCount>0){
+    fabCopy.style.display = "none";
+    fabFix.style.display = "block";
+  }else{
+    fabCopy.style.display = "block";
+    fabCopy.textContent = "①1投稿目をコピー";
+    fabFix.style.display = "none";
+  }
+
+  /* --- 修正命令書の自動生成 --- */
+  if(errCount>0 || warnCount>0){
+    document.getElementById("fixPrompt").textContent = buildFixPrompt(checks, hook, body);
+    document.getElementById("fixCard").style.display = "block";
+  }else{
+    document.getElementById("fixCard").style.display = "none";
+  }
+
+  window.scrollTo({top: document.getElementById("stampArea").offsetTop - 20, behavior:"smooth"});
+}
+
+/* ============ 修正命令書生成 ============ */
+function buildFixPrompt(checks, hook, body){
+  var errs = checks.filter(function(c){return c.level==="err";});
+  var warns = checks.filter(function(c){return c.level==="warn";});
+  var out = "【修正命令書】\n";
+  out += "以下のThreads投稿が検品スキャナで不合格(または要注意)になりました。下記ルールに従って修正し、修正後の投稿を1個のコードブロック(1行目からフック→空行→本文)で出してください。修正した箇所の説明も添えてください。\n\n";
+  out += "■ 検出された違反\n";
+  errs.forEach(function(c){ out += "×【"+c.label+"】"+stripTags(c.detail)+"\n"; });
+  warns.forEach(function(c){ out += "△【"+c.label+"】"+stripTags(c.detail)+"\n"; });
+  out += "\n■ 守るべきルール(要約)\n";
+  out += "・一人称は僕/横文字は極力使わない/伝聞禁止(自分の経験として語る)\n";
+  out += "・効果の断定禁止:生えます・治る・必ず・絶対→「変わってきます」「〜かもしれません」「〜が多いです」に言い換え\n";
+  out += "・白髪ネタは全面禁止/脅し(手遅れ・後悔)禁止\n";
+  out += "・1投稿目:フックのみ20字以内(理想15字前後)。地域名を入れない。情報の匂い(サイン/習慣/癖等)を入れる\n";
+  out += "・2投稿目:箇条書き5個(うち1個は髪と関係なさそうな異物)+締めの解説+固定2行\n";
+  out += "・固定2行(完全一致・最後の2行):\n名古屋で育毛鍼をしています。\n気になる方はプロフを見てみてください。\n";
+  out += "・確定定義:青白い頭皮=血不足(悪い)/赤い=炎症(悪い)/明るい肌色=良い/寝ぐせがつかない=コシ低下(悪い)/根元が丸い抜け毛=良い・細い=悪い\n";
+  if(customWords.length>0){
+    out += "・手動追加の禁止/要注意語:" + customWords.map(function(c){return c.w+"("+(c.lv==="err"?"禁止":"要注意")+")";}).join("、") + "\n";
+  }
+  out += "\n■ 元の投稿\n";
+  out += "1投稿目:\n" + (hook.trim()||"(空)") + "\n\n";
+  out += "2投稿目:\n" + (body.trim()||"(空)") + "\n";
+  return out;
+}
+
+/* ============ コピー ============ */
+function doCopy(text, btn, msg){
+  function done(){
+    var orig = btn.textContent;
+    btn.textContent = msg || "コピーしました";
+    btn.classList.add("copied");
+    setTimeout(function(){ btn.textContent = orig; btn.classList.remove("copied"); }, 1600);
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(function(){ fallbackCopy(text); done(); });
+  }else{ fallbackCopy(text); done(); }
+}
+function copyText(id, btn){
+  doCopy(document.getElementById(id).textContent, btn);
+}
+/* ワンタッチ順番コピー:押すたびに1投稿目→2投稿目→(戻る)と切り替わる */
+var seqStep = 0;
+function copyBothSequential(btn){
+  var hook = document.getElementById("cleanHook").textContent;
+  var body = document.getElementById("cleanBody").textContent;
+  var fabCopy = document.getElementById("fabCopy");
+  if(seqStep===0){
+    doCopy(hook, btn, "1投稿目コピー済→貼ったらもう一度");
+    seqStep = 1;
+    setTimeout(function(){ fabCopy.textContent = "②2投稿目をコピー"; }, 1650);
+  }else{
+    doCopy(body, btn, "2投稿目コピー済→貼れば完了");
+    seqStep = 0;
+    setTimeout(function(){ fabCopy.textContent = "①1投稿目をコピー"; }, 1650);
+  }
+}
+function resetSeq(){
+  seqStep = 0;
+  var fabCopy = document.getElementById("fabCopy");
+  if(fabCopy) fabCopy.textContent = "①1投稿目をコピー";
+}
+function fallbackCopy(text){
+  var ta = document.createElement("textarea");
+  ta.value = text; document.body.appendChild(ta);
+  ta.select(); document.execCommand("copy");
+  document.body.removeChild(ta);
+}
+
+/* ============ 履歴 ============ */
+function renderHist(){
+  var el = document.getElementById("histList");
+  var sorted = history_.slice().reverse();
+  el.innerHTML = sorted.map(function(item, ri){
+    var i = history_.length - 1 - ri;
+    var cls = item.v>=80000 ? "big" : (item.v>0&&item.v<1000 ? "dead" : "");
+    return "<div class='hist-item'><div class='hk'>"+esc(item.h)+"</div><div class='views "+cls+"'>"+fmtViews(item.v)+"</div><button class='del' onclick='delHist("+i+")'>✕</button></div>";
+  }).join("");
+}
+function delHist(i){
+  history_.splice(i,1);
+  store("ikumou_hooks", history_);
+  renderHist();
+}
+function addHistManual(){
+  var h = document.getElementById("histHook").value.trim();
+  var v = parseInt(document.getElementById("histViews").value.replace(/[^0-9]/g,""),10)||0;
+  if(!h) return;
+  history_.push({h:h, v:v});
+  store("ikumou_hooks", history_);
+  document.getElementById("histHook").value = "";
+  document.getElementById("histViews").value = "";
+  renderHist();
+  document.getElementById("histList").style.display = "block";
+}
+function saveToHistory(btn){
+  var h = document.getElementById("cleanHook").textContent.replace(/\n/g,"").trim();
+  if(!h) return;
+  var exists = history_.some(function(item){ return item.h===h; });
+  if(!exists){
+    history_.push({h:h, v:0});
+    store("ikumou_hooks", history_);
+    renderHist();
+  }
+  var orig = btn.textContent;
+  btn.textContent = exists ? "登録済みです" : "履歴に登録しました";
+  btn.classList.add("copied");
+  setTimeout(function(){ btn.textContent = orig; btn.classList.remove("copied"); }, 1400);
+}
+function toggleHist(){
+  var el = document.getElementById("histList");
+  el.style.display = el.style.display==="none" ? "block" : "none";
+}
+function clearAll(){
+  hookInput.value = "";
+  document.getElementById("bodyInput").value = "";
+  document.getElementById("bulkInput").value = "";
+  document.getElementById("results").style.display = "none";
+  document.getElementById("cleanCard").style.display = "none";
+  document.getElementById("fixCard").style.display = "none";
+  document.getElementById("stampArea").style.display = "none";
+  document.getElementById("fab").style.display = "none";
+  document.getElementById("hookCounter").textContent = "0字 / 上限20字(理想15字前後)";
+  document.getElementById("hookCounter").className = "counter";
+}
+renderHist();
+renderMeirei();
+renderCustomWords();
+</script>
+</body>
+</html>
