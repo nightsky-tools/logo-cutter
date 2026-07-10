@@ -126,7 +126,36 @@
   .open-btn:active{filter:brightness(.94)}
   .open-note{font-size:11px;color:var(--ink-dim);text-align:center;margin-top:9px;line-height:1.8}
 
-  .foot{margin-top:26px;padding-top:18px;border-top:1px solid var(--line);font-size:11px;color:var(--ink-dim);line-height:1.9}
+  .foot-head{margin-top:26px;padding-top:18px;border-top:1px solid var(--line)}
+  .fh-kick{color:var(--amber);font-family:var(--mono);letter-spacing:.14em;font-size:10px;margin-bottom:4px;text-transform:uppercase}
+  .fh-desc{font-size:11px;color:var(--ink-dim);line-height:1.8;margin-bottom:12px}
+  .fh-desc b{color:var(--ink)}
+  .foot-head input{
+    width:100%;background:#0f1017;border:1px solid var(--line-2);border-radius:10px;
+    color:var(--ink);font-family:var(--sans);font-size:14px;padding:12px 14px;margin-bottom:4px;
+  }
+  .foot-head input:focus{outline:2px solid var(--amber-deep);outline-offset:1px}
+  .search-empty{display:none;font-size:12px;color:var(--ink-dim);text-align:center;padding:18px 0 6px}
+  .search-empty.show{display:block}
+  .foot{margin-top:10px;font-size:11px;color:var(--ink-dim);line-height:1.9}
+  /* ---- 設置済みアプリ:名前だけの行(タップ=コピー/長押し=URL表示) ---- */
+  .applist{display:flex;flex-direction:column;gap:8px;margin-bottom:6px}
+  .app-item{background:var(--panel);border:1px solid var(--line-2);border-radius:11px;overflow:hidden}
+  .app-item .head{
+    display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  }
+  .app-item .head:active{background:#20222f}
+  .app-item .nm{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .app-item .nm .where{font-weight:400;color:#6a6d85;font-size:11px;margin-left:7px}
+  .app-item .hint{flex-shrink:0;font-family:var(--mono);font-size:9.5px;color:var(--ink-dim);letter-spacing:.04em;text-align:right;line-height:1.5}
+  .app-item .del{flex-shrink:0;color:#8a6a6a;font-size:11px;padding:6px 4px 6px 10px;cursor:pointer;-webkit-user-select:none;user-select:none}
+  .app-item .url-reveal{
+    display:none;border-top:1px dashed var(--line-2);padding:11px 14px;
+    font-family:var(--mono);font-size:11.5px;color:var(--ink-dim);word-break:break-all;line-height:1.7;
+    -webkit-user-select:text;user-select:text;
+  }
+  .app-item.open .url-reveal{display:block}
   .toast{
     position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
     background:var(--amber);color:#20180a;font-size:13px;font-weight:700;padding:11px 22px;border-radius:999px;
@@ -175,6 +204,12 @@
 
   <div class="steps" id="steps"></div>
 
+  <div class="foot-head">
+    <div class="fh-kick">設置済みアプリ</div>
+    <div class="fh-desc">名前を<b>タップするとURLをコピー</b>、<b>長押し(0.5秒)でURLの中身を表示</b>。URLは設置した時の場所で固定なので、上の入力欄を変えても変わりません。</div>
+    <input type="text" id="appSearch" placeholder="🔍 アプリを検索(名前・フォルダ名・URL)" autocapitalize="off" autocorrect="off">
+  </div>
+  <div class="search-empty" id="searchEmpty">該当するアプリがありません</div>
   <div class="foot" id="foot"></div>
 </div>
 <div class="toast" id="toast"></div>
@@ -459,16 +494,21 @@ function collisionOf(name, folder, acct, repo){
   return null;
 }
 
-async function copyText(text, btn){
-  let ok = false;
-  try{ await navigator.clipboard.writeText(text); ok = true; }
+// クリップボード書き込みの共通処理(成功/失敗を返す)
+async function writeClipboard(text){
+  try{ await navigator.clipboard.writeText(text); return true; }
   catch(e){
     const ta = document.createElement("textarea");
     ta.value = text; ta.style.position="fixed"; ta.style.opacity="0";
     document.body.appendChild(ta); ta.focus(); ta.select();
+    let ok = false;
     try{ ok = document.execCommand("copy"); }catch(e2){}
     ta.remove();
+    return ok;
   }
+}
+async function copyText(text, btn){
+  const ok = await writeClipboard(text);
   if(ok){
     const old = btn.textContent;
     btn.textContent = "済"; btn.classList.add("done");
@@ -477,6 +517,11 @@ async function copyText(text, btn){
   }else{
     toast("コピーできませんでした(長押しで選択してください)", true);
   }
+}
+// 名前タップ用:ボタン無しでコピーしてトーストだけ出す
+async function copyPlain(text, okMsg){
+  const ok = await writeClipboard(text);
+  toast(ok ? (okMsg || "URLをコピーしました") : "コピーできませんでした(長押しでURLを表示→選択してください)");
 }
 let toastTimer = null;
 function toast(msg){
@@ -498,6 +543,89 @@ function copyRow(value, {wide=false}={}){
   btn.onclick = ()=> copyText(value, btn);
   wrap.appendChild(val); wrap.appendChild(btn);
   return wrap;
+}
+
+// ===== 設置済みアプリの検索 =====
+// カタカナ→ひらがな・全角→半角・大文字→小文字に揃えてから部分一致。
+// 「すきゃな」で「スキャナ」、「vault」でURL内のフォルダ名にもヒットする。
+function normSearch(s){
+  return kataToHira(String(s||"").normalize("NFKC").toLowerCase());
+}
+function applyAppFilter(){
+  const box = $("appSearch");
+  if(!box) return;
+  const q = normSearch(box.value.trim());
+  let visibleTotal = 0;
+  document.querySelectorAll("#foot .app-section").forEach(sec=>{
+    let visibleInSec = 0;
+    sec.querySelectorAll(".app-item").forEach(it=>{
+      const show = !q || (it.dataset.search || "").includes(q);
+      it.style.display = show ? "" : "none";
+      if(show) visibleInSec++;
+    });
+    sec.style.display = visibleInSec ? "" : "none";
+    visibleTotal += visibleInSec;
+  });
+  $("searchEmpty").classList.toggle("show", visibleTotal === 0);
+}
+
+// 設置済みアプリの行:名前だけ表示。タップ=URLコピー、長押し(0.5秒)=URLの中身を表示/隠す
+function appItem(label, url, {where=null, onDelete=null}={}){
+  const item = document.createElement("div"); item.className = "app-item";
+  const head = document.createElement("div"); head.className = "head";
+  const nm = document.createElement("div"); nm.className = "nm"; nm.textContent = label;
+  if(where){
+    const wh = document.createElement("span"); wh.className = "where"; wh.textContent = `(${where})`;
+    nm.appendChild(wh);
+  }
+  const hint = document.createElement("div"); hint.className = "hint";
+  hint.innerHTML = "タップでコピー<br>長押しでURL";
+  head.appendChild(nm);
+  head.appendChild(hint);
+  if(onDelete){
+    const del = document.createElement("div"); del.className = "del";
+    del.textContent = "✕";
+    del.onclick = (e)=>{
+      e.stopPropagation();
+      // 二度タップ確認:誤タップで消さない
+      if(del.dataset.arm !== "1"){
+        del.dataset.arm = "1"; del.textContent = "もう一度で削除"; del.style.color = "#e0a0a0";
+        setTimeout(()=>{ del.dataset.arm = ""; del.textContent = "✕"; del.style.color = "#8a6a6a"; }, 2500);
+        return;
+      }
+      onDelete();
+    };
+    head.appendChild(del);
+  }
+  const reveal = document.createElement("div"); reveal.className = "url-reveal";
+  reveal.textContent = url;
+  item.appendChild(head); item.appendChild(reveal);
+  // 検索用テキスト(名前・URL・リポジトリ名。カナはひらがなに正規化して部分一致)
+  item.dataset.search = normSearch(label + " " + url + " " + (where || ""));
+
+  // 長押し検出(タッチ・マウス両対応)。長押しが成立したら直後のタップコピーは発火させない
+  let timer = null, longFired = false;
+  const start = (e)=>{
+    if(e.target.closest && e.target.closest(".del")) return; // 削除ボタン上では長押し無効
+    longFired = false;
+    clearTimeout(timer);
+    timer = setTimeout(()=>{ longFired = true; item.classList.toggle("open"); }, 500);
+  };
+  const cancel = ()=>{ clearTimeout(timer); };
+  head.addEventListener("touchstart", start, {passive:true});
+  head.addEventListener("touchend", cancel, {passive:true});
+  head.addEventListener("touchmove", cancel, {passive:true});
+  head.addEventListener("touchcancel", cancel, {passive:true});
+  head.addEventListener("mousedown", start);
+  head.addEventListener("mouseup", cancel);
+  head.addEventListener("mouseleave", cancel);
+  head.addEventListener("contextmenu", (e)=>{ e.preventDefault(); }); // 長押しメニューを抑止
+  head.addEventListener("click", (e)=>{
+    if(e.target.closest && e.target.closest(".del")) return;
+    if(longFired){ longFired = false; return; } // 長押し後のクリックはコピーしない
+    copyPlain(url, `「${label}」のURLをコピーしました`);
+  });
+  return item;
 }
 function stepEl(n, tag, title, noteHtml){
   const s = document.createElement("div");
@@ -638,6 +766,13 @@ function render(){
   {
     const s = stepEl("4", "LIVE", "できたアプリを開く",
       `アップから<b>数分〜10分ほど</b>待ってから、このURLで開きます(すぐ開けなくても失敗ではありません)。開けたら <b>共有 → ホーム画面に追加</b> でアイコン化。`);
+    // 既存アプリを選んだままリポジトリ欄を変えている場合の注意
+    if(info && info.known && !(normPlace(acct, repo) === normPlace(DEFAULT_ACCT, DEFAULT_REPO))){
+      const kw = document.createElement("div");
+      kw.className = "warn-box";
+      kw.innerHTML = `「${esc(name)}」は <b>${esc(DEFAULT_REPO)}</b> に設置済みです。ここに出るURLは「今の入力先に<b>新しく置き直す</b>場合」のもの。<b>今使っているアプリのURLは変わりません</b>(いちばん下の一覧からコピーできます)。`;
+      s.appendChild(kw);
+    }
     const cap = document.createElement("div");
     cap.className = "caption"; cap.textContent = "公開URL";
     s.appendChild(cap);
@@ -689,56 +824,48 @@ function render(){
     steps.appendChild(s);
   }
 
-  // ---- 設置済みアプリの全リンク集(控え用)----
-  // ここのURLは「設置した時の場所」で固定。上の入力欄を変えても影響しない。
+  // ---- 設置済みアプリの一覧(名前をタップ=URLコピー/長押し=URL表示/上の検索欄で絞り込み)----
+  // ここのURLは「設置した時の場所」で完全固定。上の入力欄を何に変えても一切影響しない。
   const foot = $("foot");
   foot.innerHTML = "";
-  const ft = document.createElement("div");
-  ft.innerHTML = `<div style="color:var(--amber);font-family:var(--mono);letter-spacing:.14em;font-size:10px;margin-bottom:10px">設置済みアプリのURL — まとめて控える用(上の入力を変えても変わりません)</div>`;
-  foot.appendChild(ft);
+  const knownSec = document.createElement("div");
+  knownSec.className = "app-section";
+  const knownList = document.createElement("div");
+  knownList.className = "applist";
   KNOWN.forEach(a=>{
-    const cap = document.createElement("div");
-    cap.className = "caption"; cap.textContent = a.name;
-    foot.appendChild(cap);
-    foot.appendChild(copyRow(`https://${DEFAULT_ACCT}.github.io/${DEFAULT_REPO}/${a.folder}/`, {wide:true}));
+    knownList.appendChild(appItem(a.name, `https://${DEFAULT_ACCT}.github.io/${DEFAULT_REPO}/${a.folder}/`));
   });
+  knownSec.appendChild(knownList);
+  foot.appendChild(knownSec);
   // 自分で設置した記録(保存してある設置先でURLを組み立てる)
   if(registry.length){
+    const regSec = document.createElement("div");
+    regSec.className = "app-section";
     const rt = document.createElement("div");
-    rt.innerHTML = `<div style="color:var(--amber);font-family:var(--mono);letter-spacing:.14em;font-size:10px;margin:18px 0 10px">自分で設置したアプリ(この端末の記録)</div>`;
-    foot.appendChild(rt);
+    rt.innerHTML = `<div style="color:var(--amber);font-family:var(--mono);letter-spacing:.14em;font-size:10px;margin:18px 0 10px">自分で設置したアプリ(この端末の記録)— ✕で記録を削除</div>`;
+    regSec.appendChild(rt);
+    const regList = document.createElement("div");
+    regList.className = "applist";
     for(const r of [...registry].sort((a,b)=>(b.ts||0)-(a.ts||0))){
-      const cap = document.createElement("div");
-      cap.className = "caption";
-      cap.textContent = r.name;
-      // どのリポジトリに置いたか小さく表示(初期値と違う時だけ)
-      if(normPlace(r.acct, r.repo) !== normPlace(DEFAULT_ACCT, DEFAULT_REPO)){
-        const where = document.createElement("span");
-        where.className = "where";
-        where.textContent = `(${r.repo})`;
-        cap.appendChild(where);
-      }
-      const del = document.createElement("span");
-      del.textContent = " ✕記録を消す";
-      del.style.cssText = "color:#8a6a6a;cursor:pointer;margin-left:8px";
-      del.onclick = ()=>{
-        // 二度タップ確認:連打や位置ズレで隣の記録を巻き添えにしない
-        if(del.dataset.arm !== "1"){
-          del.dataset.arm = "1";
-          del.textContent = " もう一度タップで削除";
-          del.style.color = "#e0a0a0";
-          setTimeout(()=>{ del.dataset.arm = ""; del.textContent = " ✕記録を消す"; del.style.color = "#8a6a6a"; }, 2500);
-          return;
+      const differentPlace = normPlace(r.acct, r.repo) !== normPlace(DEFAULT_ACCT, DEFAULT_REPO);
+      regList.appendChild(appItem(
+        r.name,
+        `https://${r.acct}.github.io/${r.repo}/${r.folder}/`,
+        {
+          where: differentPlace ? r.repo : null,
+          onDelete: ()=>{
+            unregisterDeploy(r.folder, r.acct, r.repo);
+            toast(`「${r.name}」の記録を消しました`);
+            render();
+          }
         }
-        unregisterDeploy(r.folder, r.acct, r.repo);
-        toast(`「${r.name}」の記録を消しました`);
-        render();
-      };
-      cap.appendChild(del);
-      foot.appendChild(cap);
-      foot.appendChild(copyRow(`https://${r.acct}.github.io/${r.repo}/${r.folder}/`, {wide:true}));
+      ));
     }
+    regSec.appendChild(regList);
+    foot.appendChild(regSec);
   }
+  // 検索中なら、作り直した一覧にも絞り込みを適用し直す
+  applyAppFilter();
 }
 
 // 入力の変化で再描画
@@ -757,6 +884,8 @@ $("folderReset").addEventListener("click", ()=>{
   $("folderOverride").value = info ? info.folder : "";
   render();
 });
+// 検索欄:一覧の絞り込みだけ行う(画面全体は作り直さないので入力中もフォーカスが飛ばない)
+$("appSearch").addEventListener("input", applyAppFilter);
 // よく使うアプリのボタンでも手直しリセット
 render();
 </script>
