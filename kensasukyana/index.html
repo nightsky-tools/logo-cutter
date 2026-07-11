@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>星野ソラ 検品前スキャナ v1.6</title>
+<title>星野ソラ 検品前スキャナ v1.7</title>
 <style>
   :root{
     --bg:#0c111f;
@@ -71,7 +71,7 @@
 </head>
 <body>
 <header>
-  <h1>星野ソラ 検品前スキャナ<span class="v">v1.6</span></h1>
+  <h1>星野ソラ 検品前スキャナ<span class="v">v1.7</span></h1>
   <p>機械的走査(列挙・件数)を全部このツールが行い、意味判定(主語・主根拠など)だけを検品チャットに残す前段ツール。レポートを本文と一緒に検品へ渡す。</p>
 </header>
 <main>
@@ -109,11 +109,22 @@
     <p id="fixinfo" class="note" style="margin:10px 0 0;"></p></div>
   <div id="report"></div>
 </main>
-<footer>検品前スキャナ v1.6(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
+<footer>検品前スキャナ v1.7(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
 
 <script>
 /* =====================================================================
    ★ 辞書・設定(編集エリア)ここから
+
+   【v1.7 変更履歴】
+   ・PAST_WORDS を7語→9語に拡張(「てきてい」「ここ数ケ月」を追加)。
+     検品命令書v10.4・修正命令書v10.4の「9語(スキャナと同一)」の記述と、
+     ようやく現物が一致した(v1.6までは7語で、命令書側が先行していた)。
+     「てきてい」は「てきています」「てきていた」型の進行・継続語尾を捕捉する。
+   ・[11]のフック照合を「完全形+語幹」に強化(DICT.HOOK_STEMS:輝・変え・変わ)。
+     活用形での回避(「輝かせる」「変えよ」等)を捕捉する。あわせて、禁止語を
+     部分文字列として含むだけの複合語(「生まれ変わる」等・DICT.HOOK_MASK)は
+     マスクして除外し、除外した旨をレポートに明示する(検品命令書v10.4
+     A-12(b)が参照する「スキャナv1.7以降」の仕様の実装)。
 
    【v1.6 変更履歴】
    ・第8章の4定型見出しが完全一致しないとき、括弧()（）・コロン:：を正規化して
@@ -142,7 +153,8 @@
 const DICT = {
 
   // A-5 過去構文の走査語(主語判定は検品チャットが行う)
-  PAST_WORDS: ["てきました","てきた","これまで","先月まで","ここ数ヶ月","ここ数カ月","ここ数か月"],
+  // v1.7で9語に拡張。生成命令書v10.5・検品/修正v10.4と同期。
+  PAST_WORDS: ["てきました","てきてい","てきた","これまで","先月まで","ここ数ヶ月","ここ数カ月","ここ数か月","ここ数ケ月"],
 
   // A-6 季節語・暦語(長い語を先に照合するので順不同でよい。単漢字は最後の網)
   SEASON_WORDS: [
@@ -191,6 +203,9 @@ const DICT = {
 
   // A-12(b) 例文フック禁止語(生成命令書v10.4改訂1。過去タイトル一覧がなくても照合する)
   HOOK_BANNED: ["輝き","輝く","本物の実力","真の実力","変える","変えていく","変わる"],
+  // v1.7: 語幹照合(活用形の回避を捕捉)と、禁止語を含むだけの複合語のマスク(誤検出防止)
+  HOOK_STEMS: ["輝","変え","変わ"],
+  HOOK_MASK: ["生まれ変わ","様変わり","移り変わ"],
 
   // B-1(c) 星座名冠り深掘り見出しの上限(生成命令書v10.2)
   KANMURI_LIMIT: 2,
@@ -338,7 +353,7 @@ function runScan(){
   const now = new Date();
   const stamp = now.getFullYear()+"/"+(now.getMonth()+1)+"/"+now.getDate()+" "+String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
 
-  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v1.6"});
+  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v1.7"});
   L.push({cls:"dim", s:"走査日時:"+stamp+" ／ 本文:"+raw.length+"文字 ／ 対象星座:"+(sign||"未指定")});
   L.push({cls:"dim", s:"※このレポートの【要判定】項目は、検品チャットが主語・文脈を判定する(列挙はスキャナが保証)。"});
   L.push({s:""});
@@ -645,9 +660,13 @@ function runScan(){
     // v1.6: フック部を切り出し、例文フック禁止語(生成命令書v10.4)と照合
     const hookM = t.match(/座のあなたへ。(.*)1ヶ月【保存版】/);
     const hookPart = hookM ? hookM[1] : t;
-    const hookBan = (DICT.HOOK_BANNED||[]).filter(w=>hookPart.includes(w));
+    // v1.7: 複合語をマスク → 禁止語(完全形)+語幹で照合
+    let hookMasked = hookPart; const hookMaskedNote = [];
+    (DICT.HOOK_MASK||[]).forEach(w=>{ if(hookMasked.includes(w)){ hookMaskedNote.push(w); hookMasked = hookMasked.split(w).join("＊".repeat(w.length)); } });
+    const hookBan = (DICT.HOOK_BANNED||[]).filter(w=>hookMasked.includes(w));
+    (DICT.HOOK_STEMS||[]).forEach(st=>{ if(hookMasked.includes(st) && !hookBan.some(w=>w.includes(st))) hookBan.push("語幹「"+st+"」を含む語"); });
     L.push({s:"  (1)【〇月限定】冒頭:"+(c1?"◯":"✕")+" / (2)「〇〇座のあなたへ。」:"+(c2?"◯":"✕")+(sign?("(対象星座一致:"+(signOk?"◯":"✕")+")"):"")+" / (4)末尾「1ヶ月【保存版】」:"+(c4?"◯":"✕")});
-    L.push({s:"  (3)フック部「"+hookPart+"」/ 例文禁止語照合:"+(hookBan.length? "✕「"+hookBan.join("・")+"」を含む":"◯ 該当なし")});
+    L.push({s:"  (3)フック部「"+hookPart+"」/ 例文禁止語照合(完全形+語幹):"+(hookBan.length? "✕「"+hookBan.join("・")+"」を含む":"◯ 該当なし")+(hookMaskedNote.length? " ※複合語「"+hookMaskedNote.join("・")+"」はマスクして除外":"")});
     if(c1&&c2&&c4&&signOk&&hookBan.length===0){ L.push({cls:"ok", s:"  ◯ 定型4要素を充足・例文禁止語なし(過去タイトルとのフック重複照合は検品で実施)"}); chips.push({cls:"ok", label:"タイトル ◯"}); }
     else{
       if(!(c1&&c2&&c4&&signOk)) L.push({cls:"bad", s:"  ✕ 定型崩れ→固定型へ復元"});
