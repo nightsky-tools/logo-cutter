@@ -327,6 +327,12 @@
     <button class="tool-btn" id="exportBtn">全データを書き出し</button>
     <button class="tool-btn" id="importBtn">ファイルから復元</button>
   </div>
+  <div class="tool-label" style="margin-top:14px">天体データ</div>
+  <div class="backup-row">
+    <button class="tool-btn" id="skyImportBtn">📥 クリップボードから取り込み</button>
+    <button class="tool-btn" id="skyCopyBtn">📋 表示中の月をコピー</button>
+  </div>
+  <div id="skyStatus" style="font-size:12px;color:var(--ink-dim);margin-top:6px"></div>
   <input type="file" id="importFile" accept=".json,application/json" style="display:none">
 
   <div class="section-label">クラウド同期(iPhone・Mac共用)</div>
@@ -804,6 +810,7 @@ async function save(silent){
 // ---- render ----
 function render(){
   document.getElementById("monthLabel").textContent = labelOf(state.current);
+  try{ skyStatusRender(); }catch(e){}
   const signs = getSigns();
   const boardMonth = shortOf(state.current);
   const grid = document.getElementById("signGrid");
@@ -1785,6 +1792,63 @@ function toast(msg, err){
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=> t.className="toast", 1800);
 }
+
+// ==== 天体データ(月次)取り込み ====
+const SKY_HEAD_RE = /【(\d{4})年(\d{1,2})月の天体イベント一覧/;
+function skyKeyOf(text){
+  const m = (text||"").match(SKY_HEAD_RE);
+  if(!m) return null;
+  return `${m[1]}-${String(Number(m[2])).padStart(2,"0")}`;
+}
+function skyStatusRender(){
+  const el = document.getElementById("skyStatus");
+  if(!el) return;
+  const cur = state.months[state.current];
+  if(cur && cur.sky){
+    const k = skyKeyOf(cur.sky);
+    el.textContent = `✔ ${labelOf(state.current)}の天体データ保存済み` + (k && k!==state.current ? "(⚠ 中身の月が一致しません)" : "");
+  }else{
+    el.textContent = `${labelOf(state.current)}の天体データ: 未取り込み`;
+  }
+}
+async function skyImportFromText(text, silentIfNone){
+  const key = skyKeyOf(text);
+  if(!key){ if(!silentIfNone) toast("天体データの形式ではありません(【○年○月の天体イベント一覧】で始まるテキストを)", true); return false; }
+  if(!validKey(key)){ toast(`対象の月(${key})が範囲外です`, true); return false; }
+  if(!state.months[key]) state.months[key] = {signs:{}};
+  if(state.months[key].sky === text){ if(!silentIfNone) toast(`${labelOf(key)}の天体データは取り込み済みです`); skyStatusRender(); return true; }
+  state.months[key].sky = text;
+  if(await save()){
+    toast(`✔ ${labelOf(key)}の天体データを取り込みました`);
+    skyStatusRender();
+    return true;
+  }
+  return false;
+}
+async function skyAutoImport(){
+  try{
+    if(!navigator.clipboard || !navigator.clipboard.readText) return;
+    const text = await navigator.clipboard.readText();
+    if(text && SKY_HEAD_RE.test(text)) await skyImportFromText(text, true);
+  }catch(e){ /* Safari等は手動ボタンで */ }
+}
+document.getElementById("skyImportBtn").onclick = async ()=>{
+  try{
+    const text = await navigator.clipboard.readText();
+    await skyImportFromText(text, false);
+  }catch(e){
+    toast("クリップボードを読めませんでした。Chromeで開くか、許可を与えてください", true);
+  }
+};
+document.getElementById("skyCopyBtn").onclick = async ()=>{
+  const cur = state.months[state.current];
+  if(!(cur && cur.sky)){ toast(`${labelOf(state.current)}の天体データがありません`, true); return; }
+  try{ await navigator.clipboard.writeText(cur.sky); toast("天体データをコピーしました(命令書に⌘Vで)"); }
+  catch(e){ toast("コピーに失敗しました", true); }
+};
+window.addEventListener("focus", ()=>{ skyAutoImport(); });
+setTimeout(skyAutoImport, 800);
+
 
 // events
 document.getElementById("vBack").onclick = ()=> hideOverlay("viewer");
