@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>バズ投稿整形ツール | 星野ソラ</title>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b1026; --bg2:#141a38; --panel:#171d3f; --panel2:#1e2550;
+    --line:#2c3566; --text:#e9ecf5; --sub:#a9b4e0; --gold:#e8c872;
+    --ok:#7fd8a4; --warn:#f0a35e; --mono:'SF Mono','Menlo','Consolas',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Zen Maru Gothic',sans-serif; color:var(--text);
+    background:radial-gradient(ellipse at 50% -20%, #1d2650 0%, var(--bg) 55%);
+    min-height:100vh; padding:20px 14px 60px;
+  }
+  .stars{position:fixed;inset:0;pointer-events:none;z-index:0}
+  .stars i{position:absolute;background:#fff;border-radius:50%;opacity:.5;animation:tw 3s infinite alternate}
+  @keyframes tw{from{opacity:.15}to{opacity:.6}}
+  @media (prefers-reduced-motion: reduce){.stars i{animation:none}}
+  .wrap{max-width:680px;margin:0 auto;position:relative;z-index:1}
+  header{text-align:center;margin-bottom:22px}
+  h1{font-size:1.25rem;font-weight:700;letter-spacing:.08em}
+  h1 span{color:var(--gold)}
+  .tag{font-size:.72rem;color:var(--sub);margin-top:4px;letter-spacing:.15em}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+  label{display:block;font-size:.8rem;color:var(--sub);margin-bottom:8px;letter-spacing:.08em}
+  textarea{
+    width:100%;min-height:220px;background:var(--bg2);color:var(--text);
+    border:1px solid var(--line);border-radius:10px;padding:12px;
+    font-family:'Zen Maru Gothic',sans-serif;font-size:.92rem;line-height:1.8;resize:vertical;
+  }
+  textarea:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:transparent}
+  .btnrow{display:flex;gap:10px;margin-top:12px}
+  button{
+    font-family:'Zen Maru Gothic',sans-serif;font-weight:700;font-size:.9rem;
+    border:none;border-radius:10px;padding:12px 18px;cursor:pointer;letter-spacing:.06em;
+  }
+  button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  .primary{flex:1;background:var(--gold);color:#20232e}
+  .primary:active{transform:translateY(1px)}
+  .ghost{background:transparent;color:var(--sub);border:1px solid var(--line)}
+  .block{display:none}
+  .block.show{display:block}
+  .blockhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .blockhead .t{font-size:.8rem;color:var(--gold);letter-spacing:.1em;font-weight:700}
+  .blockhead .c{font-size:.72rem;color:var(--sub)}
+  .copybtn{background:var(--panel2);color:var(--text);border:1px solid var(--line);font-size:.78rem;padding:7px 14px}
+  .copybtn.copied{background:var(--ok);color:#15241c;border-color:transparent}
+  pre{
+    background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+    padding:14px;font-family:'Zen Maru Gothic',sans-serif;font-size:.9rem;
+    line-height:1.9;white-space:pre-wrap;word-break:break-word;
+  }
+  .log{font-size:.78rem;color:var(--sub);line-height:1.9;margin-top:4px}
+  .log .hit{color:var(--ok)}
+  .log .none{color:var(--sub);opacity:.7}
+  .log .inv{color:var(--warn)}
+  .err{color:var(--warn);font-size:.82rem;margin-top:10px;display:none}
+  .modes{display:flex;gap:6px;margin-bottom:12px}
+  .modebtn{
+    flex:1;background:var(--bg2);color:var(--sub);border:1px solid var(--line);
+    font-size:.82rem;padding:9px 0;letter-spacing:.08em;font-weight:500;
+  }
+  .modebtn.on{background:var(--panel2);color:var(--gold);border-color:var(--gold);font-weight:700}
+  .c.over{color:var(--warn);font-weight:700}
+  details{margin-bottom:16px}
+  details summary{
+    cursor:pointer;font-size:.82rem;color:var(--sub);letter-spacing:.08em;
+    padding:10px 4px;list-style:none;
+  }
+  details summary::before{content:'▸ ';color:var(--gold)}
+  details[open] summary::before{content:'▾ '}
+  .rulerow{display:flex;gap:8px;margin-bottom:10px}
+  .rulerow input{
+    flex:1;background:var(--bg2);color:var(--text);border:1px solid var(--line);
+    border-radius:10px;padding:10px 12px;font-family:'Zen Maru Gothic',sans-serif;font-size:.88rem;
+  }
+  .rulerow input:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:transparent}
+  .addbtn{background:var(--panel2);color:var(--gold);border:1px solid var(--line);font-size:.85rem;padding:10px 16px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;background:var(--bg2);
+    border:1px solid var(--line);border-radius:999px;padding:6px 8px 6px 14px;font-size:.82rem;
+  }
+  .chip b{color:var(--gold);font-weight:500}
+  .chip button{background:transparent;border:none;color:var(--sub);font-size:.9rem;padding:2px 6px;line-height:1}
+  .chip button:active{color:var(--warn)}
+  .hint{font-size:.7rem;color:var(--sub);opacity:.7;line-height:1.7}
+  .iorow{display:flex;gap:8px;margin-top:10px}
+  .iorow button{font-size:.75rem;padding:8px 12px;background:transparent;color:var(--sub);border:1px solid var(--line)}
+  #ioArea{display:none;width:100%;min-height:70px;margin-top:8px;font-size:.75rem}
+  footer{text-align:center;font-size:.68rem;color:var(--sub);opacity:.55;margin-top:30px;letter-spacing:.1em}
+</style>
+</head>
+<body>
+<div class="stars" id="stars"></div>
+<div class="wrap">
+  <header>
+    <h1>✦ バズ投稿<span>整形ツール</span></h1>
+    <div class="tag">分割 × 語句置換 | HOSHINO SORA</div>
+  </header>
+
+  <div class="panel">
+    <div class="modes">
+      <button class="modebtn on" id="modeThreads">Threads(400〜450字)</button>
+      <button class="modebtn" id="modeX">X(本文135字以内)</button>
+    </div>
+    <label for="src">完成した投稿をそのまま貼り付け(掴み2行+本文)</label>
+    <textarea id="src" placeholder="乙女座の皆さん&#10;手が止まる、、、&#10;&#10;と、あと少しなのに……"></textarea>
+    <div class="btnrow">
+      <button class="primary" id="run">整形する</button>
+      <button class="ghost" id="clear">クリア</button>
+    </div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <details class="panel" style="padding:8px 16px">
+    <summary>⚙ カスタム「、」除去ルール</summary>
+    <div style="padding:8px 0 6px">
+      <div class="rulerow">
+        <input type="text" id="ruleInput" placeholder="例: 完全にやめて(この語句の直後の「、」を消す)">
+        <button class="addbtn" id="ruleAdd">追加</button>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="hint">
+        登録した語句の直後にある「、」を本文から自動除去します。掴み2行には適用されません。<br>
+        ※ この設定はブラウザ保存(Safariは7日間未使用で消える場合あり)。定期的に書き出し推奨。
+      </div>
+      <div class="iorow">
+        <button id="ioExport">書き出し</button>
+        <button id="ioImport">読み込み</button>
+      </div>
+      <textarea id="ioArea" placeholder='["完全にやめて"] の形式で貼り付けて「読み込み」'></textarea>
+    </div>
+  </details>
+
+  <div class="panel block" id="hookBlock">
+    <div class="blockhead">
+      <span class="t">① 掴み(2行)</span>
+      <span class="c" id="hookCount"></span>
+      <button class="copybtn" data-target="hookPre">コピー</button>
+    </div>
+    <pre id="hookPre"></pre>
+  </div>
+
+  <div class="panel block" id="bodyBlock">
+    <div class="blockhead">
+      <span class="t">② 本文(置換済み)</span>
+      <span class="c" id="bodyCount"></span>
+      <button class="copybtn" data-target="bodyPre">コピー</button>
+    </div>
+    <pre id="bodyPre"></pre>
+    <div class="log" id="log"></div>
+  </div>
+
+  <footer>nightsky-tools</footer>
+</div>
+
+<script>
+// 星空背景
+(function(){
+  const s = document.getElementById('stars');
+  for(let i=0;i<40;i++){
+    const d=document.createElement('i');
+    const sz=Math.random()*2+1;
+    d.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}%;top:${Math.random()*100}%;animation-delay:${Math.random()*3}s`;
+    s.appendChild(d);
+  }
+})();
+
+// 不可視文字の除去(ゼロ幅・制御文字。改行タブは残す)
+function stripInvisible(t){
+  const re=/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD]|[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+  const count=(t.match(re)||[]).length;
+  return {text:t.replace(re,''), count};
+}
+
+// 置換ルール(全星座対応)
+const SIGNS='(牡羊|牡牛|双子|蟹|獅子|乙女|天秤|蠍|射手|山羊|水瓶|魚)';
+const RULES=[
+  {name:'「今の星の動きは、」→「今の星の動きは」',
+   re:/今の星の動きは、/g, to:'今の星の動きは'},
+  {name:'「今日お家に帰ったら、」→「今日帰ったら」',
+   re:/今日お家に帰ったら、?/g, to:'今日帰ったら'},
+  {name:'「今日帰ったら、」→「今日帰ったら」',
+   re:/今日帰ったら、/g, to:'今日帰ったら'},
+  {name:'「〇〇座さんは、」→「〇〇座さんは」',
+   re:new RegExp(SIGNS+'座さんは、','g'), to:'$1座さんは'},
+];
+
+// カスタム「、」除去ルール(localStorage保存・初回は既定1件)
+const LS_KEY='buzzFmt_rules';
+function loadRules(){
+  try{
+    const v=localStorage.getItem(LS_KEY);
+    if(v===null){ const d=['完全にやめて']; localStorage.setItem(LS_KEY,JSON.stringify(d)); return d; }
+    const arr=JSON.parse(v);
+    return Array.isArray(arr)?arr.filter(x=>typeof x==='string'&&x.trim()):[];
+  }catch(e){ return []; }
+}
+function saveRules(arr){
+  try{ localStorage.setItem(LS_KEY,JSON.stringify(arr)); }catch(e){}
+}
+function escapeReg(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+let customRules=loadRules();
+
+function renderChips(){
+  const el=document.getElementById('chips');
+  el.innerHTML='';
+  if(customRules.length===0){
+    el.innerHTML='<span class="hint">登録なし</span>';
+    return;
+  }
+  customRules.forEach((r,i)=>{
+    const chip=document.createElement('span');
+    chip.className='chip';
+    const b=document.createElement('b'); b.textContent=r+'、';
+    const arrow=document.createElement('span'); arrow.textContent='→ 、なし';
+    const del=document.createElement('button'); del.textContent='✕';
+    del.setAttribute('aria-label',r+' を削除');
+    del.addEventListener('click',()=>{
+      customRules.splice(i,1); saveRules(customRules); renderChips();
+    });
+    chip.append(b,arrow,del);
+    el.appendChild(chip);
+  });
+}
+renderChips();
+
+document.getElementById('ruleAdd').addEventListener('click',()=>{
+  const input=document.getElementById('ruleInput');
+  const v=input.value.trim().replace(/、+$/,''); // 末尾の「、」は自動で落とす
+  if(!v) return;
+  if(customRules.includes(v)){ input.value=''; return; }
+  customRules.push(v); saveRules(customRules); renderChips();
+  input.value='';
+});
+
+document.getElementById('ioExport').addEventListener('click',()=>{
+  const area=document.getElementById('ioArea');
+  area.style.display='block';
+  area.value=JSON.stringify(customRules);
+  area.select();
+});
+document.getElementById('ioImport').addEventListener('click',()=>{
+  const area=document.getElementById('ioArea');
+  if(area.style.display!=='block'){ area.style.display='block'; area.value=''; area.focus(); return; }
+  try{
+    const arr=JSON.parse(area.value);
+    if(!Array.isArray(arr)) throw 0;
+    customRules=arr.filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim().replace(/、+$/,''));
+    customRules=[...new Set(customRules)];
+    saveRules(customRules); renderChips();
+    area.value=''; area.style.display='none';
+  }catch(e){
+    area.value='読み込み失敗: ["語句1","語句2"] の形式で貼り付けてください';
+  }
+});
+
+// モード切替(Threads / X)
+let mode='threads';
+const MODES={threads:{min:400,max:450,label:'字(目安400〜450)'}, x:{max:135,label:'字 / 135字'}};
+function setMode(m){
+  mode=m;
+  document.getElementById('modeThreads').classList.toggle('on',m==='threads');
+  document.getElementById('modeX').classList.toggle('on',m==='x');
+}
+document.getElementById('modeThreads').addEventListener('click',()=>setMode('threads'));
+document.getElementById('modeX').addEventListener('click',()=>setMode('x'));
+
+function format(){
+  const err=document.getElementById('err');
+  err.style.display='none';
+
+  let raw=document.getElementById('src').value.replace(/\r\n/g,'\n');
+  const inv=stripInvisible(raw);
+  raw=inv.text;
+
+  // 行に分解し、空行を飛ばして最初の2つの非空行を掴みとする
+  const allLines=raw.replace(/^\n+/,'').replace(/\s+$/,'').split('\n');
+  const hookIdx=[];
+  for(let i=0;i<allLines.length && hookIdx.length<2;i++){
+    if(allLines[i].trim()) hookIdx.push(i);
+  }
+  const bodyLines=hookIdx.length===2 ? allLines.slice(hookIdx[1]+1) : [];
+  let body=bodyLines.join('\n').replace(/^\n+/,'').replace(/\n{3,}/g,'\n\n').trim();
+  if(hookIdx.length<2 || !body){
+    err.textContent='掴み2行+本文の形式で貼り付けてください(3行以上必要です)。';
+    err.style.display='block';
+    document.getElementById('hookBlock').classList.remove('show');
+    document.getElementById('bodyBlock').classList.remove('show');
+    return;
+  }
+
+  const line2=allLines[hookIdx[1]].trim();
+  const hook=allLines[hookIdx[0]].trim()+'\n'+line2;
+
+  // 置換を本文のみに適用
+  const log=[];
+  RULES.forEach(r=>{
+    const hits=(body.match(r.re)||[]).length;
+    if(hits>0){ body=body.replace(r.re,r.to); }
+    log.push({name:r.name,hits});
+  });
+
+  // カスタム「、」除去ルールを適用(「、、」の一部は食わない)
+  customRules.forEach(word=>{
+    if(!word || !word.trim()) return; // 空ルールは全読点除去になるため二重ガード
+    const re=new RegExp(escapeReg(word)+'、(?!、)','g');
+    const hits=(body.match(re)||[]).length;
+    if(hits>0){ body=body.replace(re,word); }
+    log.push({name:'「'+word+'、」→「'+word+'」(カスタム)',hits});
+  });
+
+  // 「。」の後で改行(『』の内側・閉じカッコ直前・既に改行済みは除く)
+  body=body.split(/(『[^』]*』)/).map((part,i)=>{
+    if(i%2===1) return part; // 『』の内側はそのまま
+    return part.replace(/。(?![\n」』])/g,'。\n');
+  }).join('').replace(/\n{3,}/g,'\n\n').trim();
+  const brHits=(body.match(/。\n/g)||[]).length;
+  log.push({name:'「。」の後で改行',hits:brHits});
+
+  // 表示
+  document.getElementById('hookPre').textContent=hook;
+  document.getElementById('bodyPre').textContent=body;
+  document.getElementById('hookCount').textContent=line2.length+'字(2行目)';
+  const bodyLen=body.replace(/\n/g,'').length;
+  const bc=document.getElementById('bodyCount');
+  bc.classList.remove('over');
+  let lenLog=null;
+  if(mode==='x'){
+    bc.textContent=bodyLen+'字 / 135字';
+    if(bodyLen>135){
+      bc.classList.add('over');
+      lenLog={name:'X字数超過: 本文'+bodyLen+'字(135字以内に'+(bodyLen-135)+'字削減が必要)',hits:-1,noCount:true};
+    }else{
+      lenLog={name:'X字数OK: 本文'+bodyLen+'字(残り'+(135-bodyLen)+'字)',hits:1,noCount:true};
+    }
+  }else{
+    bc.textContent=bodyLen+'字';
+    if(bodyLen<400||bodyLen>450){
+      lenLog={name:'Threads目安外: 本文'+bodyLen+'字(目安400〜450字)',hits:0,noCount:true};
+    }else{
+      lenLog={name:'Threads字数OK: 本文'+bodyLen+'字',hits:1,noCount:true};
+    }
+  }
+  log.push(lenLog);
+
+  const logEl=document.getElementById('log');
+  let html='';
+  if(inv.count>0) html+=`<div class="inv">⚠ 不可視文字を ${inv.count} 個除去しました</div>`;
+  log.forEach(l=>{
+    const cnt = l.noCount ? '' : (l.hits>0 ? '('+l.hits+'件)' : '(該当なし)');
+    html+= l.hits===-1
+      ? `<div class="inv">⚠ ${l.name}</div>`
+      : l.hits>0
+        ? `<div class="hit">✔ ${l.name}${cnt}</div>`
+        : `<div class="none">— ${l.name}${cnt}</div>`;
+  });
+  logEl.innerHTML=html;
+
+  document.getElementById('hookBlock').classList.add('show');
+  document.getElementById('bodyBlock').classList.add('show');
+
+  // 次の投稿をすぐ貼れるよう入力欄を空にする
+  document.getElementById('src').value='';
+}
+
+document.getElementById('run').addEventListener('click',format);
+document.getElementById('clear').addEventListener('click',()=>{
+  document.getElementById('src').value='';
+  document.getElementById('hookBlock').classList.remove('show');
+  document.getElementById('bodyBlock').classList.remove('show');
+  document.getElementById('err').style.display='none';
+});
+
+// コピー(clipboard API + フォールバック)
+document.querySelectorAll('.copybtn').forEach(btn=>{
+  btn.addEventListener('click',async()=>{
+    const text=document.getElementById(btn.dataset.target).textContent;
+    try{
+      await navigator.clipboard.writeText(text);
+    }catch(e){
+      const ta=document.createElement('textarea');
+      ta.value=text; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy'); ta.remove();
+    }
+    btn.textContent='コピー済み';
+    btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent='コピー';btn.classList.remove('copied');},1500);
+  });
+});
+</script>
+</body>
+</html>
