@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>星野ソラ 検品前スキャナ v1.7</title>
+<title>星野ソラ 検品前スキャナ v1.9</title>
 <style>
   :root{
     --bg:#0c111f;
@@ -71,7 +71,7 @@
 </head>
 <body>
 <header>
-  <h1>星野ソラ 検品前スキャナ<span class="v">v1.7</span></h1>
+  <h1>星野ソラ 検品前スキャナ<span class="v">v1.9</span></h1>
   <p>機械的走査(列挙・件数)を全部このツールが行い、意味判定(主語・主根拠など)だけを検品チャットに残す前段ツール。レポートを本文と一緒に検品へ渡す。</p>
 </header>
 <main>
@@ -109,11 +109,29 @@
     <p id="fixinfo" class="note" style="margin:10px 0 0;"></p></div>
   <div id="report"></div>
 </main>
-<footer>検品前スキャナ v1.7(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
+<footer>検品前スキャナ v1.9(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
 
 <script>
 /* =====================================================================
    ★ 辞書・設定(編集エリア)ここから
+
+   【v1.9 変更履歴】
+   ・[3]にMarkdown記法の検出を追加(行頭の #/##/###・「- 」「* 」・---・>)。
+     9月号改稿版でMarkdown混入がどの網にも掛からず素通りした実績への対策。
+     行頭【第N章】前提のパイプラインを壊すため1件でも✕(生成命令書v10.8)。
+   ・[15]頻出形容・副詞レポートを新設(DICT.STYLE_WATCHの語を数え、
+     STYLE_LIMIT以上で▲要判定。文体の使い回し検知・生成命令書v10.8第IV部3)。
+
+   【v1.8 変更履歴】
+   ・9月号(牡羊座)で「太陽の主根拠3ブロック」「深掘り一文目の同型6章」
+     「しなさい見出し6章」が検品まで素通りした実績への対策として、
+     機械検出を3つ追加した(生成命令書v10.7のStep内走査4項目化と対応):
+     [7] 章小見出しの「〜なさい」止めカウント(上限3・超過は✕。「しなさい」限定だと「戻りなさい」等を取りこぼすため命令形止め全般で判定)
+     [8] 深掘り一文目の抽出と型カウント(A:星座名で始める型/B:「けれど…
+         空…告げて/後押し」の受け型。Bは3章以上で✕、Aは3章以上で▲要判定)
+     [14] 導入+第1〜6章の理由ブロックのイベント語集計(同一語が3ブロック
+         以上で▲要判定。主根拠かどうかの意味判定は検品B-4(a)が行う。
+         この集計は検品の集計表の下書きである)
 
    【v1.7 変更履歴】
    ・PAST_WORDS を7語→9語に拡張(「てきてい」「ここ数ケ月」を追加)。
@@ -209,6 +227,15 @@ const DICT = {
 
   // B-1(c) 星座名冠り深掘り見出しの上限(生成命令書v10.2)
   KANMURI_LIMIT: 2,
+
+  // v1.8: 章小見出しの「〜しなさい」止め上限 / 深掘り一文目の型の上限(生成命令書v10.7)
+  HEAD_SHINASAI_LIMIT: 3,
+  DIG_TYPE_LIMIT: 2,
+  // v1.8: [14]理由ブロックのイベント語(出現＝主根拠ではない。集計の下書き)
+  REASON_TOKENS: ["太陽","水星","金星","火星","木星","土星","天王星","海王星","冥王星","新月","満月","逆行"],
+  // v1.9: [15]頻出形容・副詞の監視語(号のテーマ語は多くても◯。編集可)と目安回数
+  STYLE_WATCH: ["静かに","静けさ","丁寧に","穏やかに","落ち着いて","そっと","やさしく"],
+  STYLE_LIMIT: 8,
 
   // 見出しコロンの方針: "report"=件数報告のみ / "zenkaku"=半角を違反 / "hankaku"=全角を違反
   COLON_POLICY: "report",
@@ -353,7 +380,7 @@ function runScan(){
   const now = new Date();
   const stamp = now.getFullYear()+"/"+(now.getMonth()+1)+"/"+now.getDate()+" "+String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
 
-  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v1.7"});
+  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v1.9"});
   L.push({cls:"dim", s:"走査日時:"+stamp+" ／ 本文:"+raw.length+"文字 ／ 対象星座:"+(sign||"未指定")});
   L.push({cls:"dim", s:"※このレポートの【要判定】項目は、検品チャットが主語・文脈を判定する(列挙はスキャナが保証)。"});
   L.push({s:""});
@@ -406,15 +433,20 @@ function runScan(){
   while((sm=spRe.exec(spTarget))) spHits.push(sm.index+1);
   const mojiRe = /[□◇�]/g; const mojiHits=[]; let mm;
   while((mm=mojiRe.exec(raw))) mojiHits.push(mm.index);
+  // v1.9: Markdown記法(行頭 #/##/###・「- 」「* 」・---・>)。行頭【第N章】前提の
+  // パイプラインとnote表示を壊すため1件でも✕(生成命令書v10.8第II部14)
+  const mdRe = /^[ \t]*(#{1,6}[ \t【]|[-*][ \t]+\S|-{3,}[ \t]*$|>[ \t])/gm;
+  const mdHits=[]; let md;
+  while((md=mdRe.exec(raw))) mdHits.push(md.index);
 
-  const symTotal = qHits.length + dashHits.length + spHits.length + mojiHits.length;
-  L.push({s:"  半角?!="+qHits.length+"件 / 接続ダッシュ(―,—,–)="+dashHits.length+"件 / 日本語間の半角スペース="+spHits.length+"件 / 文字化け記号="+mojiHits.length+"件"});
+  const symTotal = qHits.length + dashHits.length + spHits.length + mojiHits.length + mdHits.length;
+  L.push({s:"  半角?!="+qHits.length+"件 / 接続ダッシュ(―,—,–)="+dashHits.length+"件 / 日本語間の半角スペース="+spHits.length+"件 / 文字化け記号="+mojiHits.length+"件 / Markdown記法="+mdHits.length+"件"});
   const symDetail = (arr, name) => arr.forEach(p=>{
     L.push({s:"  ・"+name+" ["+locate(hIdx,p)+"] …"+raw.slice(Math.max(0,p-14),p)+"【"+raw[p]+"】"+raw.slice(p+1,p+15)+"…"});
   });
-  symDetail(qHits,"半角?!"); symDetail(dashHits,"ダッシュ"); symDetail(spHits,"空白"); symDetail(mojiHits,"文字化け");
+  symDetail(qHits,"半角?!"); symDetail(dashHits,"ダッシュ"); symDetail(spHits,"空白"); symDetail(mojiHits,"文字化け"); symDetail(mdHits,"Markdown");
   if(symTotal===0){ L.push({cls:"ok", s:"  ◯ すべて0件"}); chips.push({cls:"ok", label:"記号 0件"}); }
-  else{ L.push({cls:"bad", s:"  ✕ 計"+symTotal+"件 要修正(半角?!→全角/ダッシュ→読点or句点/空白→削除)"}); chips.push({cls:"bad", label:"記号 "+symTotal+"件"}); }
+  else{ L.push({cls:"bad", s:"  ✕ 計"+symTotal+"件 要修正(半角?!→全角/ダッシュ→読点or句点/空白→削除/Markdown→見出しは【】・箇条書きは「・」・---と>は削除)"}); chips.push({cls:"bad", label:"記号 "+symTotal+"件"}); }
   L.push({s:""});
 
   // ---------- [4] B-7 決め台詞 ----------
@@ -503,6 +535,14 @@ function runScan(){
   else if(DICT.COLON_POLICY==="zenkaku" && hanColon>0){ L.push({cls:"bad", s:"  ✕ 半角コロン"+hanColon+"件→全角「：」へ統一"}); chips.push({cls:"bad", label:"コロン "+hanColon+"件"}); }
   else if(DICT.COLON_POLICY==="hankaku" && zenColon>0){ L.push({cls:"bad", s:"  ✕ 全角コロン"+zenColon+"件→半角\":\"へ統一"}); chips.push({cls:"bad", label:"コロン "+zenColon+"件"}); }
   else if(DICT.COLON_POLICY!=="report"){ L.push({cls:"ok", s:"  ◯ コロン表記は方針どおり"}); }
+  // v1.8: 章小見出しの「〜しなさい」止めカウント(生成上限3章・検品B系)
+  {
+    const shina = chHeads.filter(h=> h.replace(/[】\s]+$/,"").endsWith("なさい"));  // 「しなさい」だけでなく「戻りなさい」「磨きなさい」等の命令形止め全般を拾う
+    L.push({s:"  ◇「〜なさい」止めの章小見出し="+shina.length+"本(上限"+DICT.HEAD_SHINASAI_LIMIT+")"});
+    shina.forEach(h=> L.push({s:"   ・"+h}));
+    if(shina.length<=DICT.HEAD_SHINASAI_LIMIT){ if(chHeads.length) L.push({cls:"ok", s:"  ◯ なさい止め"+shina.length+"本(上限内)"}); }
+    else{ L.push({cls:"bad", s:"  ✕ なさい止め"+shina.length+"本(上限"+DICT.HEAD_SHINASAI_LIMIT+")→超過分を名詞止め・「〜へ」止め・問いかけへ"}); chips.push({cls:"bad", label:"なさい見出し "+shina.length+"本"}); }
+  }
   L.push({s:""});
 
   // ---------- [8] 星座名冠り深掘り見出し ----------
@@ -518,6 +558,36 @@ function runScan(){
   if(digHeads.length===0){ chips.push({cls:"warn", label:"深掘り見出し 検出0本"}); }
   else if(kanmuri.length<=DICT.KANMURI_LIMIT){ L.push({cls:"ok", s:"  ◯ "+kanmuri.length+"本(上限"+DICT.KANMURI_LIMIT+"以内)"}); chips.push({cls:"ok", label:"冠り見出し "+kanmuri.length+"本"}); }
   else{ L.push({cls:"bad", s:"  ✕ "+kanmuri.length+"本(上限"+DICT.KANMURI_LIMIT+")→超過分を場面・比喩・宣言型の見出しへ差し替え"}); chips.push({cls:"bad", label:"冠り見出し "+kanmuri.length+"本"}); }
+  // v1.8: 深掘り一文目の抽出と型カウント(検品B-2の列挙材料・生成v10.7走査3と対応)
+  {
+    const digRe2 = /【深掘り[：:]\s*[^】]+】/g;
+    let dm2; const firsts=[];
+    while((dm2 = digRe2.exec(raw))){
+      const start = dm2.index + dm2[0].length;
+      let seg = raw.slice(start, start+400);
+      const nx = seg.indexOf("【"); if(nx !== -1) seg = seg.slice(0, nx);
+      seg = seg.trim();
+      const sents = seg.split("。").filter(s=>s.trim()).slice(0,3);
+      firsts.push({label: locate(hIdx, dm2.index), s1: (sents[0]||"").trim()+"。", head2: sents.slice(0,2).join("。")+"。", head3: sents.join("。")+"。"});
+    }
+    if(firsts.length){
+      let tA=0, tB=0;
+      const signRe = /(牡羊|牡牛|双子|蟹|獅子|乙女|天秤|蠍|射手|山羊|水瓶|魚)座/;
+      const ukeRe = /けれど[^。]{0,50}空[^。]{0,80}(告げ|後押し)/;
+      L.push({s:"  ◇深掘り一文目("+firsts.length+"本・A=星座名を含む入り/B=「けれど…空…告げて/後押し」の受け):"});
+      firsts.forEach(f=>{
+        const isA = signRe.test(f.head2);
+        const isB = ukeRe.test(f.head3);
+        if(isA) tA++; if(isB) tB++;
+        const tag = (isA?"A":"")+(isB?"B":"")||"C";
+        L.push({s:"   ・["+f.label+"]("+tag+") "+(f.s1.length>56?f.s1.slice(0,56)+"…":f.s1)});
+      });
+      L.push({s:"  A型(星座名入り)="+tA+"本 / B型(受け)="+tB+"本(生成上限は各"+DICT.DIG_TYPE_LIMIT+"章・検品B-2は3章以上で要修正)"});
+      if(tB>=3){ L.push({cls:"bad", s:"  ✕ B型「けれど…空は…告げています/後押ししています」が"+tB+"章→3章目以降を場面描写・問いかけ・断定の宣言へ"}); chips.push({cls:"bad", label:"一文目B型 "+tB+"章"}); }
+      if(tA>=3){ L.push({cls:"warn", s:"  ▲ A型(星座名を含む入り)が"+tA+"章【要判定】性質説明・称賛の型なら3章以上で要修正(検品B-2)。固有名の単なる言及なら◯"}); chips.push({cls:"warn", label:"一文目A型 "+tA+"章"}); }
+      if(tA<3 && tB<3){ L.push({cls:"ok", s:"  ◯ 一文目の型は上限内"}); }
+    }
+  }
   L.push({s:""});
 
   // ---------- [9] 第6章 部位語走査 ----------
@@ -697,6 +767,77 @@ function runScan(){
     });
     L.push({cls:"dim", s:"  (タイトル画像の構図規定〈対象星座が主役・他星座は淡いアクセント〉は意味判定のため検品A-13(c)で確認)"});
     chips.push(bad===0 ? {cls:"ok", label:"プロンプト ◯"} : {cls:"bad", label:"プロンプト "+bad+"件"});
+  }
+  L.push({s:""});
+
+  // ---------- [14] 理由ブロックのイベント語集計(検品B-4(a)の下書き・v1.8新設) ----------
+  L.push({cls:"sec", s:"[14] 導入+第1〜6章の理由ブロック:イベント語集計(検品B-4(a)の下書き)"});
+  {
+    const HANS = ["1","2","3","4","5","6","7"];
+    const ZENS = ["１","２","３","４","５","６","７"];
+    const chPos = n => raw.search(new RegExp("【第["+HANS[n-1]+ZENS[n-1]+"]章】"));
+    const blocks = [];
+    const intro = section(raw, /【はじめに/, /【第[1１]章】/);
+    if(intro) blocks.push({name:"導入", text:intro.text});
+    for(let n=1;n<=6;n++){
+      const st = chPos(n);
+      if(st === -1) continue;
+      const nx = chPos(n+1);
+      let body = raw.slice(st, nx !== -1 ? nx : raw.length);
+      // 【〜3つの理由】〜【深掘り の範囲だけに絞る(見出しが崩れていれば章全体を走査し、その旨を注記)
+      const rm = body.search(/つの理由】/);
+      let scoped = true;
+      if(rm !== -1){
+        let e2 = body.length;
+        const dg = body.indexOf("【深掘り", rm);
+        if(dg !== -1) e2 = dg;
+        body = body.slice(rm, e2);
+      }else{ scoped = false; }
+      blocks.push({name:"第"+n+"章"+(scoped?"":"(理由見出し未検出・章全体を走査)"), text:body});
+    }
+    if(blocks.length < 2){ L.push({cls:"dim", s:"  スキップ(導入・章の切り出しに失敗)"}); }
+    else{
+      const agg = {};
+      blocks.forEach(b=>{
+        const found = DICT.REASON_TOKENS.filter(tok=> b.text.includes(tok));
+        found.forEach(tok=>{ (agg[tok] = agg[tok] || []).push(b.name); });
+      });
+      const keys = Object.keys(agg);
+      if(!keys.length){ L.push({cls:"dim", s:"  イベント語の出現なし"}); }
+      else{
+        let over = 0;
+        keys.forEach(k=>{
+          const n = agg[k].length;
+          const line = "  ・"+k+":"+agg[k].join("・")+"="+n+"ブロック";
+          if(n >= 3){ over++; L.push({cls:"warn", s:line+"【要判定】主根拠として3ブロック以上なら上限2超過(検品B-4(a)。振り替えの目安:金運=金星/新月、愛=金星/満月、人間関係=満月、仕事=水星、健康=星座の性質)"}); }
+          else L.push({s:line});
+        });
+        L.push({cls:"dim", s:"  ※語の出現＝主根拠ではない(軽い言及はカウント外)。主根拠の判定と最終集計は検品B-4(a)が行う。この表はその下書き。第1〜6章は【〜3つの理由】ブロック内のみ、導入は全文を走査。"});
+        chips.push(over ? {cls:"warn", label:"理由イベント "+over+"語が3+"} : {cls:"ok", label:"理由イベント 分散◯"});
+      }
+    }
+  }
+  L.push({s:""});
+
+  // ---------- [15] 頻出形容・副詞レポート(文体の使い回し・v1.9新設) ----------
+  L.push({cls:"sec", s:"[15] 頻出形容・副詞レポート(検品B系の参考・生成命令書v10.8第IV部3)"});
+  {
+    const rows = (DICT.STYLE_WATCH||[]).map(w=>{
+      let c=0, f=0, i;
+      while((i = raw.indexOf(w, f)) !== -1){ c++; f = i + 1; }
+      return {w, c};
+    }).filter(r=> r.c > 0).sort((a,b)=> b.c - a.c);
+    if(!rows.length){ L.push({cls:"dim", s:"  監視語の出現なし"}); }
+    else{
+      let over = 0;
+      rows.forEach(r=>{
+        if(r.c >= DICT.STYLE_LIMIT){ over++; L.push({cls:"warn", s:"  ▲「"+r.w+"」="+r.c+"回(目安"+DICT.STYLE_LIMIT+"回)【要判定】号のテーマ語なら◯、単なる使い回しなら類語へ散らす"}); }
+        else L.push({s:"  ・「"+r.w+"」="+r.c+"回"});
+      });
+      if(over){ chips.push({cls:"warn", label:"頻出語 "+over+"語が目安超"}); }
+      else L.push({cls:"ok", s:"  ◯ 監視語はいずれも目安("+DICT.STYLE_LIMIT+"回)未満"});
+      L.push({cls:"dim", s:"  ※監視語はDICT.STYLE_WATCHで編集可。タイトルフックの主要語(号のテーマ語)は多くても◯。"});
+    }
   }
   L.push({s:""});
 
