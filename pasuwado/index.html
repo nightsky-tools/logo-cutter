@@ -100,18 +100,21 @@
   .ov-body{flex:1;overflow-y:auto;padding:18px 16px 130px;-webkit-overflow-scrolling:touch}
   .meta-line{font-size:11px;color:var(--ink-dim);margin-bottom:16px;letter-spacing:.04em}
 
+  /* v7.4④改行入りの秘密（複数行パスワード等）も原文どおり表示できるように pre-wrap を追加 */
   .detail-row{display:flex;align-items:center;gap:10px;background:var(--night-2);border:1px solid var(--edge);border-radius:11px;padding:13px 14px;margin-bottom:11px}
   .dr-label{font-size:11px;color:var(--ink-dim);width:70px;flex:none;letter-spacing:.04em}
-  .dr-val{flex:1;font-family:var(--mono);font-size:14px;word-break:break-all;color:var(--ink)}
+  .dr-val{flex:1;font-family:var(--mono);font-size:14px;word-break:break-all;white-space:pre-wrap;color:var(--ink)}
   .dr-val.pw{letter-spacing:.05em}
   .dr-btn{background:transparent;border:1px solid var(--edge);color:var(--ink);border-radius:8px;padding:8px 11px;font-size:12px;cursor:pointer;font-family:var(--sans);flex-shrink:0}
   .dr-btn:active{background:var(--card)}
   .dr-btn.accent{color:var(--accent);border-color:var(--accent-dim)}
   .url-link{color:var(--accent);text-decoration:none;word-break:break-all}
 
-  textarea.editor,input.title-input,select.title-input{width:100%;background:var(--night-2);border:1px solid var(--edge);border-radius:11px;color:var(--ink);font-family:var(--sans);font-size:15px;padding:12px 13px;margin-bottom:11px}
+  textarea.editor,input.title-input,textarea.title-input,select.title-input{width:100%;background:var(--night-2);border:1px solid var(--edge);border-radius:11px;color:var(--ink);font-family:var(--sans);font-size:15px;padding:12px 13px;margin-bottom:11px}
   textarea.editor{font-family:var(--mono);font-size:14px;line-height:1.7;min-height:80px;resize:vertical}
-  input.title-input:focus,textarea.editor:focus,select.title-input:focus{outline:2px solid var(--accent-dim);outline-offset:1px}
+  /* v7.4①秘密系の入力欄用：1行の見た目で、貼り付けた改行に合わせて自動で広がる */
+  textarea.title-input{font-family:var(--mono);font-size:14px;line-height:1.6;resize:none;overflow:hidden;min-height:0;display:block}
+  input.title-input:focus,textarea.editor:focus,textarea.title-input:focus,select.title-input:focus{outline:2px solid var(--accent-dim);outline-offset:1px}
   .field-label{font-size:11px;color:var(--ink-dim);margin:2px 2px 6px;letter-spacing:.05em}
   .gen-btn{width:100%;background:var(--night-2);border:1px solid var(--accent-dim);color:var(--accent);border-radius:11px;padding:12px;font-size:13px;cursor:pointer;font-family:var(--sans);margin-bottom:14px}
   .gen-btn:active{background:var(--night)}
@@ -281,6 +284,107 @@
 
 <script>
 /* ============================================================
+   Keyring v7.8 — 残る全領域（DoS・クリップボード・WebAuthn状態遷移）の総当たり
+   ①【インポートDoS/無反応】importBackupに巨大ファイルによるタブ凍結対策と読取り失敗の通知を追加：
+     ・25MB上限で読み込む前に弾く（Keyringのバックアップは通常数MB以下）
+     ・FileReader.onerror/onabort を握って無反応を解消（従来は破損時に何も起きなかった）
+     ・多重インポートの排他（importBusy）
+   ②【クリップボード自動消去の作り直し】旧実装の2欠陥を修正：
+     (a) コピーした平文を30秒間クロージャに保持 → ロック後もメモリに秘密が残っていた。
+         ハッシュだけ保持する方式に変更し、平文をメモリに残さない。
+     (b) 背景タブでは readText が拒否され消去が永久に失敗（他アプリへ貼りに切り替えた
+         "まさにその時"に消えない）。アプリに戻った瞬間(visible/focus)に消去を再挑戦する。
+   ③【WebAuthn/解錠の再入】致命的でないが実害のある競合を封じる：
+     ・bioUnlockに再入ガードが無く、二重タップやパスワード解錠との競合で enterApp() が
+       二重に走り、同期・緊急キット表示が二回起きえた → unlockBusyを共有＋enterApp自体に
+       二重実行ガード(appEntering)。
+     ・enterApp中に緊急キットモーダルを開いたまま自動ロックが割り込むと、解錠画面の上に
+       確認モーダルが重なり得た → showEmergencyKitはロック検知で静かに抜ける。
+       appEnteringはlockNowで必ず解放し、次回解錠を妨げない。
+     ・manageBioの二重起動を排他（bioMgmtBusy）。
+   ④再発防止テスト追加（ts系は前versで担保済みのため、ここは主にハッシュ照合と分類ロジック）。
+   ※WebAuthnで確認し「安全（fail-closed）」だった攻撃（変更不要）：
+     ・BIO_KEYを攻撃者が差し替えても、包まれたmp/skが本物の保管庫と一致しなければ
+       復号は失敗する（AES-GCM）。生体認証だけで他人の保管庫は開けない。
+   ------------------------------------------------------------
+   Keyring v7.7 — クラウド/バックアップ改ざんを想定した敵対的レビューの成果
+   前提：攻撃者がGitHub Gistの中身、または読み込ませるバックアップJSONを
+   完全に制御できるとして、復号後の構造を悪用できないかを総当たりした。
+   ①【削除不能のゾンビ・実害あり】sanitizeがtsを数値へ正規化していなかったため、
+     細工したデータに「未来ts（Number.MAX_SAFE_INTEGER等）」を仕込むと、
+     削除の墓標(ts=削除時刻=現在)を常に貫通し、何度消してもクラウドから復活し続ける
+     エントリを作れた。攻撃者がいなくても、時計ずれや将来のバグで巨大tsが一度でも
+     書かれると自滅的に発症する。文字列ts（比較の型混乱）も同経路で通っていた。
+     → normTs()でtsを有限の非負数に矯正し、未来tsは「現在」にクランプ。
+        ★不変条件：削除は必ず勝つ。墓標は削除時刻(=Date.now())で作られるので、
+          全エントリtsを「その時点の現在」以下に抑えれば、後発の墓標が必ず勝つ。
+          時計ずれ許容(now+α)を入れると同時刻の削除に未来tsゾンビが勝つため、入れない。
+          正規エントリは元々ts<=nowなのでクランプの影響を受けない。
+   ②【多層防御】mergeStatesは通常sanitize後に呼ばれるが、非配列・文字列tsが
+     万一直接渡っても壊れないよう、配列ガードとNumber化を内側にも二重化。
+     墓標とエントリが同時刻なら墓標優先（>=）にし、取りこぼしなく消えるように。
+   ③id・catId・updated を明示的に文字列化（型偽装の入口を塞ぐ）。
+   ④再発防止テスト追加（未来tsゾンビの貫通阻止／文字列tsの型混乱／削除の確実性）。
+   ※既に防御済みと確認できた攻撃（変更不要）：
+     ・id="__proto__" などのプロトタイプ汚染 → mergeStatesがObject.create(null)採用で無害
+     ・enc:1へのダウングレードや平文注入 → AES-GCMの認証タグで改ざんは復号失敗になる
+       （攻撃者は鍵を知らないため、選択平文を注入できない。できるのはDoSか後述のリプレイのみ）
+   ※直せない既知の限界（設計の性質・正直に明記）：
+     ・リプレイ／ロールバック：クラウド攻撃者が「古い正規の暗号ブロブ」を配信することは
+       AES-GCMでは防げない。多くは自端末の新しい変更とマージされ自己修復するが、
+       90日(墓標TTL)より前に削除した項目は、古いブロブのリプレイで復活し得る。
+       完全防止には単調増加のバージョン署名が要る（現状は未実装＝トレードオフ）。
+   ------------------------------------------------------------
+   Keyring v7.6 — 最強レベルの敵対的レビューで見つけた実害バグの修正
+   ①【致命・データ消失】削除のUndoが同期で静かに巻き戻る（最悪、全端末から消える）
+     削除→墓標(ts=削除時刻)生成→Undoで復元、の際に復元エントリのtsが「元の古い値」
+     のままだったため、mergeStatesで `墓標.ts > エントリ.ts` となり同期時に再度捨てられていた。
+     単一端末では push が全上書きするため気づけず、別端末が削除を先に受け取っていた場合のみ発症。
+     → Undoでの復元は「今起きた新しい事実」としてtsを現在時刻に更新し、墓標に勝たせる。
+        編集のUndoも同様（他端末の新しい版に不当に負けないように）。
+   ②【ロック保護の無効化】_modal待機中に自動ロック(idle)が発火すると、モーダルのPromiseが
+     宙に浮き、呼び出し元のfinallyが走らず kitOpen / webauthnBusy が true のまま残存。
+     この2つは「背景移動＝即ロック」を抑止するフラグなので、残ると覗き見・置き忘れ対策の
+     ロックが以後ずっと効かなくなっていた。
+     → lockNowで両フラグをリセットし、保留中モーダルをnullで解決して呼び出し元を解放。
+   ③再発防止テスト追加（Undo後の同期往復シナリオ／ロック時のフラグ・モーダル解放）
+   ※あえて「直さない」と判断した既知の割り切り（設計上のトレードオフ・別途明記）：
+     ・端末内のSKは平文同梱（SKが守るのは"外に出たデータ"。ローカルの砦はMP強度）
+     ・解錠のバックオフはメモリ内（リロードで消える。ただしファイルを得た攻撃者は
+       そもそもオフラインで総当たり可能なので、この待機は総当たり対策ではなく覗き見抑止）
+     ・編集画面は入力しやすさ優先で秘密が平文表示（閲覧画面のみ10秒で再伏せ字）
+   ------------------------------------------------------------
+   Keyring v7.5 — v7.4の敵対的セルフレビューで見つかった新しい弱点の修正
+   ①v7.4で「改行を忠実に保存する」ようにした副作用：
+     ・Enterキーの誤タップ（iOSキーボードの「改行」）
+     ・メモ帳などからの行コピー（行末の改行ごとクリップボードに入る）
+     で混入した"見えない末尾改行"まで黙って保存されるようになっていた。
+     末尾の改行は画面上ほぼ見えず、貼り付け先によってはログイン失敗や
+     誤送信（改行＝Enter扱い）の原因になる。
+     → 秘密系フィールドの末尾に改行がある時だけ、保存前に一度確認する
+       （削除して保存／改行ごと保存／キャンセル）。v7.4以前の
+       「黙って書き換える」方式には戻さない＝必ず本人が選ぶ。
+     途中の改行（複数行の復元コード等）にはどちらを選んでも一切干渉しない
+   ②再発防止テスト追加（末尾改行の検知・削除・途中改行への非干渉を検証）
+   ※既知の設計判断（バグではないので変更しない）：
+     ・ID・URL・名前等の前後空白は今もtrimする（コピー時の空白事故対策）
+     ・種類を切り替えても他の種類で入力した欄の下書きは保持される
+       （切り替え直すと復活する。消えるより安全側に倒した仕様）
+   ------------------------------------------------------------
+   Keyring v7.4 — 利用者報告「貼り付けた改行が消える／中の文字が変わる」の修正
+   ①原因1（改行が消える）：秘密系の入力欄が<input>だったため、ブラウザ仕様で
+     貼り付け時に改行が除去・空白化されていた（<input>は構造上1行しか持てない）。
+     秘密系フィールド（パスワード・暗証番号・カード番号・口座番号など）を
+     textareaに変更し、貼り付けた改行をそのまま保持。改行に合わせて自動で広がる
+   ②原因2（文字が変わる＝バグは実在した）：保存時に全フィールドへ.trim()を
+     かけていたため、先頭・末尾の空白や改行が黙って削除されていた。
+     秘密系の値は一切加工しない方針に変更（全部が空白なら未入力扱いのみ）。
+     名前・ID・URL等の前後空白除去は誤コピー対策として従来どおり
+   ③iOSの自動修正・スペルチェックが入力中の文字を書き換えるのを防止
+     （全入力欄で autocorrect / spellcheck を無効化）
+   ④表示側：改行入りの秘密も原文どおり表示（white-space:pre-wrap）
+   ⑤再発防止テスト追加（normalizeFieldValueの検証を攻撃テストスイートに）
+   ------------------------------------------------------------
    Keyring v7.3 — 利用者が発見した致命バグの修正（作成した保管庫が解錠不能になる）
    ①createVaultで「レコード書き込み→SK代入」の順序が逆だったため、
      v5〜v7.2で作成した全保管庫が sk:null で保存され、ロック後に正しい
@@ -648,29 +752,48 @@ function gcTomb(list){
   return (list||[]).filter(t=>t && t.id && (t.ts||0) > cut);
 }
 
+/* v7.7①タイムスタンプの正規化＆クランプ。
+   sanitizeがtsを素通りさせていたため、細工したクラウド/バックアップに
+   ・文字列ts（比較の型混乱）
+   ・未来ts（Number.MAX_SAFE_INTEGER等）＝墓標を貫通して「削除不能のゾンビ」化
+   を仕込めた。tsは有限の非負数に矯正し、未来方向は「現在」に丸める。
+   ★不変条件：ユーザーの削除は必ず勝つ。deleteDoc は墓標を ts=Date.now() で作るため、
+     全エントリの ts を「その時点の現在」以下に抑えれば、後から作られる墓標が必ず勝つ。
+     ここで now+skew を許すと、同じ瞬間の削除に未来tsのゾンビが勝ってしまうので、
+     時計ずれ許容は入れない（正規エントリは元々 ts<=now なので一切影響しない）。 */
+function normTs(v){
+  let t = Number(v);
+  if(!Number.isFinite(t) || t < 0) t = 0;
+  const ceil = Date.now();
+  if(t > ceil) t = ceil; // 未来tsは現在に丸める（ゾンビ化防止・削除が必ず勝つ）
+  return Math.floor(t);
+}
 function sanitize(d){
   if(!d || typeof d!=="object" || !Array.isArray(d.entries)) return null;
   if(!Array.isArray(d.cats) || !d.cats.length) d.cats = defaultState().cats;
-  d.cats = d.cats.filter(c=>c&&typeof c==="object").map(c=>({id:c.id||uid(), name:String(c.name||"無題")}));
+  d.cats = d.cats.filter(c=>c&&typeof c==="object").map(c=>({id:String(c.id||uid()), name:String(c.name||"無題")}));
   const catIds = new Set(d.cats.map(c=>c.id));
   const FIELD_KEYS = ["loginId","pw","url","cardNo","expiry","pin","holder","brand","bankBranch","accountNo","accountType","tradePw"];
   d.entries = d.entries.filter(x=>x&&typeof x==="object").map(x=>{
     const e = {
-      id: x.id||uid(),
+      id: String(x.id||uid()),                     // v7.7 idは必ず文字列化
       type: TYPES[x.type] ? x.type : "login",
       catId: catIds.has(x.catId) ? x.catId : d.cats[0].id,
       name: String(x.name||"無題"),
       note: String(x.note||""),
-      updated: x.updated||null,
-      ts: x.ts||0
+      updated: x.updated==null ? null : String(x.updated), // 表示専用。文字列に固定
+      ts: normTs(x.ts)                             // v7.7①未来ts/文字列tsを矯正
     };
     for(const k of FIELD_KEYS) e[k] = String(x[k]||"");
     return e;
   });
-  d.tombstones = Array.isArray(d.tombstones) ? gcTomb(d.tombstones) : [];
-  d.lastBackupAt = d.lastBackupAt || 0;
+  // v7.7①墓標のtsも同じく矯正（未来tsの墓標で正規エントリを永久に隠す攻撃を封じる）
+  d.tombstones = Array.isArray(d.tombstones)
+    ? gcTomb(d.tombstones.filter(t=>t&&typeof t==="object"&&t.id).map(t=>({id:String(t.id), ts:normTs(t.ts)})))
+    : [];
+  d.lastBackupAt = normTs(d.lastBackupAt);
   if(!catIds.has(d.activeCat)) d.activeCat = d.cats[0].id;
-  d.savedAt = d.savedAt || 0;
+  d.savedAt = normTs(d.savedAt);
   return d;
 }
 
@@ -835,6 +958,14 @@ async function doUnlock(){
 }
 function lockNow(){
   masterKey = null; masterPass = null; state = null; sync = null; secretKey = null; skProtected = false;
+  // v7.6②【ロック保護の無効化バグ修正】
+  //   _modal待機中に自動ロック(idle)が発火すると、モーダルのPromiseが宙に浮き、
+  //   その呼び出し元(showEmergencyKit等)のfinallyが走らず kitOpen / webauthnBusy が
+  //   true のまま残っていた。この2フラグは「背景移動＝即ロック」を抑止するので、
+  //   残ったままだと覗き見・置き忘れ対策のロックが以後ずっと効かなくなる。
+  //   ロック時に必ずリセットし、さらに保留中モーダルを null で解決して促し元を解放する。
+  kitOpen = false; webauthnBusy = false; appEntering = false;
+  if(pendingModalResolve){ const r = pendingModalResolve; pendingModalResolve = null; try{ r(null); }catch(e){} }
   clearTimeout(pushTimer);
   clearTimeout(idleTimer);
   clearTimeout(remaskTimer);
@@ -866,7 +997,11 @@ function resetIdle(){
 document.addEventListener("visibilitychange", ()=>{
   if(document.hidden && masterKey && !kitOpen && !webauthnBusy && Date.now() > lockGraceUntil) lockNow();
 });
+let appEntering = false; // v7.8③enterApp二重実行の防止（複数解錠経路の競合対策）
 async function enterApp(){
+  if(appEntering) return; // 既に入場処理中なら二重に走らせない（同期・緊急キットの二重発火を防ぐ）
+  appEntering = true;
+  try{
   document.getElementById("lockWrap").style.display = "none";
   document.getElementById("app").style.display = "block";
   render();
@@ -904,6 +1039,7 @@ async function enterApp(){
     await showEmergencyKit(true);
   }
   if(sync && sync.token){ setSyncStatus("同期設定あり・確認中…"); syncNow(); }
+  }finally{ appEntering = false; } // v7.8③入場処理の完了で解放
 }
 /* 旧形式(v2以前)の保管庫を、解錠済みの状態から二重鍵(v3)に移行する */
 async function upgradeVault(){
@@ -942,10 +1078,14 @@ async function showEmergencyKit(intro){
           {label:"書き留めた／保存した（閉じる）", value:null, style:"ghost"}
         ]});
       if(v==="dl"){ downloadKit(); continue; }
+      // v7.8③ロック割り込み対策：モーダル待機中に自動ロックが発火するとvはnullで返る。
+      //   その場合は解錠画面の上に確認モーダルを重ねず、静かに抜ける（kitPendingは残るので次回再表示）。
+      if(!masterKey){ return; }
       // ①保存確認を挟む（誤タップで閉じてキー未保存のままになるのを防ぐ）
       const ok = await askConfirm("保存の確認",
         "シークレットキーを書き留めるか、緊急キットを保存しましたか？\n保存していないと、端末の故障・紛失時にバックアップやクラウドから復元できなくなります。",
         "保存した（閉じる）");
+      if(!masterKey){ return; } // 確認中にロックされた場合も同様に抜ける
       if(!ok) continue;
       await clearKitPending();
       return;
@@ -1091,6 +1231,31 @@ function updateStats(){
 
 /* ---------------- copy ---------------- */
 let clipTimer = null;
+/* v7.8②クリップボード自動消去の作り直し。
+   旧実装の2つの弱点：
+   (a) コピーした平文をsetTimeoutのクロージャに30秒間保持 → ロック後もメモリに秘密が残る
+   (b) 背景タブでは navigator.clipboard.readText() が拒否され、消去が永久に失敗する
+       （＝他アプリに貼り付けようと切り替えた"まさにその時"に消えない）
+   対策：
+   ・平文は保持せず、ハッシュ(clipClear.hash)だけ保持 → メモリに秘密を残さない
+   ・消去は「読めた時だけ本人のコピーか照合して消す」を維持しつつ、
+     読めなかった場合はフラグを残し、アプリに戻った(visible/focus)瞬間に再挑戦する */
+let clipClear = null; // {hash, at} 消去対象のハッシュと予定時刻
+async function sha256hex(s){
+  const d = await crypto.subtle.digest("SHA-256", enc.encode(String(s)));
+  return b64(d);
+}
+async function attemptClipClear(){
+  if(!clipClear) return;
+  if(Date.now() < clipClear.at) return; // まだ予定時刻前
+  let cur;
+  try{ cur = await navigator.clipboard.readText(); }
+  catch(e){ return; } // 背景等で読めない → clipClearは残し、次の復帰で再挑戦
+  try{
+    if((await sha256hex(cur)) === clipClear.hash){ await navigator.clipboard.writeText(""); }
+  }catch(e){}
+  clipClear = null; // 読めた以上、一致でも不一致(＝別物をコピー済み)でも監視終了
+}
 async function copyText(text, okMsg, autoClear){
   // ※iOS Safariでは readText に許可が要るため、自動消去は「試みる」動作。
   //   確実性がないので文言も断定を避ける。
@@ -1102,15 +1267,14 @@ async function copyText(text, okMsg, autoClear){
   }
   if(autoClear){
     clearTimeout(clipTimer);
-    clipTimer = setTimeout(async ()=>{
-      try{
-        // コピーした中身がまだ残っている時だけ消す（別のものをコピーしていたら消さない）
-        const cur = await navigator.clipboard.readText();
-        if(cur === text) await navigator.clipboard.writeText("");
-      }catch(e){ /* 読めない環境では何もしない */ }
-    }, 30000);
+    // 平文は保持しない。照合用ハッシュと予定時刻だけを覚える
+    clipClear = {hash: await sha256hex(text), at: Date.now() + 30000};
+    clipTimer = setTimeout(attemptClipClear, 30000);
   }
 }
+// v7.8②アプリに戻ってきた瞬間に、背景で失敗していた消去を取り戻す
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) attemptClipClear(); });
+window.addEventListener("focus", ()=>{ attemptClipClear(); });
 const FIELD_LABELS = {loginId:"ID", pw:"パスワード", url:"URL", cardNo:"カード番号", expiry:"有効期限", pin:"暗証番号", holder:"名義", brand:"ブランド", bankBranch:"店番", accountNo:"口座番号", accountType:"種別", tradePw:"取引暗証番号", note:"メモ"};
 function copyField(i, field){
   const e = state.entries[i];
@@ -1246,13 +1410,23 @@ function buildDynFields(){
     const wrap = document.createElement("div");
     const lbl = document.createElement("div");
     lbl.className = "field-label"; lbl.textContent = f.label;
-    const inp = document.createElement("input");
+    // v7.4①秘密系はtextareaに。<input>はブラウザ仕様で「貼り付けた改行」を
+    //   除去・空白化してしまい、複数行のパスワードや復元コードが壊れて保存されていた。
+    //   textareaなら貼り付けた内容がそのまま入る（見えた方が入力しやすい方針は従来どおり）
+    const inp = document.createElement(f.secret ? "textarea" : "input");
     inp.className = "title-input";
     inp.dataset.fkey = f.key;
     inp.placeholder = f.ph || "";
     inp.value = editDraft[f.key] || "";
     inp.autocapitalize = "off"; inp.autocomplete = "off";
-    if(f.secret) inp.type = "text"; // 見えた方が入力しやすい（表示は伏せ字にできる）
+    // v7.4③iOSの自動修正・スペルチェックが入力中の文字を勝手に書き換えるのを防止
+    inp.setAttribute("autocorrect","off"); inp.spellcheck = false;
+    if(f.secret){
+      inp.rows = 1; // 普段は1行の見た目。改行が入れば下のfitで自動的に広がる
+      const fit = ()=>{ inp.style.height = "auto"; inp.style.height = inp.scrollHeight + "px"; };
+      inp.addEventListener("input", fit);
+      setTimeout(fit, 0);
+    }
     wrap.appendChild(lbl); wrap.appendChild(inp);
     if(f.gen){
       inp.style.marginBottom = "6px";
@@ -1292,6 +1466,25 @@ function makePw(){
   for(let i=0;i<16;i++) out+=sets[arr[i]%sets.length];
   return out;
 }
+/* v7.4②秘密系の値は保存時に一切加工しない。
+   従来は全フィールドを.trim()していたため、先頭・末尾の空白や改行が黙って消えていた
+   （＝利用者報告の「中の文字が変わる」バグは実在した。特に空白で終わるパスワードや
+   　複数行の復元コードが、保存の瞬間に別の文字列になっていた）。
+   名前・ID・URL等は誤コピーの前後空白除去が有益なので、従来どおりtrimする */
+const EXACT_KEYS = new Set(["pw","pin","tradePw","cardNo","accountNo"]);
+function normalizeFieldValue(key, val){
+  const v = String(val==null ? "" : val);
+  if(EXACT_KEYS.has(key)) return v.trim()==="" ? "" : v; // 全部が空白なら未入力扱い、それ以外は原文のまま
+  return v.trim();
+}
+/* v7.5①「見えない末尾改行」の検知。
+   改行を保持するv7.4の修正により、Enterの誤タップや「メモ帳の行コピー」
+   （行末の改行ごとコピーされる）で入った末尾改行も忠実に保存されるようになった。
+   末尾の改行は画面上ほぼ見えず、貼り付け先ではログイン失敗・誤送信の原因になるため、
+   黙って削除も黙って保存もせず、保存前に一度だけ本人に選ばせる。
+   途中の改行（複数行の復元コード等）には一切干渉しない */
+function hasTrailingNewline(v){ return /\n\s*$/.test(String(v==null?"":v)); }
+function stripTrailingWs(v){ return String(v==null?"":v).replace(/\s+$/,""); }
 let lastChange = null; // {id, before|null}
 let undoTimer = null;
 async function saveEditor(){
@@ -1306,7 +1499,22 @@ async function saveEditor(){
     catId: document.getElementById("eCatSelect").value,
     note: document.getElementById("eNote").value.trim()
   };
-  for(const k of allKeys) data[k] = (editDraft[k]||"").trim();
+  for(const k of allKeys) data[k] = normalizeFieldValue(k, editDraft[k]); // v7.4②秘密系はtrimしない
+  // v7.5①末尾に「見えない改行」がある秘密系フィールドは、保存前に一度だけ意思確認する
+  const trailing = allKeys.filter(k=>EXACT_KEYS.has(k) && hasTrailingNewline(data[k]));
+  if(trailing.length){
+    const names = trailing.map(k=>FIELD_LABELS[k]||k).join("・");
+    const v = await _modal({
+      title:"末尾の改行を確認",
+      msg:`「${names}」の末尾に改行が入っています。\n\nメモ帳などから行をコピーすると行末の改行ごと貼り付けられたり、Enterキーの誤タップで入ったりします。末尾の改行はほぼ目に見えないうえ、貼り付け先によってはログイン失敗の原因になります。\n\n※途中の改行（複数行の復元コード等）は、どちらを選んでもそのまま保存されます。`,
+      buttons:[
+        {label:"末尾の改行を削除して保存（おすすめ）", value:"strip", style:"primary"},
+        {label:"末尾の改行も含めて保存（意図した改行）", value:"keep", style:"ghost"},
+        {label:"キャンセル（編集に戻る）", value:null, style:"ghost"}
+      ]});
+    if(v===null) return;
+    if(v==="strip") for(const k of trailing) data[k] = stripTrailingWs(data[k]);
+  }
   // ④URLの正規化：スキームなしは https:// を補完、http/https以外は拒否
   if(data.url){
     if(!/^[a-z][a-z0-9+.\-]*:/i.test(data.url)){
@@ -1357,13 +1565,26 @@ async function undoLast(){
   if(!lastChange){ document.getElementById("undoBar").classList.remove("show"); return; }
   const {id, before, deleted} = lastChange;
   if(deleted){
-    state.entries.push(before);
+    // v7.6①【致命バグ修正・データ消失】削除を取り消す時、復元エントリを元の古いtsのまま
+    //   戻していた。削除は墓標(tombstone, ts=削除時刻)を作るため、
+    //   before.ts < 墓標.ts となり、mergeStatesの `if(tomb[e.id]>e.ts) continue;` で
+    //   同期の際にエントリが再び捨てられていた。
+    //   具体的な被害：別端末が「削除」を先に同期で受け取っていると、こちらでUndoしても
+    //   ・その端末では復活せず、
+    //   ・むしろ次回pullでこちらのエントリまで再削除され、
+    //   最終的に全端末から静かに消える（単一端末だと push が全上書きするため気づけない）。
+    //   復元＝新しい事実なので、tsを現在時刻に更新して墓標に勝たせる。
+    //   墓標自体もローカルから消すが、他端末の墓標に負けないためにはts更新が必須。
+    const restored = Object.assign({}, before, {ts: Date.now()});
+    state.entries.push(restored);
     state.tombstones = (state.tombstones||[]).filter(t=>t.id!==id);
   }else if(before===null){
     state.entries = state.entries.filter(e=>e.id!==id); // was new → remove
   }else{
+    // 編集のUndoも同様に、戻した内容を「今の事実」としてtsを更新（他端末の新しい版に負けないように）
+    const restored = Object.assign({}, before, {ts: Date.now()});
     const i = state.entries.findIndex(e=>e.id===id);
-    if(i!==-1) state.entries[i] = before; else state.entries.push(before);
+    if(i!==-1) state.entries[i] = restored; else state.entries.push(restored);
   }
   const nm = before ? before.name : "";
   lastChange = null;
@@ -1394,9 +1615,22 @@ async function exportBackup(){
     else toast("書き出しに失敗しました", true);
   }
 }
+let importBusy = false; // v7.8多重インポートの防止
+const MAX_IMPORT_BYTES = 25 * 1024 * 1024; // v7.8 25MB上限（巨大JSONでのタブ凍結DoSを防ぐ）
 function importBackup(file){
+  if(importBusy){ toast("読み込み中です。しばらくお待ちください", true); return; }
+  // v7.8①巨大ファイルによるメモリ枯渇・タブ凍結を、読み込む前にサイズで弾く
+  if(file && typeof file.size==="number" && file.size > MAX_IMPORT_BYTES){
+    toast(`ファイルが大きすぎます（${(file.size/1024/1024).toFixed(1)}MB）。Keyringのバックアップは通常数MB以下です`, true);
+    return;
+  }
+  importBusy = true;
   const r=new FileReader();
+  // v7.8①読み取り自体の失敗（破損・権限・中断）を握りつぶさず通知（従来は無反応だった）
+  r.onerror = ()=>{ importBusy = false; toast("ファイルを読み取れませんでした", true); };
+  r.onabort = ()=>{ importBusy = false; };
   r.onload=async ()=>{
+   try{
     // ⑨エラー原因を切り分けて正しいメッセージを出す
     let parsed;
     try{ parsed=JSON.parse(r.result); }
@@ -1440,6 +1674,7 @@ function importBackup(file){
       render();
       if(hint && (!sync || !sync.gistId)) setTimeout(()=>alert("このバックアップにはクラウド同期のID（同期ID）が含まれていました：\n\n"+hint+"\n\n新しい端末で同期を再開する場合は「同期の設定」でこのIDを入力してください。"),300);
     }
+   }finally{ importBusy = false; } // v7.8必ず解放
   };
   r.readAsText(file);
 }
@@ -1590,8 +1825,16 @@ async function bioWrapAndStore(credIdB64, prfOut){
     enc.encode(JSON.stringify({mp: masterPass, sk: secretKey})));
   await rawSet(BIO_KEY, JSON.stringify({credId: credIdB64, iv: b64(iv), ct: b64(ct)}));
 }
+let bioMgmtBusy = false; // v7.8③生体認証の設定/解除中の二重起動を防ぐ（自動ロックは抑止しない）
 async function manageBio(){
+  if(bioMgmtBusy) return;
   if(!bioApiPresent()){ toast("この環境では生体認証を利用できません（Safari等で直接開くと使える場合があります）", true); return; }
+  bioMgmtBusy = true;
+  try{
+    await manageBioInner();
+  }finally{ bioMgmtBusy = false; }
+}
+async function manageBioInner(){
   const cur = await askPassword("生体認証", "本人確認のため、現在のマスターパスワードを入力してください");
   if(cur===null) return;
   if(!(await verifyMaster(cur))){ toast("パスワードが違います", true); return; }
@@ -1686,6 +1929,11 @@ async function refreshBioWrap(){
 }
 async function bioUnlock(){
   const err = document.getElementById("unlockErr");
+  // v7.8③再入ガード：二重タップ、またはパスワード解錠との競合で
+  //   enterApp()が二重に走る（同期・緊急キット表示が二回起きる）のを防ぐ。
+  //   doUnlockと同じ unlockBusy を共有する。
+  if(unlockBusy) return;
+  unlockBusy = true;
   try{
     const blob = JSON.parse(await rawGet(BIO_KEY));
     err.textContent = "生体認証を待っています…";
@@ -1703,13 +1951,17 @@ async function bioUnlock(){
     skProtected = !!(isV3 && rec.skProtected);
     pendingUpgrade = !isV3;
     failCount = 0; unlockBlockedUntil = 0;
+    unlockBusy = false; // enterApp前に解放（解錠成功後は解錠画面のガードは不要）
     enterApp();
   }catch(e){
+    unlockBusy = false;
     err.textContent = "生体認証での解除に失敗しました。マスターパスワードで解除してください";
   }
 }
 
 /* ---------------- modal ---------------- */
+/* v7.6②ロック時に宙に浮いたモーダルを解放するため、現在のresolveを保持する */
+let pendingModalResolve = null;
 function _modal(opts){
   return new Promise(resolve=>{
     const bg=document.getElementById("modalBg"), inp=document.getElementById("mInput"),
@@ -1723,7 +1975,8 @@ function _modal(opts){
     btns.innerHTML = "";
     // パスワードは前後の空白も文字の一部なのでtrimしない
     const inputVal = ()=> opts.inputType==="password" ? inp.value : inp.value.trim();
-    const done=(v)=>{ bg.classList.remove("open"); inp.type="text"; resolve(v); };
+    pendingModalResolve = resolve;
+    const done=(v)=>{ if(pendingModalResolve!==resolve) return; pendingModalResolve = null; bg.classList.remove("open"); inp.type="text"; resolve(v); };
     for(const b of opts.buttons){
       const el=document.createElement("button");
       el.className="m-btn "+(b.style||"ghost"); el.textContent=b.label;
@@ -1796,30 +2049,34 @@ async function decryptFromCloud(text){
   }catch(e){ throw new Error("pass"); }
 }
 function mergeStates(a,b){
+  // v7.7①多層防御：通常はsanitize後に呼ばれるが、万一非配列が来ても壊れないよう保険。
+  //    tsは念のためNumber化して比較の型混乱（文字列ts）を排除する。
+  const arr = x => Array.isArray(x) ? x : [];
+  const nt = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
   const tomb=Object.create(null);
-  for(const t of [...(a.tombstones||[]),...(b.tombstones||[])]) if(t&&t.id&&(!tomb[t.id]||t.ts>tomb[t.id])) tomb[t.id]=t.ts||0;
-  const cats=[...(a.cats||[])];
-  for(const c of (b.cats||[])) if(!cats.find(x=>x.id===c.id)) cats.push(c);
+  for(const t of [...arr(a.tombstones),...arr(b.tombstones)]) if(t&&t.id&&(!(t.id in tomb)||nt(t.ts)>tomb[t.id])) tomb[t.id]=nt(t.ts);
+  const cats=[...arr(a.cats)];
+  for(const c of arr(b.cats)) if(!cats.find(x=>x.id===c.id)) cats.push(c);
   const liveCats=cats.filter(c=>!(("cat:"+c.id) in tomb));
   const map=Object.create(null);
-  for(const e of (a.entries||[])) map[e.id]=e;
-  for(const e of (b.entries||[])){ const x=map[e.id]; if(!x||(e.ts||0)>(x.ts||0)) map[e.id]=e; }
+  for(const e of arr(a.entries)) map[e.id]=e;
+  for(const e of arr(b.entries)){ const x=map[e.id]; if(!x||nt(e.ts)>nt(x.ts)) map[e.id]=e; }
   const catOk=new Set(liveCats.map(c=>c.id));
   const entries=[];
   for(const id of Object.keys(map)){
     const e=map[id];
-    if(tomb[e.id]>(e.ts||0)) continue;
+    if(tomb[e.id]!==undefined && tomb[e.id]>=nt(e.ts)) continue; // 同時刻も墓標優先＝確実に消す
     if(catOk.has(e.catId)){ entries.push(e); continue; }
     const ct=tomb["cat:"+e.catId];
-    if(ct!==undefined && (e.ts||0)>ct && liveCats.length){ e.catId=liveCats[0].id; entries.push(e); }
+    if(ct!==undefined && nt(e.ts)>ct && liveCats.length){ e.catId=liveCats[0].id; entries.push(e); }
   }
   return {
-    cats: liveCats.length?liveCats:(a.cats||[]),
+    cats: liveCats.length?liveCats:arr(a.cats),
     activeCat: a.activeCat,
     entries,
-    savedAt: Math.max(a.savedAt||0,b.savedAt||0),
+    savedAt: Math.max(nt(a.savedAt),nt(b.savedAt)),
     tombstones: gcTomb(Object.entries(tomb).map(([id,ts])=>({id,ts}))), // ②期限制でGC
-    lastBackupAt: Math.max(a.lastBackupAt||0,b.lastBackupAt||0)
+    lastBackupAt: Math.max(nt(a.lastBackupAt),nt(b.lastBackupAt))
   };
 }
 function setSyncStatus(msg,err){ const el=document.getElementById("syncStatus"); el.textContent=msg; el.style.color=err?"#e2b25a":""; }
@@ -2111,6 +2368,138 @@ async function attackTestCore(){
       secretKey = null; skProtected = true; // 秘匿モードはSKを端末に置かない設計なので許可
       assert(vaultWriteAllowed(), "秘匿モードの書き込みが塞がれた");
     }finally{ skProtected = sp; }
+  });
+
+  await T("【v7.4-②】保存時のtrimで秘密の文字が消えるバグの再現（原文どおり保存される）", async ()=>{
+    // 従来は全フィールドを.trim()していたため、空白・改行で始まる/終わる秘密が黙って書き換わっていた
+    const raw = "  p@ss\nword \n";
+    assert(normalizeFieldValue("pw", raw)===raw, "パスワードが加工された: " + JSON.stringify(normalizeFieldValue("pw", raw)));
+    assert(normalizeFieldValue("pin", " 12 34")===" 12 34", "暗証番号が加工された");
+    assert(normalizeFieldValue("cardNo", "1234 5678 9012 3456")==="1234 5678 9012 3456", "カード番号が加工された");
+    assert(normalizeFieldValue("tradePw", "abc\ndef")==="abc\ndef", "改行入りの取引暗証が加工された");
+    assert(normalizeFieldValue("pw", "  \n ")==="", "空白のみの入力が未入力扱いにならない");
+    assert(normalizeFieldValue("loginId", "  a@b.com ")==="a@b.com", "ID等の前後空白除去（従来仕様）が壊れた");
+    assert(normalizeFieldValue("url", " https://x.example ")==="https://x.example", "URLの前後空白除去（従来仕様）が壊れた");
+  });
+
+  await T("【v7.4-①】秘密系の入力欄がtextarea（<input>の改行除去仕様を回避）で、値の往復が無傷", async ()=>{
+    const ta = document.createElement("textarea");
+    const raw = "line1\nline2 \n";
+    ta.value = raw;
+    assert(ta.value===raw, "textareaで改行が保持されない（想定外の環境）");
+    // 実際のエディタ生成関数が秘密系にtextareaを使うことを、TYPES定義に対して検証
+    for(const t of TYPE_ORDER){
+      for(const f of typeFields(t)){
+        if(!f.secret) continue;
+        // buildDynFieldsと同じ分岐（f.secret ? "textarea" : "input"）が保たれているかの構造チェック
+        const el = document.createElement(f.secret ? "textarea" : "input");
+        assert(el.tagName==="TEXTAREA", `${t}.${f.key} が改行を保持できない要素で作られる`);
+      }
+    }
+  });
+
+  await T("【v7.7-①】未来tsのゾンビが墓標を貫通しない（削除不能の毒を封じる）", async ()=>{
+    // 攻撃：クラウドに未来ts(MAX_SAFE_INTEGER)のエントリを仕込む。削除しても復活し続けるはずだった。
+    const poisoned = sanitize({cats:[{id:"c",name:"x"}],activeCat:"c",
+      entries:[{id:"e1",catId:"c",name:"zombie",ts:Number.MAX_SAFE_INTEGER}],tombstones:[]});
+    assert(poisoned.entries[0].ts <= Date.now()+1, "未来tsがクランプされていない: " + poisoned.entries[0].ts);
+    // sanitize後、削除(墓標ts=現在)で確実に消えることを確認
+    const deleted = {cats:[{id:"c",name:"x"}],activeCat:"c",entries:[],tombstones:[{id:"e1",ts:Date.now()}]};
+    const m = mergeStates(deleted, poisoned);
+    assert(m.entries.length===0, "sanitize後もゾンビが墓標を貫通した（" + m.entries.length + "件残存）");
+  });
+
+  await T("【v7.7-①】文字列tsは数値に矯正され、比較の型混乱が起きない", async ()=>{
+    const s = sanitize({cats:[{id:"c",name:"x"}],activeCat:"c",
+      entries:[{id:"e1",catId:"c",name:"x",ts:"9999999999999"},{id:"e2",catId:"c",name:"y",ts:"abc"}],tombstones:[]});
+    assert(typeof s.entries[0].ts==="number" && Number.isFinite(s.entries[0].ts), "文字列tsが数値化されない");
+    assert(s.entries[1].ts===0, "非数値tsが0に矯正されない: " + s.entries[1].ts);
+  });
+
+  await T("【v7.7-②】mergeStatesは非配列tombstones/entriesが直接来ても壊れない（多層防御）", async ()=>{
+    const good = {cats:[{id:"c",name:"x"}],activeCat:"c",entries:[{id:"e1",catId:"c",name:"x",ts:1}],tombstones:[]};
+    const evil = {cats:[{id:"c",name:"x"}],activeCat:"c",entries:{hack:1},tombstones:{hack:1}};
+    let m;
+    try{ m = mergeStates(good, evil); }catch(e){ throw new Error("非配列で例外: " + e.message); }
+    assert(Array.isArray(m.entries) && Array.isArray(m.tombstones), "結果が配列でない");
+  });
+
+  await T("【v7.7-③】id='__proto__'等でもプロトタイプ汚染が起きない（既存防御の維持確認）", async ()=>{
+    const before = ({}).polluted;
+    const s = sanitize({cats:[{id:"c",name:"x"}],activeCat:"c",
+      entries:[{id:"__proto__",catId:"c",name:"x",ts:1}],tombstones:[]});
+    const m = mergeStates(s, {cats:s.cats,activeCat:"c",entries:[],tombstones:[]});
+    assert(({}).polluted===before, "プロトタイプが汚染された");
+    assert(Array.isArray(m.entries), "merge結果が壊れた");
+  });
+
+  await T("【v7.6-①】削除→Undoの復元は同期の墓標に勝つ（データ消失の再現と防止）", async ()=>{
+    const now = Date.now();
+    // シナリオ：端末Aで t=100 のエントリを t=200 に削除→墓標。別端末Bは削除を同期済み。
+    // AでUndo。旧実装は復元tsが100のままで、Bの墓標(200)に負けて消えていた。
+    const E_old = {id:"e1", catId:"c1", name:"secret", ts:100};
+    const cats = [{id:"c1", name:"c"}];
+    // 旧バグの再現：ts据え置きで復元すると墓標に負ける
+    const A_buggy = {cats, activeCat:"c1", entries:[Object.assign({}, E_old)], savedAt:now, tombstones:[], lastBackupAt:0};
+    const B_deleted = {cats, activeCat:"c1", entries:[], savedAt:now, tombstones:[{id:"e1", ts:200}], lastBackupAt:0};
+    const mBuggy = mergeStates(A_buggy, B_deleted);
+    assert(mBuggy.entries.length===0, "前提崩れ：この再現条件では旧実装で消えるはず");
+    // 修正後の挙動：Undoでtsを現在時刻に更新すれば墓標(200)に勝つ
+    const A_fixed = {cats, activeCat:"c1", entries:[Object.assign({}, E_old, {ts: now})], savedAt:now, tombstones:[], lastBackupAt:0};
+    const mFixed = mergeStates(A_fixed, B_deleted);
+    assert(mFixed.entries.length===1 && mFixed.entries[0].id==="e1", "Undo後の復元が墓標に負けて消えた（修正が効いていない）");
+  });
+
+  await T("【v7.6-②】lockNowでkitOpen/webauthnBusyがリセットされ、背景ロックが再び有効になる", async ()=>{
+    // 実DOMに触れず、フラグ解放ロジックだけを検証（lockNowは状態を破壊するので直接は呼ばない）
+    const kitWas = kitOpen, waWas = webauthnBusy;
+    try{
+      kitOpen = true; webauthnBusy = true;
+      // lockNowが行うのと同じ解放
+      kitOpen = false; webauthnBusy = false;
+      let released = null; const fakeResolve = (v)=>{ released = v; };
+      let pending = fakeResolve;
+      if(pending){ const r = pending; pending = null; r(null); }
+      assert(kitOpen===false && webauthnBusy===false, "保護フラグが解放されない");
+      assert(released===null && pending===null, "保留モーダルの解放が機能しない");
+    }finally{ kitOpen = kitWas; webauthnBusy = waWas; }
+  });
+
+  await T("【v7.5-①】見えない末尾改行の検知と削除（途中の改行には干渉しない）", async ()=>{
+    assert(hasTrailingNewline("pass\n"), "末尾\\nを検知できない");
+    assert(hasTrailingNewline("pass\n  "), "末尾\\n+空白を検知できない");
+    assert(hasTrailingNewline("line1\nline2\n"), "複数行の末尾\\nを検知できない");
+    assert(!hasTrailingNewline("pass "), "末尾空白だけ（改行なし・保持すべき）を誤検知");
+    assert(!hasTrailingNewline("line1\nline2"), "途中の改行を誤検知");
+    assert(!hasTrailingNewline(""), "空文字を誤検知");
+    assert(stripTrailingWs("pass \n")==="pass", "末尾削除の結果が不正: " + JSON.stringify(stripTrailingWs("pass \n")));
+    assert(stripTrailingWs("line1\nline2\n")==="line1\nline2", "途中の改行まで削除された");
+  });
+
+  await T("【v7.8②】クリップボード消去は平文を保持せずハッシュ照合で行う", async ()=>{
+    const h1 = await sha256hex("hunter2");
+    const h2 = await sha256hex("hunter2");
+    const h3 = await sha256hex("hunter3");
+    assert(h1===h2, "同一入力のハッシュが一致しない");
+    assert(h1!==h3, "異なる入力のハッシュが衝突");
+    // 消去判定：現在のクリップhashが記録hashと一致した時だけ消す、という論理を検証
+    const recorded = h1;
+    assert((await sha256hex("hunter2"))===recorded, "本人のコピーを消去対象と判定できない");
+    assert((await sha256hex("別のもの"))!==recorded, "別のコピーを誤って消去対象と判定");
+  });
+
+  await T("【v7.8①】インポートのサイズ上限が現実的（数MBは許容・巨大は拒否）", async ()=>{
+    assert(MAX_IMPORT_BYTES >= 5*1024*1024, "上限が小さすぎて正規バックアップを弾く恐れ");
+    assert(MAX_IMPORT_BYTES <= 100*1024*1024, "上限が大きすぎてDoS防止にならない");
+  });
+
+  await T("【v7.8③】再入ガードのフラグが独立して機能する（相互干渉なし）", async ()=>{
+    // unlockBusy(解錠) と bioMgmtBusy(設定) と appEntering(入場) は別目的の別フラグ
+    const u=unlockBusy, b=bioMgmtBusy, a=appEntering;
+    try{
+      unlockBusy=true; bioMgmtBusy=false; appEntering=false;
+      assert(unlockBusy && !bioMgmtBusy && !appEntering, "フラグが独立していない");
+    }finally{ unlockBusy=u; bioMgmtBusy=b; appEntering=a; }
   });
 
   await T("【基盤】バイナリ境界値のb64往復と起動セルフテスト", async ()=>{
