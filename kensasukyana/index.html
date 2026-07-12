@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>星野ソラ 検品前スキャナ v1.9</title>
+<title>星野ソラ 検品前スキャナ v2.0</title>
 <style>
   :root{
     --bg:#0c111f;
@@ -71,7 +71,7 @@
 </head>
 <body>
 <header>
-  <h1>星野ソラ 検品前スキャナ<span class="v">v1.9</span></h1>
+  <h1>星野ソラ 検品前スキャナ<span class="v">v2.0</span></h1>
   <p>機械的走査(列挙・件数)を全部このツールが行い、意味判定(主語・主根拠など)だけを検品チャットに残す前段ツール。レポートを本文と一緒に検品へ渡す。</p>
 </header>
 <main>
@@ -109,11 +109,30 @@
     <p id="fixinfo" class="note" style="margin:10px 0 0;"></p></div>
   <div id="report"></div>
 </main>
-<footer>検品前スキャナ v1.9(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
+<footer>検品前スキャナ v2.0(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
 
 <script>
 /* =====================================================================
    ★ 辞書・設定(編集エリア)ここから
+
+   【v2.0 変更履歴】(生成命令書v10.9・検品命令書v10.7対応)
+   ・固定文言を①②の2本から①〜⑥の6本へ拡張([5])。
+     ③導入の断言文(名詞スロットのみ可変・正規表現FIXED_3_REで照合)
+     ④「準備はいいですか。」(決意喚起段落の冒頭)
+     ⑤第9章リード第一文(月相ケース1〜3のみ適用のため不在は▲要判定。
+       括弧は全角が正だが既刊互換のため半角()も一致として許容)
+     ⑥第9章末尾の「占いは、あなたの決断を代わりにするものではありません。〜」
+   ・固定文言②の位置検査を追加([5])。v10.9でアンカーが「ロードマップです。
+     段落の直後」から「固定文言④(準備はいいですか)段落の直前」のみに変更
+     されたため、②の直後(空行を挟んで)が「準備はいいですか」で始まるかを見る。
+   ・[16]導入鋳型走査を新設(DICT.INTRO_CLONE)。理想例からの転写で毎月同文化
+     していた導入の鋳型(「静かな問いを感じていませんか」等)を列挙し▲要判定。
+     前月号と同型かの最終判定は検品C-2b/生成v10.9第II部3・4が行う。
+   ・[17]結論一文目走査を新設。各章【結論】の一文目を抽出し、「テーマは/
+     ルールは」型の宣言が上限(DICT.THEME_DECL_LIMIT=3章)を超えたら✕。
+     9月号で【結論】一文目が5章同型だった実績への対策。
+   ・[15]を「頻出語レポート」に拡張(形容・副詞に加え、定型名詞
+     「合図」「切り替わ」を監視語へ追加)。
 
    【v1.9 変更履歴】
    ・[3]にMarkdown記法の検出を追加(行頭の #/##/###・「- 」「* 」・---・>)。
@@ -193,6 +212,22 @@ const DICT = {
   FIXED_1: "多くの占いは「運勢」を語りますが、このnoteは違います",
   FIXED_2: "この一冊には、3,000円以上の価値があると自負しています。それでも、価格を理由にあなたがこの1ヶ月を逃すことがないように。毎月15日までは、コーヒー1杯分の「500円」で。16日からは「1,000円」でお届けしています。",
 
+  // v2.0: 固定文言③〜⑥(生成命令書v10.9)
+  // ③導入の断言文。名詞スロット(その〇〇=問い/感覚/違和感 等・1〜8字)のみ可変。
+  FIXED_3_RE: /断言します。その.{1,8}は決して気のせいではありません。/,
+  // ④決意喚起段落の冒頭(一字一句)
+  FIXED_4: "準備はいいですか。",
+  // ⑤第9章リード第一文(月相ケース1〜3のみ。ケース4・5〈満月なし/新月なし〉の号は適用除外のため不在は▲)
+  //   括弧は全角（）が正。既刊互換のため半角()も一致として許容する。
+  FIXED_5_RE: /昔から、新しい月[（(]新月[）)]は「種をまく・願いを書く」タイミング、満ちた月[（(]満月[）)]は「実りを受け取る・手放す」タイミングとされてきました。/,
+  // ⑥第9章【ワークの進め方】末尾(一字一句)
+  FIXED_6: "占いは、あなたの決断を代わりにするものではありません。月のリズムに合わせて、自分の心を見つめ直すきっかけ。そう思って、気軽に取り入れてみてください。",
+
+  // v2.0: [16]導入鋳型(理想例からの転写検出語。固定文言③④に昇格した文は含めない)
+  INTRO_CLONE: ["静かな問いを感じていませんか","ただ過ぎていくひと月ではありません","極めて重要な「","のロードマップです","胸を張ったまま、今度は"],
+  // v2.0: [17]結論一文目の「テーマは/ルールは」型宣言の上限(生成命令書v10.9第II部5)
+  THEME_DECL_LIMIT: 3,
+
   // 第8章の4定型見出し(一字一句)
   CH8_HEADINGS: [
     "【対 火の星座（牡羊座・獅子座・射手座）】",
@@ -234,7 +269,7 @@ const DICT = {
   // v1.8: [14]理由ブロックのイベント語(出現＝主根拠ではない。集計の下書き)
   REASON_TOKENS: ["太陽","水星","金星","火星","木星","土星","天王星","海王星","冥王星","新月","満月","逆行"],
   // v1.9: [15]頻出形容・副詞の監視語(号のテーマ語は多くても◯。編集可)と目安回数
-  STYLE_WATCH: ["静かに","静けさ","丁寧に","穏やかに","落ち着いて","そっと","やさしく"],
+  STYLE_WATCH: ["静かに","静けさ","丁寧に","穏やかに","落ち着いて","そっと","やさしく","合図","切り替わ"],
   STYLE_LIMIT: 8,
 
   // 見出しコロンの方針: "report"=件数報告のみ / "zenkaku"=半角を違反 / "hankaku"=全角を違反
@@ -380,7 +415,7 @@ function runScan(){
   const now = new Date();
   const stamp = now.getFullYear()+"/"+(now.getMonth()+1)+"/"+now.getDate()+" "+String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
 
-  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v1.9"});
+  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v2.0"});
   L.push({cls:"dim", s:"走査日時:"+stamp+" ／ 本文:"+raw.length+"文字 ／ 対象星座:"+(sign||"未指定")});
   L.push({cls:"dim", s:"※このレポートの【要判定】項目は、検品チャットが主語・文脈を判定する(列挙はスキャナが保証)。"});
   L.push({s:""});
@@ -475,6 +510,33 @@ function runScan(){
     const partial2 = raw.includes("3,000円以上の価値") || raw.includes("コーヒー1杯分");
     L.push({cls:"bad", s:"  ✕ 固定文言②:完全一致なし"+(partial2?"(近い表現あり→変形の疑い。固定形へ復元)":"(欠落または旧価格段落の疑い)")});
   }
+  // v2.0: ②の位置(直後の段落が固定文言④「準備はいいですか」で始まるか。v10.9のアンカー)
+  let f2pos = true;
+  if(f2){
+    const tail = raw.slice(raw.indexOf(DICT.FIXED_2) + DICT.FIXED_2.length);
+    f2pos = /^\s*準備はいいですか/.test(tail);
+    if(f2pos){ L.push({cls:"ok", s:"  ◯ 固定文言②の位置:直後が「準備はいいですか」段落(v10.9アンカーどおり)"}); }
+    else{ L.push({cls:"bad", s:"  ✕ 固定文言②の位置:直後が「準備はいいですか」段落になっていない→②を決意喚起段落の直前へ移動(生成v10.9第II部3)"}); }
+  }
+  // v2.0: 固定文言③〜⑥
+  const f3 = DICT.FIXED_3_RE.test(raw);
+  if(f3){ L.push({cls:"ok", s:"  ◯ 固定文言③(断言文):型一致(スロット名詞のみ可変)"}); }
+  else{
+    const nearDangen = raw.includes("気のせいではありません");
+    L.push({cls:"bad", s:"  ✕ 固定文言③(断言文):型不一致"+(nearDangen?"(近い表現あり→変形の疑い。「断言します。その〇〇は決して気のせいではありません。」へ復元)":"(欠落の疑い。導入に必ず1回置く)")});
+  }
+  const f4 = raw.includes(DICT.FIXED_4);
+  if(f4){ L.push({cls:"ok", s:"  ◯ 固定文言④「準備はいいですか。」:あり"}); }
+  else{ L.push({cls:"bad", s:"  ✕ 固定文言④「準備はいいですか。」:なし→決意喚起段落の冒頭に置く"}); }
+  const f5 = DICT.FIXED_5_RE.test(raw);
+  if(f5){ L.push({cls:"ok", s:"  ◯ 固定文言⑤(第9章リード第一文):一致"}); }
+  else{ L.push({cls:"warn", s:"  ▲ 固定文言⑤(第9章リード第一文):不一致【要判定】月相ケース4・5(満月なし/新月なし)の号なら適用除外で◯。ケース1〜3なら固定形へ復元(検品A-7(g))"}); }
+  const f6 = raw.includes(DICT.FIXED_6);
+  if(f6){ L.push({cls:"ok", s:"  ◯ 固定文言⑥(決断を代わりにしない文):一字一句一致"}); }
+  else{
+    const near6 = raw.includes("決断を代わり") || raw.includes("決断を代行");
+    L.push({cls:"bad", s:"  ✕ 固定文言⑥:完全一致なし"+(near6?"(近い表現あり→変形の疑い。固定形へ復元)":"(欠落の疑い。第9章【ワークの進め方】末尾に置く)")});
+  }
   const moneyHits=[];
   const moneyRes=[/[0-9０-９][0-9０-９,，]*\s*円/g, /ランチ[^\n。]{0,6}回分/g, /コーヒー[0-9０-９一二三]*杯/g];
   for(const re of moneyRes){ let m2; while((m2=re.exec(fixed2Free))) moneyHits.push({pos:m2.index, str:m2[0]}); }
@@ -483,7 +545,7 @@ function runScan(){
     moneyHits.forEach(h=> L.push({s:"  ・金額「"+h.str+"」→ "+sentenceAt(fixed2Free,h.pos,h.str.length)}));
     L.push({cls:"bad", s:"  ✕ 固定文言②以外に金額表現"+moneyHits.length+"件(価格記載は②に一本化。削除する)"});
   }
-  chips.push({cls:(f1&&f2&&moneyHits.length===0)?"ok":"bad", label:"固定文言/金額"});
+  chips.push({cls:(f1&&f2&&f2pos&&f3&&f4&&f6&&moneyHits.length===0)?(f5?"ok":"warn"):"bad", label:"固定文言/金額"});
   L.push({s:""});
 
   // ---------- [6] 構造チェック ----------
@@ -819,8 +881,8 @@ function runScan(){
   }
   L.push({s:""});
 
-  // ---------- [15] 頻出形容・副詞レポート(文体の使い回し・v1.9新設) ----------
-  L.push({cls:"sec", s:"[15] 頻出形容・副詞レポート(検品B系の参考・生成命令書v10.8第IV部3)"});
+  // ---------- [15] 頻出語レポート(文体の使い回し・v1.9新設・v2.0で名詞を追加) ----------
+  L.push({cls:"sec", s:"[15] 頻出語レポート(形容・副詞・定型名詞。検品B系の参考・生成命令書v10.8第IV部3)"});
   {
     const rows = (DICT.STYLE_WATCH||[]).map(w=>{
       let c=0, f=0, i;
@@ -837,6 +899,47 @@ function runScan(){
       if(over){ chips.push({cls:"warn", label:"頻出語 "+over+"語が目安超"}); }
       else L.push({cls:"ok", s:"  ◯ 監視語はいずれも目安("+DICT.STYLE_LIMIT+"回)未満"});
       L.push({cls:"dim", s:"  ※監視語はDICT.STYLE_WATCHで編集可。タイトルフックの主要語(号のテーマ語)は多くても◯。"});
+    }
+  }
+  L.push({s:""});
+
+  // ---------- [16] 導入鋳型走査(理想例転写の検出・v2.0新設) ----------
+  L.push({cls:"sec", s:"[16] 導入鋳型走査(検品C-2b/生成v10.9第II部3・4用)"});
+  {
+    const cloneHits = [];
+    (DICT.INTRO_CLONE||[]).forEach(w=>{
+      let f=0,i; while((i=raw.indexOf(w,f))!==-1){ cloneHits.push({w,pos:i}); f=i+1; }
+    });
+    if(!cloneHits.length){
+      L.push({cls:"ok", s:"  ◯ 0件(理想例鋳型の転写検出語は該当なし)"});
+      chips.push({cls:"ok", label:"導入鋳型 0件"});
+    }else{
+      cloneHits.forEach((h,i)=> L.push({s:"  ("+(i+1)+") ["+locate(hIdx,h.pos)+"]「"+h.w+"」→ "+sentenceAt(raw,h.pos,h.w.length)}));
+      L.push({cls:"warn", s:"  ▲ 計"+cloneHits.length+"件【要判定】理想例の文型を語だけ差し替えた鋳型転写でないか、前月号と同文型でないかを検品/生成側で確認(生成v10.9第II部3の例文鋳型禁止・書き出し型ローテーション)。固定文言③④に昇格した文はこの走査の対象外。"});
+      chips.push({cls:"warn", label:"導入鋳型 "+cloneHits.length+"件 要判定"});
+    }
+  }
+  L.push({s:""});
+
+  // ---------- [17] 結論一文目走査(テーマ宣言型の上限・v2.0新設) ----------
+  L.push({cls:"sec", s:"[17] 結論一文目走査(「テーマは/ルールは」型・上限"+DICT.THEME_DECL_LIMIT+"章・生成v10.9第II部5)"});
+  {
+    const kRe = /【結論】\s*\n?\s*([^\n]{0,120})/g;
+    const firsts = []; let km;
+    while((km=kRe.exec(raw))){
+      let s1 = km[1];
+      const per = s1.indexOf("。");
+      if(per !== -1) s1 = s1.slice(0, per+1);
+      firsts.push({pos:km.index, s:s1});
+    }
+    if(!firsts.length){
+      L.push({cls:"warn", s:"  ▲ 【結論】ブロックを検出できず(形式崩れの可能性。検出0本は◯ではない)"});
+    }else{
+      const decl = firsts.filter(f=> /のテーマは|のルールは/.test(f.s));
+      firsts.forEach(f=> L.push({s:"  ・["+locate(hIdx,f.pos)+"] "+f.s + (/のテーマは|のルールは/.test(f.s)?" ←宣言型":"")}));
+      L.push({s:"  ◇「テーマは/ルールは」型="+decl.length+"本(上限"+DICT.THEME_DECL_LIMIT+")"});
+      if(decl.length<=DICT.THEME_DECL_LIMIT){ L.push({cls:"ok", s:"  ◯ 上限内"}); chips.push({cls:"ok", label:"結論宣言型 "+decl.length+"本"}); }
+      else{ L.push({cls:"bad", s:"  ✕ "+decl.length+"本(上限"+DICT.THEME_DECL_LIMIT+")→超過分の【結論】一文目を断定の宣言・問いかけ・場面型など別の書き出しへ(生成v10.9第II部5)"}); chips.push({cls:"bad", label:"結論宣言型 "+decl.length+"本"}); }
     }
   }
   L.push({s:""});
