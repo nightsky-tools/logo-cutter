@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>星野ソラ 検品前スキャナ v2.0</title>
+<title>星野ソラ 検品前スキャナ v2.1</title>
 <style>
   :root{
     --bg:#0c111f;
@@ -66,19 +66,32 @@
   #report .sec{color:var(--star);font-weight:700;}
   #report .dim{color:var(--dim);}
   footer{color:var(--dim);font-size:11px;text-align:center;padding:14px;}
+  .skybar{margin-top:12px;padding:9px 12px;border:1px dashed #3d4f86;border-radius:8px;background:#0e1424;
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;}
+  .skybar .sky-label{color:var(--dim);} .skybar .sky-label b{color:var(--star);}
+  .skybar button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);font-size:12px;
+    font-weight:700;padding:5px 14px;border-radius:7px;}
+  .skybar button:hover{background:#223058;}
+  .skybar .sky-del{color:var(--bad);border-color:#6b3232;}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#12281c;color:var(--ok);
+    border:1px solid #2c5a41;border-radius:9px;padding:10px 18px;font-size:13px;font-weight:700;z-index:99;
+    opacity:0;pointer-events:none;transition:opacity .25s;max-width:90%;}
+  #toast.err{background:#2a1414;color:var(--bad);border-color:#6b3232;}
+  #toast.show{opacity:1;}
   @media (max-width:640px){ main{padding:14px 12px 60px;} }
 </style>
 </head>
 <body>
 <header>
-  <h1>星野ソラ 検品前スキャナ<span class="v">v2.0</span></h1>
+  <h1>星野ソラ 検品前スキャナ<span class="v">v2.1</span></h1>
   <p>機械的走査(列挙・件数)を全部このツールが行い、意味判定(主語・主根拠など)だけを検品チャットに残す前段ツール。レポートを本文と一緒に検品へ渡す。</p>
 </header>
 <main>
   <div class="grid">
     <div class="card">
       <h2>ここに貼るだけ</h2>
-      <p class="note">記事本文をそのまま貼り付け。<b>天体データ(monthly_sky出力)や画像プロンプトが混ざっていても自動で仕分ける。</b>タイトル・対象星座も自動検出。貼った瞬間に走査が走る。</p>
+      <p class="note">記事本文をそのまま貼り付け。<b>天体データ(monthly_sky出力)や画像プロンプトが混ざっていても自動で仕分ける。</b>タイトル・対象星座も自動検出。貼った瞬間に走査が走る。<br>
+      さらに記事保管庫と同じく、<b>「【○年○月の天体イベント一覧】」で始まる星データをコピーしてこのタブに戻るだけで、下の固定スロットへ自動格納</b>される(それ以外のデータは絶対に拾わない)。格納した星データは保存され、以後の走査に常時使われる。</p>
       <textarea id="blob" placeholder="記事全文をここに貼り付け(天体データ・画像プロンプトを続けて貼ってもOK)"></textarea>
       <div class="row" style="margin-top:10px;align-items:center;">
         <div style="flex:0 0 200px;">
@@ -95,6 +108,7 @@
           <div id="detected" style="font-size:12px;color:var(--dim);padding:9px 0;">— 貼り付け待ち —</div>
         </div>
       </div>
+      <div id="skybar" class="skybar"></div>
     </div>
   </div>
 
@@ -109,11 +123,24 @@
     <p id="fixinfo" class="note" style="margin:10px 0 0;"></p></div>
   <div id="report"></div>
 </main>
-<footer>検品前スキャナ v2.0(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
+<footer>検品前スキャナ v2.1(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
+<div id="toast"></div>
 
 <script>
 /* =====================================================================
    ★ 辞書・設定(編集エリア)ここから
+
+   【v2.1 変更履歴】
+   ・天体データ固定スロットを新設(記事保管庫の星データ自動格納と同方式)。
+     「【○年○月の天体イベント一覧】」の見出しを持つ星データをコピーして
+     このタブに戻る/開く/貼り付けるだけで自動格納し、localStorageに保存。
+     以後の走査([12]週レンジ・必須イベント突合など)に固定データとして
+     常時使われる(本文に天体データを毎回貼り直す必要がなくなる)。
+   ・厳格ゲート:見出しのない文章・記事本文(【第1章】等)・命令書・
+     保管庫の連結コピー(_START=====等)は絶対に取り込まない。記事と
+     混在してコピーされた場合も、天体データとして分類できる行だけを格納。
+   ・本文貼り付けに天体データが混ざっていた場合はそちらを優先(従来どおり)。
+     出所(貼付/固定スロット)は「自動仕分けの結果」に表示。
 
    【v2.0 変更履歴】(生成命令書v10.9・検品命令書v10.7対応)
    ・固定文言を①②の2本から①〜⑥の6本へ拡張([5])。
@@ -391,6 +418,124 @@ function parseBlob(blob){
   return {article, sky: skyLines.join("\n").trim(), prompts, title, sign, skyLines};
 }
 
+// ==================== 天体データ固定スロット(v2.1・記事保管庫と同方式) ====================
+// 「【○年○月の天体イベント一覧】」で始まる星データ(monthly_sky出力)だけを自動格納する。
+// それ以外(記事本文・命令書・画像プロンプト・連結コピー等)は絶対に拾わない。
+// 格納した星データは localStorage に保存され、本文と一緒に固定データとして毎回の走査に使われる。
+const SKY_KEY = "hoshino-scanner-sky";
+let skyAutoFp = null; // 同じ内容を二度取り込まない(保管庫の lastAutoFp と同じ役割)
+function fpOf(str){let h=5381;for(let i=0;i<str.length;i++){h=((h<<5)+h+str.charCodeAt(i))>>>0;}return h.toString(16);}
+function toast(msg, err){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = err ? "err show" : "show";
+  clearTimeout(t._tm);
+  t._tm = setTimeout(()=>{ t.className = t.className.replace(" show","").replace("show",""); }, 3200);
+}
+function getStoredSky(){
+  try{ const j = JSON.parse(localStorage.getItem(SKY_KEY)||"null"); return (j && j.body) ? j : null; }
+  catch(e){ return null; }
+}
+// ---- 厳格ゲート:星データ(天体イベント一覧)以外は null を返して何も拾わない ----
+function extractSkyOnly(t){
+  if(!t || !t.trim()) return null;
+  const head = t.match(/【(\d{4})年(\d{1,2})月の天体イベント一覧/);
+  if(!head) return null;                                    // 見出しがなければ星データではない
+  if(/【第1章】|【はじめに/.test(t)) return null;           // 記事(や記事との連結)は拾わない
+  if(/命令書/.test(t.slice(0,300))) return null;            // 命令書・連結コピーは拾わない
+  if(t.includes("_START=====") || t.includes("━━━━━ 過去記事(記事保管庫より")) return null;
+  const label = head[1] + "年" + Number(head[2]) + "月";
+  // 星データ以外の行が混ざっていても、天体データとして分類できる行だけを取り出す
+  const P = parseBlob(t);
+  const rest = (P.article + P.prompts.join("")).replace(/\s/g,"");
+  if(rest.length <= 80){
+    // 実質すべて星データ → 原文のまま格納(monthly_sky出力の注記行なども保全)
+    return { body: t.trim(), label };
+  }
+  if(!P.sky) return null;
+  // 混在コピー → 見出し行を含む天体データ行だけを格納(本文などは絶対に入れない)
+  return { body: P.sky, label };
+}
+async function storeSky(sky, silent){
+  const cur = getStoredSky();
+  if(cur && cur.body === sky.body){ return false; }         // 同一内容は静かにスキップ
+  if(cur && cur.body){
+    if(!confirm("天体データ("+(cur.label||"")+"・"+cur.body.length.toLocaleString()+"字)は格納済みです。\n新しい内容("+sky.label+"・"+sky.body.length.toLocaleString()+"字)で上書きしますか?")) return false;
+  }
+  try{ localStorage.setItem(SKY_KEY, JSON.stringify({body:sky.body, label:sky.label, updated:new Date().toLocaleString("ja-JP")})); }
+  catch(e){ toast("保存に失敗しました(ブラウザの保存領域を確認)", true); return false; }
+  if(!silent) toast(sky.label+"の天体データを自動格納しました("+sky.body.length.toLocaleString()+"字)");
+  renderSkyBar();
+  if($("blob").value.trim().length >= 200) runScan();       // 本文が既にあれば固定データ込みで再走査
+  return true;
+}
+async function tryAutoImportSky(text){
+  // 入力欄で作業中は割り込まない(編集を乗っ取らない・記事保管庫と同じ配慮)
+  const tag = (document.activeElement && document.activeElement.tagName) || "";
+  if(text == null && (tag === "TEXTAREA" || tag === "INPUT")) return;
+  let t = text;
+  if(t == null){
+    try{ t = await navigator.clipboard.readText(); }catch(e){ return; } // 権限がない環境では静かに何もしない
+  }
+  if(!t || !t.trim()) return;
+  const fp = fpOf(t);
+  if(skyAutoFp === fp) return;                              // 同じ内容は一度しか確認しない
+  try{ if(localStorage.getItem("nightsky-last-copy-fp") === String(fp)) return; }catch(e){} // 命令書保管庫が直前にコピーしたものは拾わない
+  const sky = extractSkyOnly(t);
+  if(!sky) return;                                          // 星データ以外は絶対に拾わない
+  skyAutoFp = fp;
+  await storeSky(sky);
+}
+async function pasteSkyManual(){
+  let t = "";
+  try{ t = await navigator.clipboard.readText(); }
+  catch(e){ toast("読み取れません。星データをコピーしてから押してください", true); return; }
+  if(!t || !t.trim()){ toast("クリップボードが空です。星データをコピーしてから押してください", true); return; }
+  const sky = extractSkyOnly(t);
+  if(!sky){ toast("これは天体データ(【○年○月の天体イベント一覧】)ではないため格納しません", true); return; }
+  skyAutoFp = fpOf(t);
+  if(await storeSky(sky, true)) toast(sky.label+"の天体データを格納しました("+sky.body.length.toLocaleString()+"字)");
+  else{ const cur=getStoredSky(); if(cur && cur.body===sky.body) toast("同じ内容が格納済みです("+(cur.label||"")+")"); }
+}
+function delStoredSky(){
+  const cur = getStoredSky();
+  if(!cur){ toast("天体データは未格納です", true); return; }
+  if(!confirm("格納済みの天体データ("+(cur.label||"")+"・"+cur.body.length.toLocaleString()+"字)を削除しますか?")) return;
+  localStorage.removeItem(SKY_KEY);
+  toast("天体データを削除しました");
+  renderSkyBar();
+  if($("blob").value.trim().length >= 200) runScan();
+}
+function renderSkyBar(){
+  const bar = document.getElementById("skybar");
+  if(!bar) return;
+  const sky = getStoredSky();
+  bar.innerHTML = `
+    <span class="sky-label">☀ 天体データ(固定):${sky ? "<b>"+(sky.label||"")+"</b> "+sky.body.length.toLocaleString()+"字("+(sky.updated||"")+")" : "未格納 — 星データをコピーしてこのタブに戻ると自動格納"}</span>
+    <button class="sky-paste">ペースト</button>
+    ${sky ? `<button class="sky-copy">コピー</button><button class="sky-del">削除</button>` : ``}`;
+  bar.querySelector(".sky-paste").onclick = pasteSkyManual;
+  if(sky){
+    bar.querySelector(".sky-copy").onclick = async ()=>{
+      try{ await navigator.clipboard.writeText(sky.body); }
+      catch(e){ const ta=document.createElement("textarea"); ta.value=sky.body; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); }
+      skyAutoFp = fpOf(sky.body);                           // 自分でコピーした直後に自動取り込みが反応しないように
+      toast("天体データをコピーしました("+sky.body.length.toLocaleString()+"字)");
+    };
+    bar.querySelector(".sky-del").onclick = delStoredSky;
+  }
+}
+// タブに戻った瞬間・画面を開いた瞬間・貼り付け操作の瞬間に自動チェック(記事保管庫と同じ3経路)
+window.addEventListener("focus", ()=> tryAutoImportSky());
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState === "visible") tryAutoImportSky(); });
+document.addEventListener("paste", (ev)=>{
+  const tag = (document.activeElement && document.activeElement.tagName) || "";
+  if(tag === "TEXTAREA" || tag === "INPUT") return;         // 入力欄への貼り付けは通常動作を優先
+  const t = ev.clipboardData && ev.clipboardData.getData("text");
+  if(t) tryAutoImportSky(t);
+});
+document.addEventListener("DOMContentLoaded", ()=>{ renderSkyBar(); tryAutoImportSky(); });
+
 function runScan(){
   const blob = $("blob").value.replace(/\r\n/g,"\n");
   if(!blob.trim()){ alert("記事本文を貼り付けてください。"); return; }
@@ -399,12 +544,15 @@ function runScan(){
   if(P.sign && !$("sign").dataset.manual) $("sign").value = P.sign;
   const sign = $("sign").value;
   const title = P.title;
-  const sky = P.sky;
+  // 天体データ:固定スロット(自動格納)を常時使用。本文貼り付けに混ざっていた場合はそちらを優先。
+  const storedSky = getStoredSky();
+  const sky = P.sky || (storedSky ? storedSky.body : "");
+  const skySrc = P.sky ? "貼付" : (storedSky ? "固定スロット("+(storedSky.label||"")+")" : "");
   const promptsList = P.prompts;
   $("detected").innerHTML =
     "タイトル:" + (title ? "検出◯" : "未検出") +
     " ／ 星座:" + (sign || "未検出") +
-    " ／ 天体データ:" + (sky ? sky.split("\n").length + "行" : "なし") +
+    " ／ 天体データ:" + (sky ? sky.split("\n").length + "行〔" + skySrc + "〕" : "なし") +
     " ／ プロンプト:" + (promptsList.length ? promptsList.length + "件" : "なし");
 
   const hIdx = buildHeadingIndex(raw);
@@ -415,7 +563,7 @@ function runScan(){
   const now = new Date();
   const stamp = now.getFullYear()+"/"+(now.getMonth()+1)+"/"+now.getDate()+" "+String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
 
-  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v2.0"});
+  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v2.1"});
   L.push({cls:"dim", s:"走査日時:"+stamp+" ／ 本文:"+raw.length+"文字 ／ 対象星座:"+(sign||"未指定")});
   L.push({cls:"dim", s:"※このレポートの【要判定】項目は、検品チャットが主語・文脈を判定する(列挙はスキャナが保証)。"});
   L.push({s:""});
@@ -733,7 +881,7 @@ function runScan(){
       else{ L.push({cls:"bad", s:"  ✕ 週またぎ"+outCount+"件(日付が属する週の本文へ移す)"}); chips.push({cls:"bad", label:"週またぎ "+outCount+"件"}); }
     }
     // 必須イベント突合
-    if(!sky){ L.push({cls:"dim", s:"  必須イベント突合:スキップ(天体データ未貼付)"}); }
+    if(!sky){ L.push({cls:"dim", s:"  必須イベント突合:スキップ(天体データなし。固定スロットに星データを格納するか、本文と一緒に貼り付ける)"}); }
     else{
       const events=[];
       sky.split("\n").forEach(line=>{
