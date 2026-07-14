@@ -263,7 +263,7 @@
     position:fixed;left:50%;bottom:100px;transform:translateX(-50%) translateY(10px);
     background:var(--gold);color:#1a1508;font-size:13px;font-weight:600;
     padding:10px 22px;border-radius:999px;opacity:0;pointer-events:none;
-    transition:opacity .2s, transform .2s;z-index:20;letter-spacing:.05em;
+    transition:opacity .2s, transform .2s;z-index:70;letter-spacing:.05em;
     box-shadow:0 4px 20px rgba(0,0,0,.4);
   }
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -286,6 +286,17 @@
 
   .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--night);z-index:30;color:var(--ink-dim);font-size:13px;letter-spacing:.2em}
 
+  /* ---- アプリ内モーダル(confirm/prompt/alertの代替)---- */
+  .modal-back{position:fixed;inset:0;background:rgba(8,9,20,.72);z-index:60;display:none;align-items:center;justify-content:center;padding:20px}
+  .modal-back.open{display:flex}
+  .modal{background:var(--card);border:1px solid var(--card-edge);border-radius:14px;max-width:460px;width:100%;padding:18px 16px;box-shadow:0 18px 50px rgba(0,0,0,.5)}
+  .modal .m-title{font-family:var(--serif);font-size:16px;color:var(--gold);margin-bottom:10px;letter-spacing:.06em}
+  .modal .m-msg{font-size:13px;line-height:1.8;color:var(--ink);white-space:pre-wrap;word-break:break-word;max-height:45vh;overflow:auto}
+  .modal .m-input{width:100%;margin-top:12px;padding:12px;border-radius:10px;border:1px solid var(--card-edge);background:var(--night-2);color:var(--ink);font-size:15px}
+  .modal .m-btns{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+  .modal .m-btn{width:100%;padding:14px;border-radius:10px;border:1px solid var(--card-edge);background:var(--night-2);color:var(--ink);font-size:14px;cursor:pointer}
+  .modal .m-btn.primary{background:var(--gold);border-color:var(--gold);color:#221c0c;font-weight:600}
+  .modal .m-btn.danger{background:#4a2430;border-color:#7a3a4a;color:#ffd9d9}
 </style>
 </head>
 <body>
@@ -294,6 +305,7 @@
 <div id="storageWarn" style="display:none;position:relative;z-index:2;background:#5a3040;color:#ffd9d9;font-size:12px;line-height:1.7;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;text-align:center">
   ⚠ この開き方ではデータを保存できません(ファイルのプレビュー表示です)。<br>SafariでURL(GitHub Pages)から開いてください。
 </div>
+<div id="saveErrWarn" style="display:none;position:relative;z-index:2;background:#5a3040;color:#ffd9d9;font-size:12px;line-height:1.7;padding:10px 16px;text-align:center"></div>
 
 <div class="wrap">
   <header>
@@ -390,6 +402,16 @@
   <div class="ov-foot">
     <button class="big-btn ghost" id="eCancel2">キャンセル</button>
     <button class="big-btn gold" id="eSave">保存する</button>
+  </div>
+</div>
+
+<!-- アプリ内モーダル(confirm/prompt/alert代替) -->
+<div class="modal-back" id="appModalBack">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="m-title" id="mTitle"></div>
+    <div class="m-msg" id="mMsg"></div>
+    <input class="m-input" id="mInput" style="display:none">
+    <div class="m-btns" id="mBtns"></div>
   </div>
 </div>
 
@@ -664,7 +686,7 @@ function quickSplitCheck(body){
 }
 /* ==== NYUKO_END ==== */
 
-let state = { current:"", months:{}, extras:[] };
+let state = { current:"", months:{}, extras:[], tombs:{} };
 let current = null; // {kind:"sign"|"extra", id or index}
 
 // ---- 年月ヘルパー(2026年1月〜2100年12月)----
@@ -715,12 +737,282 @@ function migrate(d){
       if(!validKey(k) || !d.months[k] || typeof d.months[k].signs !== "object"){ delete d.months[k]; }
     }
     if(!Array.isArray(d.extras)) d.extras = [];
+    if(!d.tombs || typeof d.tombs !== "object") d.tombs = {};
     return d;
   }
   const key = keyFromLabel(d && d.month) || defaultKey();
   const months = {};
   if(d && d.signs && typeof d.signs === "object" && Object.keys(d.signs).length){ months[key] = {signs:d.signs}; }
-  return { current:key, months, extras:(d && Array.isArray(d.extras)) ? d.extras : [] };
+  return { current:key, months, extras:(d && Array.isArray(d.extras)) ? d.extras : [], tombs:{} };
+}
+
+/* ==== SYNC_CORE_START ==== */
+// 同期・マージ・墓標の純ロジック(DOM・ネットワーク非依存。Nodeで単体テストする)
+const VALID_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const TS_SKEW_MAX = 7*24*3600*1000; // 受信タイムスタンプの未来側許容(時計ズレ7日まで。細工された巨大tsによる「不死身項目」を防ぐ)
+function tsCap(){ return Date.now() + TS_SKEW_MAX; }
+const TOMB_MAX_ITEM = 200;   // 個別墓標の上限(古い順に削除)
+const TOMB_MAX_GROUP = 100;  // グループ墓標の上限(古い順に削除)
+const EXTRAS_MAX = 500;      // その他テキストの件数上限
+const BODY_MAX = 400000;     // 本文の文字数上限
+const META_MAX = 200;        // 表示用メタ文字列の上限
+
+// uid: ミリ秒 + 単調増加カウンタ + ランダム(同一ミリ秒1万件でも衝突しない)
+let __uidCnt = 0;
+function uid(prefix){
+  __uidCnt = (__uidCnt + 1) % 0x40000000;
+  let rnd = "";
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  try{
+    const b = new Uint8Array(6);
+    (globalThis.crypto || require("crypto").webcrypto).getRandomValues(b);
+    for(const v of b) rnd += chars[v & 63];
+  }catch(e){
+    for(let i=0;i<6;i++) rnd += chars[Math.floor(Math.random()*64)];
+  }
+  return (prefix||"x") + "_" + Date.now().toString(36) + "_" + __uidCnt.toString(36) + rnd;
+}
+
+// 旧形式の updated 文字列("2026/3/5 14:02")を時刻に(なければ0)
+function parseUpd(u){
+  const m = String(u||"").match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/);
+  return m ? new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]).getTime() : 0;
+}
+// 項目の実効ts:ts(ms) > 旧形式updated > 0(=どんな変更にも負ける安全側)
+function itemTs(it){
+  if(!it) return 0;
+  const t = Number(it.ts);
+  if(Number.isFinite(t) && t > 0) return t;
+  return parseUpd(it.updated);
+}
+
+// ---- 墓標 ----
+// 個別: "a_<号>_<星座>"(記事) / "s_<号>"(星データ) / "x_…"(その他テキスト)
+// グループ: "g_month_<号>"(その号を空にする) / "g_before_<号>"(その号より前を全削除)
+function isGroupTombId(id){ return /^g_(month|before)_\d{4}-\d{2}$/.test(id); }
+function monthOfItemId(id){
+  let m = /^a_(\d{4}-\d{2})_[a-z]+$/.exec(id); if(m) return m[1];
+  m = /^s_(\d{4}-\d{2})$/.exec(id); if(m) return m[1];
+  return null;
+}
+// 実効墓標ts = max(個別墓標, 所属グループ墓標)
+function effTombTs(tombs, id){
+  let t = Number(tombs[id]) || 0;
+  const mo = monthOfItemId(id);
+  if(mo){
+    t = Math.max(t, Number(tombs["g_month_" + mo]) || 0);
+    for(const k in tombs){
+      if(k.startsWith("g_before_") && mo < k.slice(9)) t = Math.max(t, Number(tombs[k]) || 0);
+    }
+  }
+  return t;
+}
+function addTomb(tombs, id, ts){ tombs[id] = Math.max(Number(tombs[id])||0, ts); capTombs(tombs); }
+function capTombs(tombs){
+  const items = [], groups = [];
+  for(const k in tombs){ (isGroupTombId(k) ? groups : items).push(k); }
+  const trim = (arr, max)=>{
+    if(arr.length <= max) return;
+    arr.sort((a,b)=> (tombs[a]-tombs[b]) || (a<b?-1:1));
+    for(let i=0; i<arr.length-max; i++) delete tombs[arr[i]];
+  };
+  trim(items, TOMB_MAX_ITEM);
+  trim(groups, TOMB_MAX_GROUP);
+}
+
+// ---- サニタイズ(外部から入るデータ=同期・復元は必ずここを通す)----
+function sStr(v, max){ return typeof v === "string" ? v.slice(0, max) : ""; }
+function sNum(v, max){ const n = Number(v); return (Number.isFinite(n) && n >= 0) ? Math.min(Math.floor(n), max) : 0; }
+function sanitizeArticle(it, allowEmptyBody){
+  if(!it || typeof it !== "object") return null;
+  const body = sStr(it.body, BODY_MAX);
+  if(!body && !allowEmptyBody) return null;
+  const out = { body, month: sStr(it.month, META_MAX), updated: sStr(it.updated, META_MAX), ts: sNum(it.ts, tsCap()) };
+  const cp = sNum(it.copies, 1e9), ps = sNum(it.pastes, 1e9);
+  if(cp) out.copies = cp;
+  if(ps) out.pastes = ps;
+  if(it.prev && typeof it.prev === "object" && typeof it.prev.body === "string"){
+    out.prev = { body: sStr(it.prev.body, BODY_MAX), month: sStr(it.prev.month, META_MAX), updated: sStr(it.prev.updated, META_MAX) };
+  }
+  return out;
+}
+const SIGN_ID_SET = new Set(SIGNS.map(s=>s.id));
+// 全体を検査して送受信用ペイロード {months, extras, tombs} に整える。
+// 端末ローカル値(current / savedAt / lastExportAt / seqPos / lastAutoFp)はここで必ず落ちる。
+function sanitizePayload(d){
+  const out = { months: {}, extras: [], tombs: {} };
+  if(!d || typeof d !== "object") return out;
+  const months = (d.months && typeof d.months === "object" && !Array.isArray(d.months)) ? d.months : {};
+  for(const k of Object.keys(months)){
+    if(!validKey(k)) continue;
+    const src = months[k] || {};
+    const mo = { signs: {} };
+    const signs = (src.signs && typeof src.signs === "object") ? src.signs : {};
+    for(const id of Object.keys(signs)){
+      if(!SIGN_ID_SET.has(id)) continue;
+      const a = sanitizeArticle(signs[id]);
+      if(a) mo.signs[id] = a;
+    }
+    let sky = src.sky;
+    if(typeof sky === "string") sky = { body: sky };  // 旧形式(文字列)の互換
+    const sk = sanitizeArticle(sky);
+    if(sk){ delete sk.copies; delete sk.pastes; mo.sky = sk; }
+    if(Object.keys(mo.signs).length || mo.sky) out.months[k] = mo;
+  }
+  const extras = Array.isArray(d.extras) ? d.extras : [];
+  for(const x of extras.slice(0, EXTRAS_MAX)){
+    if(!x || typeof x !== "object") continue;
+    const title = sStr(x.title, META_MAX);
+    let a = sanitizeArticle(x);
+    if(!a){
+      // 本文が空でもタイトル付きのメモは有効(消さない)
+      if(!title || title === "無題") continue;
+      a = { body: "", month: sStr(x.month, META_MAX), updated: sStr(x.updated, META_MAX), ts: sNum(x.ts, tsCap()) };
+    }
+    a.title = title || "無題";
+    a.id = (typeof x.id === "string" && /^x[A-Za-z0-9_-]{0,63}$/.test(x.id)) ? x.id : uid("x");
+    out.extras.push(a);
+  }
+  const tombs = (d.tombs && typeof d.tombs === "object" && !Array.isArray(d.tombs)) ? d.tombs : {};
+  for(const k of Object.keys(tombs)){
+    if(!VALID_ID_RE.test(k)) continue;
+    const t = Number(tombs[k]);
+    if(Number.isFinite(t) && t > 0) out.tombs[k] = Math.min(Math.floor(t), tsCap()); // 墓標も未来側をクランプ
+  }
+  capTombs(out.tombs);
+  return out;
+}
+
+// ---- 内容キー(ts除外の内容比較・実測diff用)----
+function contentOf(it){
+  if(!it) return "";
+  return JSON.stringify([it.title||"", it.body||"", it.month||""]);
+}
+function contentMap(p){
+  const m = new Map();
+  for(const k in p.months){
+    const mo = p.months[k];
+    for(const id in mo.signs) m.set("a_"+k+"_"+id, contentOf(mo.signs[id]));
+    if(mo.sky) m.set("s_"+k, contentOf(mo.sky));
+  }
+  for(const x of p.extras) m.set(x.id, contentOf(x));
+  return m;
+}
+function diffCounts(before, after){
+  let added = 0, updated = 0, same = 0;
+  for(const [id, c] of after){
+    if(!before.has(id)) added++;
+    else if(before.get(id) !== c) updated++;
+    else same++;
+  }
+  return { added, updated, same };
+}
+
+// ---- 指紋(差分判定)----
+// キー順を固定したJSONで比較する。端末ローカル値はsanitizePayloadで既に除外済み。
+function stableStringify(v){
+  if(Array.isArray(v)) return "[" + v.map(stableStringify).join(",") + "]";
+  if(v && typeof v === "object"){
+    return "{" + Object.keys(v).sort().map(k=> JSON.stringify(k)+":"+stableStringify(v[k])).join(",") + "}";
+  }
+  return JSON.stringify(v);
+}
+function fingerprint(payload){ return stableStringify(payload); }
+
+// ---- LWWマージ(項目単位・ts新しい方。同点は正準表現の小さい方=決定的に収束)----
+function pickItem(x, y){
+  if(!x) return y && Object.assign({}, y);
+  if(!y) return x && Object.assign({}, x);
+  const tx = itemTs(x), ty = itemTs(y);
+  let win = x, lose = y;
+  if(ty > tx){ win = y; lose = x; }
+  else if(ty === tx && stableStringify(y) < stableStringify(x)){ win = y; lose = x; }
+  const out = Object.assign({}, win);
+  const cp = Math.max(x.copies||0, y.copies||0), ps = Math.max(x.pastes||0, y.pastes||0);
+  if(cp) out.copies = cp; if(ps) out.pastes = ps;
+  // 負けた側の内容が異なる場合は履歴(prev=直近1件)へ退避
+  if(lose.body && lose.body !== win.body){
+    out.prev = { body: lose.body, month: lose.month||"", updated: lose.updated||"" };
+  }
+  return out;
+}
+// a, b は sanitizePayload 済みであること
+function mergePayloads(a, b){
+  const out = { months: {}, extras: [], tombs: {} };
+  for(const k of new Set([...Object.keys(a.tombs), ...Object.keys(b.tombs)])){
+    out.tombs[k] = Math.max(Number(a.tombs[k])||0, Number(b.tombs[k])||0);
+  }
+  capTombs(out.tombs);
+  const alive = (id, it)=> itemTs(it) > effTombTs(out.tombs, id);
+  for(const k of new Set([...Object.keys(a.months), ...Object.keys(b.months)])){
+    const ma = a.months[k] || {signs:{}}, mb = b.months[k] || {signs:{}};
+    const mo = { signs: {} };
+    for(const id of new Set([...Object.keys(ma.signs), ...Object.keys(mb.signs)])){
+      const win = pickItem(ma.signs[id], mb.signs[id]);
+      if(win && alive("a_"+k+"_"+id, win)) mo.signs[id] = win;
+    }
+    const sky = pickItem(ma.sky, mb.sky);
+    if(sky && alive("s_"+k, sky)){ delete sky.copies; delete sky.pastes; mo.sky = sky; }
+    if(Object.keys(mo.signs).length || mo.sky) out.months[k] = mo;
+  }
+  const byId = new Map();
+  for(const x of [...a.extras, ...b.extras]){
+    byId.set(x.id, byId.has(x.id) ? pickItem(byId.get(x.id), x) : Object.assign({}, x));
+  }
+  // 旧形式(id無し)由来で両端末が別IDを振った完全一致の重複は1件に畳む(IDの小さい方を残す)
+  const seenSig = new Map();
+  for(const id of [...byId.keys()].sort()){
+    const x = byId.get(id);
+    if(!alive(id, x)) continue;
+    const sig = contentOf(x);
+    if(seenSig.has(sig)) continue;
+    seenSig.set(sig, id);
+    out.extras.push(x);
+  }
+  if(out.extras.length > EXTRAS_MAX) out.extras.length = EXTRAS_MAX;
+  return out;
+}
+
+// ---- 復元(統合)時の復活 ----
+// ファイル内の項目が墓標に負ける場合、ts を max(now, 実効墓標ts+1) に引き上げて復活させる。
+// ただし手元に「生きている」同IDの項目がある場合は通常のLWWに任せる(新しい編集を潰さない)。
+function resurrectForRestore(filePayload, localPayload, now){
+  const tombs = {};
+  for(const k of new Set([...Object.keys(filePayload.tombs), ...Object.keys(localPayload.tombs)])){
+    tombs[k] = Math.max(Number(filePayload.tombs[k])||0, Number(localPayload.tombs[k])||0);
+  }
+  const localAlive = (id)=>{
+    const mo = monthOfItemId(id);
+    let it = null;
+    if(mo){
+      const m = localPayload.months[mo];
+      if(m) it = id.startsWith("s_") ? m.sky : m.signs[id.slice(("a_"+mo+"_").length)];
+    }else{
+      it = localPayload.extras.find(x=>x.id===id) || null;
+    }
+    return !!(it && itemTs(it) > effTombTs(tombs, id));
+  };
+  const bump = (id, it)=>{
+    if(!it) return;
+    const et = effTombTs(tombs, id);
+    if(itemTs(it) <= et && !localAlive(id)) it.ts = Math.max(now, et + 1);
+  };
+  for(const k in filePayload.months){
+    const mo = filePayload.months[k];
+    for(const id in mo.signs) bump("a_"+k+"_"+id, mo.signs[id]);
+    if(mo.sky) bump("s_"+k, mo.sky);
+  }
+  for(const x of filePayload.extras) bump(x.id, x);
+  return filePayload;
+}
+/* ==== SYNC_CORE_END ==== */
+
+// state ⇔ ペイロードの橋渡し(currentなどの端末ローカル値はstate側にだけ残す)
+function payloadOf(st){ return sanitizePayload(st); }
+function adoptPayload(p){
+  state.months = p.months;
+  state.extras = p.extras;
+  state.tombs = p.tombs;
 }
 
 // ---- storage(アプリ保存領域 → localStorage → メモリのみ、の順で自動判定)----
@@ -737,7 +1029,8 @@ async function load(){
   try{
     let raw = null;
     if(hasAppStorage){
-      const r = await window.storage.get(KEY);
+      let r = null;
+      try{ r = await window.storage.get(KEY); }catch(e1){ r = null; }
       raw = r && r.value;
       if(!raw){
         try{ const r2 = await window.storage.get(LEGACY_KEY); raw = r2 && r2.value; needsResave = !!raw; }catch(e2){}
@@ -749,19 +1042,27 @@ async function load(){
     if(raw){
       const parsed = JSON.parse(raw);
       if(!(parsed && parsed.months)) needsResave = true; // 旧形式(単一月)だった
-      state = migrate(parsed);
+      const mig = migrate(parsed);
+      // 端末内データも起動時に一度サニタイズを通す(型・上限・ID字種の一元強制。旧形式はts=updated由来で受け入れ)
+      const p = sanitizePayload(mig);
+      state = { current: mig.current, savedAt: mig.savedAt, lastExportAt: mig.lastExportAt,
+                seqPos: mig.seqPos, lastAutoFp: mig.lastAutoFp,
+                months: p.months, extras: p.extras, tombs: p.tombs };
     }
   }catch(e){ /* 初回はキーが無いので正常 */ }
   if(needsResave) save(true);
-  if(!state.current) state.current = defaultKey();
+  if(!state.current || !validKey(state.current)) state.current = defaultKey();
   if(!state.months) state.months = {};
   if(!state.extras) state.extras = [];
+  if(!state.tombs) state.tombs = {};
   if(memoryOnly) document.getElementById("storageWarn").style.display = "block";
   document.getElementById("loading").style.display = "none";
   render();
   setTimeout(()=> tryAutoImport(), 400); // 開いた直後にも自動チェック(読めない環境では何もしない)
   await loadSyncConfig();
   if(sync){
+    // 鍵の先回り導出(裏で実行)。オフライン起動でも「閉じる瞬間の送信」の暗号化が間に合うようにする
+    try{ if(sync.pass && sync.salt) deriveKeyCached(sync.pass, sync.salt).catch(()=>{}); }catch(e){}
     setSyncStatus(`同期ID: ${sync.gistId} ／ 確認中…`);
     syncNow(false); // 起動時に自動同期(新しい方を採用)
   }else{
@@ -786,7 +1087,9 @@ async function load(){
     }
   }catch(e){}
 }
-async function save(silent){
+let saveFailWarned = false; // 非同期保存の失敗を握り潰さない(少なくとも初回は必ず警告する)
+async function save(silent, opts){
+  const localOnly = !!(opts && opts.localOnly); // 端末ローカル値(表示中の号・連続コピー位置など)だけの保存
   try{
     state.savedAt = Date.now();
     const raw = JSON.stringify(state);
@@ -796,11 +1099,28 @@ async function save(silent){
     if(hasAppStorage){ await window.storage.set(KEY, raw); }
     else if(hasLocalStorage){ localStorage.setItem(KEY, raw); }
     // memoryOnly時は画面上は動くが保存されない(バナーで警告済み)
-    scheduleCloudPush();
+    saveFailWarned = false;
+    setSaveErrBanner(false); // 保存が通ったのでエラーバナーを消す
+    if(!localOnly) scheduleCloudPush();
     return true;
   }catch(e){
-    if(!silent) toast("保存に失敗しました。バックアップ書き出しをおすすめします", true);
+    if(!silent || !saveFailWarned){
+      toast("⚠ 端末への保存に失敗しました。この画面を閉じると変更が消える可能性があります。バックアップ書き出しを", true);
+      saveFailWarned = true;
+    }
+    setSaveErrBanner(true, e); // 保存が成功するまで消えない警告を出す
     return silent ? true : false; // 位置記録などの軽い保存は失敗しても操作を止めない
+  }
+}
+// 保存失敗の常設バナー(次に保存が成功したら自動で消える)
+function setSaveErrBanner(show, e){
+  const el = document.getElementById("saveErrWarn");
+  if(!el) return;
+  if(show){
+    el.textContent = "⚠ 端末への保存に失敗しています。この画面を閉じると変更が消える可能性があります。「全データを書き出し」でバックアップを取ってください" + (e && e.name ? `(${e.name})` : "");
+    el.style.display = "block";
+  }else{
+    el.style.display = "none";
   }
 }
 
@@ -840,7 +1160,7 @@ function render(){
     el.innerHTML = `
       <button class="sc-main">
         <span class="sym">${s.sym}</span><span class="nm">${s.nm}</span>
-        <span class="st">${d && d.body ? (month ? month+" ／ " : "") + d.body.length.toLocaleString()+"字" : "未格納"}</span>${vf}
+        <span class="st">${d && d.body ? (month ? esc(month)+" ／ " : "") + d.body.length.toLocaleString()+"字" : "未格納"}</span>${vf}
       </button>
       <div class="sc-actions">
         <button class="sc-act copy">コピー${d && d.copies ? ` <b class="copy-n">${d.copies}</b>` : ""}</button>
@@ -856,11 +1176,11 @@ function render(){
   if(!state.extras.length){
     list.innerHTML = `<div class="empty-note" style="padding:10px">お知らせ文・定型文など、星座以外のテキストもここに置けます</div>`;
   }
-  state.extras.forEach((x,i)=>{
+  state.extras.forEach((x)=>{
     const el = document.createElement("button");
     el.className = "extra-item";
     el.innerHTML = `<span class="t">${esc(x.title||"無題")}</span><span class="c">${x.month ? esc(x.month)+" ／ " : ""}${(x.body||"").length.toLocaleString()}字</span>`;
-    el.onclick = ()=> openExtra(i);
+    el.onclick = ()=> openExtra(x.id);
     list.appendChild(el);
   });
   updateStats();
@@ -922,18 +1242,19 @@ async function storeArticle(key, id, text, auto){
     return;
   }
   if(signs[id] && signs[id].body){
-    if(!confirm(`${labelOf(key)}の${s.nm}は格納済みです。上書きしますか?`)) return;
+    if(!(await appConfirm(`${labelOf(key)}の${s.nm}は格納済みです。上書きしますか?`, {okLabel:"上書きする"}))) return;
   }
   const a = analyzeBody(text, id);
   const old = signs[id];
   const prev = (old && old.body) ? { body:old.body, month:old.month, updated:old.updated } : undefined;
   // 取り消し用にペースト前の状態を記録
+  lastDelete = null;
   lastPaste = {
     monthKey: key,
     signId: id,
     before: old ? JSON.parse(JSON.stringify(old)) : null
   };
-  signs[id] = { body:text, month: a.month ? a.month+"号" : labelOf(key), updated: nowStamp(), prev,
+  signs[id] = { body:text, month: a.month ? a.month+"号" : labelOf(key), updated: nowStamp(), ts: Date.now(), prev,
     copies: (old && old.copies) || 0,
     pastes: ((old && old.pastes) || 0) + (countOnce("p:"+key+":"+id) ? 1 : 0) };
   if(await save()){
@@ -1010,7 +1331,7 @@ async function autoPaste(){
   const s = SIGNS.find(x=>x.id===det.signId);
   let key = det.month ? keyFromLabel(det.month) : null;
   if(!key){
-    if(!confirm(`${s.nm}と判定しましたが、対象月を検出できませんでした。\n表示中の${labelOf(state.current)}として格納しますか?`)) return;
+    if(!(await appConfirm(`${s.nm}と判定しましたが、対象月を検出できませんでした。\n表示中の${labelOf(state.current)}として格納しますか?`, {okLabel:"この号に格納する"}))) return;
     key = state.current;
   }
   await storeArticle(key, det.signId, text, true);
@@ -1051,7 +1372,7 @@ function seqPos(items){
 }
 function setSeqPos(idx, items){
   state.seqPos = { key: state.current, idx, label: (items && items[idx]) ? items[idx].label : null };
-  save(true);
+  save(true, {localOnly:true}); // 端末ローカル値のみの変更:クラウド送信は予約しない
 }
 function renderSeq(){
   const bar = document.getElementById("seqBar");
@@ -1082,7 +1403,7 @@ async function seqCopy(){
   if(!ok) return; // コピーできなかったら進まない(飛ばし防止)
   if(countOnce("c:"+state.current+":"+it.sign.id)){
     const d = getSigns()[it.sign.id];
-    if(d) d.copies = (d.copies||0)+1;
+    if(d){ d.copies = (d.copies||0)+1; save(true); } // copiesは同期対象:通常保存で送信予約
   }
   setSeqPos(idx + 1, items);
   render();
@@ -1108,19 +1429,26 @@ async function pasteSky(){
   if(!t || !t.trim()){ toast("クリップボードが空です。星データをコピーしてから押してください", true); return; }
   const cur = getSky();
   if(cur && cur.body && cur.body !== t){
-    if(!confirm(`${labelOf(state.current)}の星データは格納済み(${cur.body.length.toLocaleString()}字)です。上書きしますか?`)) return;
+    if(!(await appConfirm(`${labelOf(state.current)}の星データは格納済み(${cur.body.length.toLocaleString()}字)です。上書きしますか?`, {okLabel:"上書きする"}))) return;
   }
   curSigns(); // 月の入れ物を確保
-  state.months[state.current].sky = { body: t, updated: nowStamp() };
+  state.months[state.current].sky = { body: t, updated: nowStamp(), ts: Date.now() };
   state.lastAutoFp = cfgFp(t); // 自動取り込みが星データに反応しないように
   if(await save()){ toast(`${labelOf(state.current)}の星データを格納しました(${t.length.toLocaleString()}字)`); render(); }
 }
 async function delSky(){
   const cur = getSky();
   if(!cur){ toast("星データは未格納です", true); return; }
-  if(!confirm(`${labelOf(state.current)}の星データ(${cur.body.length.toLocaleString()}字)を削除しますか?`)) return;
+  if(!(await appConfirm(`${labelOf(state.current)}の星データ(${cur.body.length.toLocaleString()}字)を削除しますか?`, {okLabel:"削除する", danger:true}))) return;
+  const tombId = "s_" + state.current;
+  const tombTs = Math.max(Date.now(), itemTs(cur) + 1);
+  addTomb(state.tombs, tombId, tombTs);
   delete state.months[state.current].sky;
-  if(await save()){ toast("星データを削除しました"); render(); }
+  lastPaste = null;
+  lastDelete = { tombId, tombTs, restore: JSON.parse(JSON.stringify(cur)),
+                 put: (it)=>{ if(!state.months[state.current]) state.months[state.current] = {signs:{}}; state.months[state.current].sky = it; },
+                 label: `${labelOf(state.current)}の星データ` };
+  if(await save()){ toast("星データを削除しました"); showUndoBar(`${labelOf(state.current)}の星データを削除しました`); render(); }
 }
 function renderSky(){
   const bar = document.getElementById("skyBar");
@@ -1171,30 +1499,46 @@ async function tryAutoImport(text){
     if(!validKey(skyKey)) return;
     const curSky = (state.months[skyKey]||{}).sky;
     if(curSky && curSky.body === t){ state.lastAutoFp = fp; return; } // 同一内容は静かにスキップ
-    state.lastAutoFp = fp; save(true); // 上書きを断っても同じ内容で再度は聞かない
+    state.lastAutoFp = fp; save(true, {localOnly:true}); // 上書きを断っても同じ内容で再度は聞かない
     if(curSky && curSky.body){
-      if(!confirm(`${labelOf(skyKey)}の星データは格納済み(${curSky.body.length.toLocaleString()}字)です。\n新しい内容(${t.length.toLocaleString()}字)で上書きしますか?`)) return;
+      if(!(await appConfirm(`${labelOf(skyKey)}の星データは格納済み(${curSky.body.length.toLocaleString()}字)です。\n新しい内容(${t.length.toLocaleString()}字)で上書きしますか?`, {okLabel:"上書きする"}))) return;
     }
     if(!state.months[skyKey]) state.months[skyKey] = {signs:{}};
-    state.months[skyKey].sky = { body: t, updated: nowStamp() };
+    state.months[skyKey].sky = { body: t, updated: nowStamp(), ts: Date.now() };
     if(await save()){ toast(`${labelOf(skyKey)}の星データを自動格納しました(${t.length.toLocaleString()}字)`); render(); }
     return;
   }
   if(!looksLikeArticle(t)) return;
   const det = detectBest(t);
   if(!det.signId) return;
-  state.lastAutoFp = fp; save(true); // 確認をキャンセルしても同じ内容で再度は聞かない
+  state.lastAutoFp = fp; save(true, {localOnly:true}); // 確認をキャンセルしても同じ内容で再度は聞かない
   const s = SIGNS.find(x=>x.id===det.signId);
   let key = det.month ? keyFromLabel(det.month) : null;
   if(!key){
-    if(!confirm(`コピー中の記事を${s.nm}と判定しましたが、対象月を検出できませんでした。\n表示中の${labelOf(state.current)}として格納しますか?`)) return;
+    if(!(await appConfirm(`コピー中の記事を${s.nm}と判定しましたが、対象月を検出できませんでした。\n表示中の${labelOf(state.current)}として格納しますか?`, {okLabel:"この号に格納する"}))) return;
     key = state.current;
   }
   await storeArticle(key, det.signId, t, true);
 }
 window.addEventListener("focus", ()=> tryAutoImport());
 document.addEventListener("visibilitychange", ()=>{
-  if(document.visibilityState === "visible") tryAutoImport();
+  if(document.visibilityState === "visible"){
+    tryAutoImport();
+    if(sync) syncNow(false); // 画面復帰時の自動同期
+  }else{
+    flushPush(); // 画面が隠れた瞬間の即時送信(ベストエフォート)
+  }
+});
+window.addEventListener("pagehide", ()=> flushPush()); // 閉じる瞬間の即時送信(ベストエフォート)
+// 想定外のエラーを黙らせず画面に出す(内容は先頭120字まで)
+window.addEventListener("error", (ev)=>{
+  const m = ev && ev.message ? String(ev.message).slice(0,120) : "";
+  if(m) toast("⚠ エラーが発生しました:" + m, true);
+});
+window.addEventListener("unhandledrejection", (ev)=>{
+  const r = ev && ev.reason;
+  const m = r ? String((r && r.message) || r).slice(0,120) : "";
+  if(m) toast("⚠ エラーが発生しました:" + m, true);
 });
 document.addEventListener("paste", (ev)=>{
   // 編集画面などの入力欄への貼り付けは通常動作を優先
@@ -1204,8 +1548,10 @@ document.addEventListener("paste", (ev)=>{
   if(t) tryAutoImport(t);
 });
 
-// ---- ペーストの取り消し ----
-let lastPaste = null; // {monthKey, signId, before}
+// ---- 取り消し(ペースト取り消し・単発削除の直後保護)----
+// 単発削除は毎回のファイルDLではなく「墓標+トースト『元に戻す』」で保護する(モバイルUX判断)
+let lastPaste = null;  // {monthKey, signId, before}
+let lastDelete = null; // {tombId, tombTs, restore, put(it), label}
 let undoTimer = null;
 function showUndoBar(msg){
   document.getElementById("undoText").textContent = msg;
@@ -1216,7 +1562,17 @@ function showUndoBar(msg){
 function hideUndoBar(){
   document.getElementById("undoBar").classList.remove("show");
 }
-async function undoPaste(){
+async function undoAction(){
+  if(lastDelete){
+    const u = lastDelete; lastDelete = null; hideUndoBar();
+    // 自分が作った墓標を除去し、復元tsは max(now, 墓標ts+1)(NTP補正等の時計巻き戻り防御)
+    if(state.tombs[u.tombId] === u.tombTs) delete state.tombs[u.tombId];
+    const it = u.restore;
+    it.ts = Math.max(Date.now(), u.tombTs + 1);
+    u.put(it);
+    if(await save()){ render(); toast(`${u.label}を元に戻しました`); }
+    return;
+  }
   if(!lastPaste){ hideUndoBar(); return; }
   // 月が(月まとめ削除などで)消えていても、復元先を作り直して確実に戻す
   if(lastPaste.before && !state.months[lastPaste.monthKey]){
@@ -1224,8 +1580,17 @@ async function undoPaste(){
   }
   const mo = state.months[lastPaste.monthKey];
   if(mo && mo.signs){
-    if(lastPaste.before) mo.signs[lastPaste.signId] = lastPaste.before;
-    else delete mo.signs[lastPaste.signId];
+    const cur = mo.signs[lastPaste.signId];
+    if(lastPaste.before){
+      const back = lastPaste.before;
+      // ペーストで進んだtsより必ず新しくして戻す(戻した内容が同期で再上書きされないように)
+      back.ts = Math.max(Date.now(), itemTs(cur) + 1);
+      mo.signs[lastPaste.signId] = back;
+    }else{
+      // ペースト前は空だった → 削除として墓標を残す(同期先でも消える)
+      addTomb(state.tombs, "a_" + lastPaste.monthKey + "_" + lastPaste.signId, Math.max(Date.now(), itemTs(cur) + 1));
+      delete mo.signs[lastPaste.signId];
+    }
   }
   const s = SIGNS.find(x=>x.id===lastPaste.signId);
   lastPaste = null;
@@ -1314,9 +1679,11 @@ function openSign(id){
   }
   showOverlay("viewer");
 }
-function openExtra(i){
-  current = {kind:"extra", index:i};
-  const x = state.extras[i];
+function findExtra(id){ return state.extras.find(e=>e.id===id) || null; }
+function openExtra(id){
+  current = {kind:"extra", id};
+  const x = findExtra(id);
+  if(!x){ toast("このテキストは見つかりません(同期で削除された可能性)", true); render(); return; }
   document.getElementById("vTitle").textContent = x.title || "無題";
   document.getElementById("vMeta").textContent = `${x.month ? x.month+" ／ " : ""}${(x.body||"").length.toLocaleString()}字 ／ 更新 ${x.updated||"—"}`;
   document.getElementById("vParts").style.display = "none";
@@ -1362,9 +1729,9 @@ function openEditor(){
     document.getElementById("eTitle").textContent = "テキスト";
     ti.style.display = "block";
     mi.style.display = "block";
-    if(current.index === -1){ ti.value=""; ta.value=""; }
-    else{ ti.value = state.extras[current.index].title||""; ta.value = state.extras[current.index].body||""; }
-    const existing = current.index>=0 ? state.extras[current.index] : {};
+    const existing = current.id ? (findExtra(current.id) || {}) : {};
+    ti.value = existing.title || "";
+    ta.value = existing.body || "";
     mi.value = existing.month || labelOf(state.current);
   }
   hideOverlay("viewer");
@@ -1383,24 +1750,37 @@ async function saveEditor(){
       const prev = (old && old.body && old.body !== body)
         ? { body:old.body, month:old.month, updated:old.updated }
         : (old ? old.prev : undefined);
-      signs[current.id] = {body, month, updated:stamp, prev,
+      signs[current.id] = {body, month, updated:stamp, ts:Date.now(), prev,
         copies: (old && old.copies) || 0, pastes: (old && old.pastes) || 0};
     }
-    else delete signs[current.id];
+    else if(signs[current.id]){
+      // 空にして保存=削除。同期先にも伝わるよう墓標を残す
+      addTomb(state.tombs, "a_" + state.current + "_" + current.id, Math.max(Date.now(), itemTs(signs[current.id]) + 1));
+      delete signs[current.id];
+    }
   }else{
     const month = document.getElementById("eMonthInput").value.trim() || labelOf(state.current);
     const title = document.getElementById("eTitleInput").value.trim() || "無題";
-    if(current.index === -1){
-      if(body.trim()||title!=="無題"){ state.extras.push({title, body, month, updated:stamp}); current.index = state.extras.length-1; }
+    if(!current.id){
+      if(body.trim()||title!=="無題"){
+        const nx = {id: uid("x"), title, body, month, updated:stamp, ts:Date.now()};
+        state.extras.push(nx); current.id = nx.id;
+      }
     }else{
-      const old = state.extras[current.index];
-      const prev = (old && old.body && old.body !== body)
-        ? { body:old.body, month:old.month, updated:old.updated }
-        : (old ? old.prev : undefined);
-      state.extras[current.index] = {title, body, month, updated:stamp, prev};
+      const old = findExtra(current.id);
+      if(old){
+        const prev = (old.body && old.body !== body)
+          ? { body:old.body, month:old.month, updated:old.updated }
+          : old.prev;
+        Object.assign(old, {title, body, month, updated:stamp, ts:Date.now(), prev});
+      }else{
+        const nx = {id: uid("x"), title, body, month, updated:stamp, ts:Date.now()};
+        state.extras.push(nx); current.id = nx.id;
+      }
     }
   }
   if(await save()){
+    onModalClosed(); // 編集終了:保留中の同期があれば再開
     let msg = "保存しました", err = false;
     if(current.kind === "sign" && body.trim()){
       const cr = compileParts(body);
@@ -1410,17 +1790,45 @@ async function saveEditor(){
     toast(msg, err);
     hideOverlay("editor");
     render();
+    onModalClosed(); // 編集終了:保留中の同期があれば再開
     if(current.kind === "sign" && body.trim()) openSign(current.id); // 保存後すぐ3分割ボタンへ
   }
 }
 async function deleteCurrent(){
-  if(!confirm("この本文を削除しますか?")) return;
-  if(current.kind==="sign") delete curSigns()[current.id];
-  else if(current.index >= 0) state.extras.splice(current.index,1);
+  if(!(await appConfirm("この本文を削除しますか?", {okLabel:"削除する", danger:true}))) return;
+  lastPaste = null; lastDelete = null;
+  if(current.kind==="sign"){
+    const signs = curSigns();
+    const it = signs[current.id];
+    if(it){
+      const monthKey = state.current, signId = current.id;
+      const tombId = "a_" + monthKey + "_" + signId;
+      const tombTs = Math.max(Date.now(), itemTs(it) + 1);
+      addTomb(state.tombs, tombId, tombTs);
+      delete signs[signId];
+      const s2 = SIGNS.find(x=>x.id===signId);
+      lastDelete = { tombId, tombTs, restore: JSON.parse(JSON.stringify(it)),
+        put: (o)=>{ if(!state.months[monthKey]) state.months[monthKey] = {signs:{}}; state.months[monthKey].signs[signId] = o; },
+        label: `${s2.nm}(${labelOf(monthKey)})` };
+    }
+  }else if(current.id){
+    const idx = state.extras.findIndex(e=>e.id===current.id);
+    if(idx >= 0){
+      const it = state.extras[idx];
+      const tombTs = Math.max(Date.now(), itemTs(it) + 1);
+      addTomb(state.tombs, it.id, tombTs);
+      state.extras.splice(idx, 1);
+      lastDelete = { tombId: it.id, tombTs, restore: JSON.parse(JSON.stringify(it)),
+        put: (o)=>{ state.extras.push(o); },
+        label: `「${it.title||"無題"}」` };
+    }
+  }
   if(await save()){
     toast("削除しました");
+    if(lastDelete) showUndoBar("削除しました");
     hideOverlay("editor");
     render();
+    onModalClosed(); // 編集終了:保留中の同期があれば再開
   }
 }
 
@@ -1428,7 +1836,7 @@ async function deleteCurrent(){
 async function copyBody(){
   let text = "";
   if(current.kind==="sign") text = (getSigns()[current.id]||{}).body||"";
-  else text = (state.extras[current.index]||{}).body||"";
+  else text = (findExtra(current.id)||{}).body||"";
   if(!text){ toast("本文がありません", true); return; }
   if(await copyText(text, "コピーしました")) countCopy();
 }
@@ -1437,38 +1845,86 @@ async function copyBody(){
 function countCopy(){
   let obj = null, key = "";
   if(current && current.kind === "sign"){ obj = getSigns()[current.id]; key = "c:"+state.current+":"+current.id; }
-  else if(current && current.kind === "extra"){ obj = state.extras[current.index]; key = "cx:"+current.index; }
+  else if(current && current.kind === "extra"){ obj = findExtra(current.id); key = "cx:"+current.id; }
   if(!obj) return;
   if(countOnce(key)){ obj.copies = (obj.copies||0)+1; save(true); render(); }
 }
 
 // ---- 前の版に戻す(現在の版と入れ替え。もう一度押せば戻せる)----
 async function revertCurrent(){
-  const obj = current.kind==="sign" ? getSigns()[current.id] : state.extras[current.index];
+  const obj = current.kind==="sign" ? getSigns()[current.id] : findExtra(current.id);
   if(!obj || !obj.prev || !obj.prev.body){ toast("前の版はありません", true); return; }
-  if(!confirm("前の版に戻しますか?(現在の本文と入れ替わります)")) return;
+  if(!(await appConfirm("前の版に戻しますか?(現在の本文と入れ替わります)", {okLabel:"前の版に戻す"}))) return;
   const cur = { body:obj.body, month:obj.month, updated:obj.updated };
   obj.body = obj.prev.body; obj.month = obj.prev.month; obj.updated = obj.prev.updated;
   obj.prev = cur;
+  obj.ts = Date.now(); // 入れ替えは内容変更として同期に乗せる
   if(await save()){
     toast("前の版に戻しました(もう一度押すと元に戻せます)");
     render();
-    if(current.kind==="sign") openSign(current.id); else openExtra(current.index);
+    if(current.kind==="sign") openSign(current.id); else openExtra(current.id);
   }
 }
 
 // ---- バックアップ書き出し・復元 ----
-function exportBackup(){
+function backupJson(){
+  const p = payloadOf(state);
+  const out = Object.assign({ current: state.current }, p,
+    { syncHint: (sync && sync.gistId) ? { gistId: sync.gistId } : undefined });
+  return JSON.stringify(out, null, 2);
+}
+function backupFileName(){
+  const n = new Date();
+  return `article-vault-${n.getFullYear()}${String(n.getMonth()+1).padStart(2,"0")}${String(n.getDate()).padStart(2,"0")}.json`;
+}
+function downloadText(text, name){
+  const blob = new Blob([text], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+}
+// 破壊的操作の直前用:共有シートを出さずに黙ってダウンロードだけする
+function autoBackupDownload(){
   try{
-    const out = Object.assign({}, state, { syncHint: (sync && sync.gistId) ? { gistId: sync.gistId } : undefined });
-    const blob = new Blob([JSON.stringify(out, null, 2)], {type:"application/json"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    const n = new Date();
-    a.download = `article-vault-${n.getFullYear()}${String(n.getMonth()+1).padStart(2,"0")}${String(n.getDate()).padStart(2,"0")}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
-    state.lastExportAt = Date.now(); save(true);
+    downloadText(backupJson(), backupFileName());
+    state.lastExportAt = Date.now(); save(true, {localOnly:true}); // 自動DLもバックアップとして日時を記録(30日警告の解消)
+    return true;
+  }
+  catch(e){ return false; }
+}
+// 手動書き出し:共有シート → 保存ダイアログ → 通常ダウンロード の順にフォールバック
+async function exportBackup(){
+  const text = backupJson(), name = backupFileName();
+  try{
+    const file = new File([text], name, {type:"application/json"});
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:"記事保管庫バックアップ"});
+      state.lastExportAt = Date.now(); save(true, {localOnly:true});
+      toast("バックアップを書き出しました");
+      return;
+    }
+  }catch(e){
+    if(e && e.name === "AbortError") return; // キャンセルは黙って正常終了
+    /* 共有不可 → 次の手段へ */
+  }
+  try{
+    if(window.showSaveFilePicker){
+      const h = await window.showSaveFilePicker({ suggestedName: name,
+        types: [{description:"JSON", accept:{"application/json":[".json"]}}] });
+      const w = await h.createWritable();
+      await w.write(text); await w.close();
+      state.lastExportAt = Date.now(); save(true, {localOnly:true});
+      toast("バックアップを書き出しました");
+      return;
+    }
+  }catch(e){
+    if(e && e.name === "AbortError") return; // キャンセルは黙って正常終了
+  }
+  try{
+    downloadText(text, name);
+    state.lastExportAt = Date.now(); save(true, {localOnly:true});
     toast("バックアップを書き出しました");
   }catch(e){
     toast("書き出しに失敗しました", true);
@@ -1477,27 +1933,49 @@ function exportBackup(){
 function importBackup(file){
   const r = new FileReader();
   r.onload = async ()=>{
-    try{
-      const parsed = JSON.parse(r.result);
-      const hint = parsed && parsed.syncHint && parsed.syncHint.gistId;
-      const data = migrate(parsed);
-      if(!data || typeof data !== "object" || !data.months) throw new Error("format");
-      const doMerge = confirm("復元方法を選んでください。\n\n[OK] 統合:いまのデータとバックアップを合体します(同じ記事は新しい方を採用。おすすめ)\n[キャンセル] 置き換え:いまのデータを消してバックアップの内容だけにします");
-      if(doMerge){
-        state = mergeStates(state, data);
-      }else{
-        if(!confirm("いまのデータは消えて、バックアップの内容だけになります。本当に置き換えますか?")) return;
-        state = data;
-      }
+    if(typeof r.result === "string" && r.result.length > 20 * 1024 * 1024){
+      toast("ファイルが大きすぎます(20MB超)。バックアップファイルか確認してください", true); return;
+    }
+    let parsed = null;
+    try{ parsed = JSON.parse(r.result); }catch(e){ toast("読み込めませんでした。ファイルを確認してください", true); return; }
+    if(!parsed || typeof parsed !== "object"){ toast("読み込めませんでした。ファイルを確認してください", true); return; }
+    const hint = parsed.syncHint && parsed.syncHint.gistId;
+    const fileData = sanitizePayload(migrate(parsed)); // 外部データは必ずサニタイズを通す
+    const mode = await showModal({
+      title: "復元方法を選んでください", cancelValue: null,
+      msg: "統合(おすすめ):いまのデータとバックアップを合体します。同じ記事は新しい方を採用し、削除済みの記事もファイルにあれば復活します。\n※ファイル作成後に(他の端末などで)削除された記事は、統合でも削除が優先されることがあります。\n\n置き換え:いまのデータを消してバックアップの内容だけにします。",
+      buttons: [
+        { label: "統合する(おすすめ)", value: "merge", primary: true },
+        { label: "置き換える(いまのデータを消す)", value: "replace", danger: true },
+        { label: "キャンセル", value: null }
+      ]
+    });
+    if(!mode) return;
+    if(mode === "merge"){
+      const local = payloadOf(state);
+      const before = contentMap(local);
+      // ファイル内の項目は墓標があっても復活させる(ts = max(now, 実効墓標ts+1)。未来の墓標にも勝つ)
+      const filed = resurrectForRestore(fileData, local, Date.now());
+      const merged = mergePayloads(local, filed);
+      adoptPayload(merged);
       if(await save()){
-        toast(doMerge ? "統合して復元しました" : "置き換えて復元しました");
+        const d = diffCounts(before, contentMap(merged));
+        // 実測値のみ表示(推定値の表示は禁止)
+        toast(`統合しました:追加${d.added}件・更新${d.updated}件・最新のまま${d.same}件`);
         render();
-        if(hint && (!sync || !sync.gistId)){
-          setTimeout(()=> alert("このバックアップにはクラウド同期のID(同期ID)が含まれていました:\n\n" + hint + "\n\n新しい端末で同期を再開する場合は、「同期を設定」でトークンとパスワードと一緒にこのIDを入力してください。"), 300);
-        }
       }
-    }catch(e){
-      toast("読み込めませんでした。ファイルを確認してください", true);
+    }else{
+      const ok = await appConfirm(
+        "いまのデータは消えて、バックアップの内容だけになります。\n実行前に現在のデータを自動でダウンロードします。\n※クラウド同期を設定中の場合、次回同期でクラウド側の新しい記事とは統合されます(完全な巻き戻しにはなりません)。\n本当に置き換えますか?",
+        { okLabel: "置き換える", danger: true });
+      if(!ok) return;
+      autoBackupDownload(); // 置き換え直前の自動バックアップ(共有シートなし)
+      adoptPayload(fileData);
+      if(!validKey(state.current)) state.current = defaultKey();
+      if(await save()){ toast("置き換えて復元しました"); render(); }
+    }
+    if(hint && (!sync || !sync.gistId)){
+      setTimeout(()=> appAlert("このバックアップにはクラウド同期のID(同期ID)が含まれていました:\n\n" + hint + "\n\n新しい端末で同期を再開する場合は、「同期を設定」でトークンとパスワードと一緒にこのIDを入力してください。", "同期IDのお知らせ"), 300);
     }
   };
   r.onerror = ()=> toast("ファイルを読み込めませんでした。もう一度選び直してください", true);
@@ -1510,83 +1988,47 @@ const GIST_FILE = "article-vault.json";
 let sync = null; // {token, gistId, pass, lastAt}
 let pushTimer = null;
 
-// ---- 暗号化(AES-GCM・パスワード方式)----
+// ---- 暗号化(AES-GCM + PBKDF2 15万回・パスワード方式)----
 // クラウドには暗号化した文字列だけを置く。パスワードは各端末の中にのみ保存。
+// 鍵はセッション内でキャッシュし(設定に固定salt)、鍵導出は初回のみ。IVは毎回ランダム。
+// (GCMの安全性要件はIVの一意性であり、salt再利用は許容)
 function b64(buf){
   let s = "", u = new Uint8Array(buf);
   for(let i=0; i<u.length; i+=0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i+0x8000));
   return btoa(s);
 }
 function unb64(s){ return Uint8Array.from(atob(s), c=>c.charCodeAt(0)); }
-async function deriveKey(pass, salt){
-  const km = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
-  return crypto.subtle.deriveKey(
-    { name:"PBKDF2", salt, iterations:150000, hash:"SHA-256" },
-    km, { name:"AES-GCM", length:256 }, false, ["encrypt","decrypt"]
-  );
+const keyCache = new Map(); // saltのb64 → Promise<CryptoKey>(解除時に必ず破棄する)
+function deriveKeyCached(pass, saltB64){
+  const ck = "k:" + saltB64;
+  if(!keyCache.has(ck)){
+    const p = (async ()=>{
+      const km = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+      return crypto.subtle.deriveKey(
+        { name:"PBKDF2", salt: unb64(saltB64), iterations:150000, hash:"SHA-256" },
+        km, { name:"AES-GCM", length:256 }, false, ["encrypt","decrypt"]
+      );
+    })();
+    p.catch(()=> keyCache.delete(ck));
+    keyCache.set(ck, p);
+  }
+  return keyCache.get(ck);
 }
-async function encryptState(pass){
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveKey(pass, salt);
-  const ct = await crypto.subtle.encrypt({ name:"AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(state)));
-  return JSON.stringify({ enc:1, salt:b64(salt), iv:b64(iv), data:b64(ct) });
+async function encryptText(plain, pass, saltB64){
+  const iv = crypto.getRandomValues(new Uint8Array(12)); // IVは毎回ランダム
+  const key = await deriveKeyCached(pass, saltB64);
+  const ct = await crypto.subtle.encrypt({ name:"AES-GCM", iv }, key, new TextEncoder().encode(plain));
+  return JSON.stringify({ enc:2, salt:saltB64, iv:b64(iv), data:b64(ct) });
 }
-async function decryptPayload(text, pass){
+async function decryptPayloadText(text, pass){
   const obj = JSON.parse(text);
   if(!obj || !obj.enc) return obj; // 旧形式(平文)はそのまま読める
   try{
-    const key = await deriveKey(pass || "", unb64(obj.salt));
+    // 復号はメッセージ内のsaltから鍵を導出(旧enc:1のランダムsaltとも互換)
+    const key = await deriveKeyCached(pass || "", obj.salt);
     const pt = await crypto.subtle.decrypt({ name:"AES-GCM", iv:unb64(obj.iv) }, key, unb64(obj.data));
     return JSON.parse(new TextDecoder().decode(pt));
   }catch(e){ throw new Error("pass"); }
-}
-
-// ---- 競合時のマージ(記事単位で新しい方を採用)----
-function parseUpd(u){
-  const m = String(u||"").match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/);
-  return m ? new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]).getTime() : 0;
-}
-function mergeStates(a, b){
-  const out = {
-    current: (b.savedAt||0) > (a.savedAt||0) ? b.current : a.current,
-    savedAt: Math.max(a.savedAt||0, b.savedAt||0),
-    lastExportAt: Math.max(a.lastExportAt||0, b.lastExportAt||0),
-    seqPos: a.seqPos || null,       // 連続コピーの位置はこの端末のものを維持
-    lastAutoFp: a.lastAutoFp || null, // 取り込み済み指紋もこの端末のものを維持
-    months: {}, extras: []
-  };
-  const keys = new Set([...Object.keys(a.months||{}), ...Object.keys(b.months||{})]);
-  for(const k of keys){
-    const sa = ((a.months||{})[k]||{}).signs || {};
-    const sb = ((b.months||{})[k]||{}).signs || {};
-    const merged = {};
-    for(const id of new Set([...Object.keys(sa), ...Object.keys(sb)])){
-      const x = sa[id], y = sb[id];
-      if(x && y){
-        const win = parseUpd(y.updated) > parseUpd(x.updated) ? y : x;
-        win.copies = Math.max(x.copies||0, y.copies||0);
-        win.pastes = Math.max(x.pastes||0, y.pastes||0);
-        merged[id] = win;
-      }
-      else merged[id] = x || y;
-    }
-    // 星データ(号ごと)は更新が新しい方を採用
-    const ka = ((a.months||{})[k]||{}).sky, kb = ((b.months||{})[k]||{}).sky;
-    let sky = null;
-    if(ka && kb) sky = parseUpd(kb.updated) > parseUpd(ka.updated) ? kb : ka;
-    else sky = ka || kb || null;
-    if(Object.keys(merged).length || sky){
-      out.months[k] = { signs: merged };
-      if(sky) out.months[k].sky = sky;
-    }
-  }
-  const seen = new Set();
-  for(const x of [...(a.extras||[]), ...(b.extras||[])]){
-    const sig = (x.title||"") + "\u0000" + (x.body||"");
-    if(!seen.has(sig)){ seen.add(sig); out.extras.push(x); }
-  }
-  return out;
 }
 
 function setSyncStatus(msg, err){
@@ -1601,7 +2043,7 @@ function syncOkStatus(extra){
 async function loadSyncConfig(){
   try{
     let raw = null;
-    if(hasAppStorage){ const r = await window.storage.get(SYNC_KEY); raw = r && r.value; }
+    if(hasAppStorage){ try{ const r = await window.storage.get(SYNC_KEY); raw = r && r.value; }catch(e1){} }
     else if(hasLocalStorage){ raw = localStorage.getItem(SYNC_KEY); }
     if(raw) sync = JSON.parse(raw);
   }catch(e){}
@@ -1616,19 +2058,39 @@ async function saveSyncConfig(){
 function gistHeaders(){
   return { "Authorization": "Bearer " + sync.token, "Accept": "application/vnd.github+json", "Content-Type": "application/json" };
 }
+function ensureSalt(){
+  if(!sync.salt){ sync.salt = b64(crypto.getRandomValues(new Uint8Array(16))); saveSyncConfig(); }
+  return sync.salt;
+}
+let cloudCache = { etag: null, content: null }; // 変更なし(304)のとき全量再取得を省くためのメモリ内キャッシュ(暗号文のまま保持)
 async function pullCloud(){
-  const res = await fetch("https://api.github.com/gists/" + sync.gistId, { headers: gistHeaders() });
+  const headers = gistHeaders();
+  if(cloudCache.etag && cloudCache.content) headers["If-None-Match"] = cloudCache.etag;
+  const res = await fetch("https://api.github.com/gists/" + sync.gistId, { headers });
+  if(res.status === 304) return decryptPayloadText(cloudCache.content, sync.pass); // クラウド変更なし:手元の暗号文を再復号(鍵はキャッシュ済み)
   if(res.status === 401) throw new Error("token");
   if(res.status === 404) throw new Error("gist");
   if(!res.ok) throw new Error("http" + res.status);
   const g = await res.json();
   const f = g.files && g.files[GIST_FILE];
   if(!f) return null;
-  const content = f.truncated ? await (await fetch(f.raw_url)).text() : f.content;
-  return decryptPayload(content, sync.pass);
+  let content = f.content;
+  if(f.truncated){
+    const r2 = await fetch(f.raw_url);
+    if(!r2.ok) throw new Error("http" + r2.status); // 切り詰め時の本体取得失敗も握り潰さない
+    content = await r2.text();
+  }
+  cloudCache = { etag: res.headers.get("ETag"), content: (typeof content === "string" ? content : null) };
+  return decryptPayloadText(content, sync.pass); // 復号失敗はthrow(呼び出し側で同期を停止する)
 }
-async function pushCloud(){
-  const content = sync.pass ? await encryptState(sync.pass) : JSON.stringify(state);
+// 送信するのはサニタイズ済みペイロードのみ(端末ローカル値は含めない=ピンポン送信防止)
+async function encryptPayloadNow(payload){
+  if(!sync.pass) throw new Error("pass"); // パスフレーズ必須(平文送信はしない)
+  return encryptText(JSON.stringify(payload), sync.pass, ensureSalt());
+}
+let lastPushedFp = null; // 最後にクラウドへ送った内容の指紋(未送信変更の判定用)
+async function pushCloud(payload){
+  const content = await encryptPayloadNow(payload);
   const res = await fetch("https://api.github.com/gists/" + sync.gistId, {
     method: "PATCH",
     headers: gistHeaders(),
@@ -1636,8 +2098,28 @@ async function pushCloud(){
   });
   if(res.status === 401) throw new Error("token");
   if(!res.ok) throw new Error("http" + res.status);
-  sync.lastAt = state.savedAt || Date.now();
+  lastPushedFp = fingerprint(payload);
+  sync.lastAt = Date.now(); // 表示用のみ(送信内容・差分判定には使わない)
   saveSyncConfig();
+}
+// 閉じる瞬間の即時送信(ベストエフォート)。鍵キャッシュ済みなので暗号化は高速。
+// fetch keepalive の本文上限(約64KB)を超える場合は送らない(次回同期で収束する)。
+let flushBusy = false; // 即時送信の二重実行防止
+async function flushPush(){
+  if(!sync || !sync.gistId || syncHalted || syncBusy || flushBusy) return;
+  const payload = payloadOf(state);
+  const fp = fingerprint(payload);
+  if(fp === lastPushedFp) return; // 未送信の変更なし
+  flushBusy = true;
+  try{
+    const content = await encryptPayloadNow(payload);
+    const body = JSON.stringify({ files: { [GIST_FILE]: { content } } });
+    if(body.length > 60000) return; // keepaliveの上限超え:諦めて次回同期に任せる
+    fetch("https://api.github.com/gists/" + sync.gistId, {
+      method: "PATCH", headers: gistHeaders(), body, keepalive: true
+    }).then(r=>{ if(r && r.ok) lastPushedFp = fp; }).catch(()=>{}); // 実際に届いた時だけ「送信済み」にする(届かなければ次の機会に再送)
+  }catch(e){ /* ベストエフォート */ }
+  finally{ flushBusy = false; }
 }
 function syncErrMsg(e){
   if(e && e.message === "token") return "同期エラー:トークンが無効か期限切れです。「同期を設定」からやり直してください";
@@ -1651,39 +2133,66 @@ function scheduleCloudPush(){
   clearTimeout(pushTimer);
   pushTimer = setTimeout(()=> syncNow(false), 2000); // 押し込む前にも必ずクラウドを確認(同時編集対策)
 }
-let syncBusy = false;
+let syncBusy = false;   // 同期の二重実行防止
+let syncHalted = false; // 復号失敗(パスワード違い・破損)時はtrue。解けるまでクラウドを絶対に上書きしない
+let pendingSync = false; // 編集・ダイアログ中に同期が来たときの保留フラグ
+// 取り込みブロック中か(編集画面・モーダルが開いている間はマージ結果を取り込まない)
+function importBlocked(){
+  const open = (id)=> document.getElementById(id).classList.contains("open");
+  return open("editor") || open("viewer") || open("picker") || modalIsOpen();
+}
+function onModalClosed(){
+  if(pendingSync && !importBlocked()){ pendingSync = false; setTimeout(()=> syncNow(false), 50); }
+}
 async function syncNow(showToast){
   if(!sync){ toast("先に「同期を設定」を押してください", true); return; }
   if(syncBusy) return; // 二重実行の防止(クラウド保管庫の分裂対策)
   syncBusy = true;
   setSyncStatus("同期中…");
   try{
-    const cloud = await pullCloud();
-    const base = sync.lastAt || 0;
-    const cloudAt = (cloud && cloud.savedAt) || 0;
-    const localAt = state.savedAt || 0;
-    if(!cloud || cloudAt <= base){
-      // クラウドは前回同期から変わっていない → こちらの内容を送る(削除もそのまま反映)
-      await pushCloud();
-      syncOkStatus();
-      if(showToast) toast("同期しました");
-    }else if(localAt <= base){
-      // こちらは変わっていない → クラウドをそのまま受け取る
-      state = migrate(cloud);
-      sync.lastAt = state.savedAt || Date.now();
-      saveSyncConfig();
+    let cloud;
+    try{
+      cloud = await pullCloud();
+    }catch(e){
+      if(e && e.message === "pass"){
+        // クラウドを復号できない=パスワード違いか破損。この状態では絶対にクラウドを上書きしない
+        syncHalted = true;
+        setSyncStatus(syncErrMsg(e), true);
+        if(showToast) toast("同期を停止しました(暗号化パスワードを確認してください)", true);
+        return;
+      }
+      throw e;
+    }
+    syncHalted = false;
+    // ネットワーク待ちの完了後・マージ直前にもガードを再チェック(編集中データの組み替え防止)
+    if(importBlocked()){
+      pendingSync = true;
+      setSyncStatus("編集中のため同期を保留しています(閉じると自動で再開)");
+      return;
+    }
+    const local = payloadOf(state);
+    const remote = sanitizePayload(migrate(cloud || {})); // 取り込みは必ずサニタイズ+マージ経由(置き換え取り込みは禁止)
+    const merged = mergePayloads(local, remote);
+    const fpL = fingerprint(local), fpR = fingerprint(remote), fpM = fingerprint(merged);
+    let changedLocal = false, pushed = false;
+    if(fpM !== fpL){
+      adoptPayload(merged);
+      changedLocal = true;
       await save(true);
       render();
-      syncOkStatus();
-      if(showToast) toast("クラウドの新しいデータを取り込みました");
+    }
+    if(fpM !== fpR){
+      await pushCloud(merged);
+      pushed = true;
     }else{
-      // 両方で変更があった(同時編集)→ 記事単位で新しい方を残して統合
-      state = migrate(mergeStates(migrate(cloud), state));
-      await save(true);
-      await pushCloud();
-      render();
-      syncOkStatus("(両端末の変更を統合)");
-      if(showToast) toast("両方の変更を統合して同期しました");
+      lastPushedFp = fpM; // クラウドと一致=未送信変更なし
+    }
+    syncOkStatus(changedLocal && pushed ? "(両端末の変更を統合)" : "");
+    if(showToast){
+      if(changedLocal && pushed) toast("両方の変更を統合して同期しました");
+      else if(changedLocal) toast("クラウドの新しいデータを取り込みました");
+      else if(pushed) toast("同期しました");
+      else toast("同期済みです(変更なし)");
     }
   }catch(e){
     setSyncStatus(syncErrMsg(e), true);
@@ -1692,14 +2201,53 @@ async function syncNow(showToast){
     syncBusy = false;
   }
 }
+// 同期の解除:セッション内の鍵キャッシュ・認証情報・タイマーをすべて破棄する
+async function disableSync(){
+  sync = null;
+  syncHalted = false;
+  pendingSync = false;
+  lastPushedFp = null;
+  cloudCache = { etag: null, content: null };
+  keyCache.clear();
+  clearTimeout(pushTimer); pushTimer = null;
+  try{
+    if(hasAppStorage){ await window.storage.delete(SYNC_KEY); }
+    else if(hasLocalStorage){ localStorage.removeItem(SYNC_KEY); }
+  }catch(e){}
+  setSyncStatus("同期を解除しました(この端末からトークン・パスワードを削除。クラウド上の暗号化データは残ります)");
+  toast("同期を解除しました");
+}
 async function setupSync(){
-  const token = prompt("①GitHubのアクセストークンを貼り付けてください(gist権限のもの)。\n作り方: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → gistにチェック", sync ? sync.token : "");
+  // 設定は段階式のアプリ内ダイアログで行う。解除も同じ導線に置く。
+  if(sync && sync.gistId){
+    const c = await showModal({
+      title: "クラウド同期", cancelValue: null,
+      msg: `現在の同期ID: ${sync.gistId}\n\n※自動同期のため、トークンと暗号化パスワードはこの端末の中に保存されています。暗号化が守るのはクラウド上のデータのみです。`,
+      buttons: [
+        { label: "設定をやり直す", value: "edit", primary: true },
+        { label: "同期を解除する(この端末の認証情報を削除)", value: "off", danger: true },
+        { label: "閉じる", value: null }
+      ]
+    });
+    if(c === "off"){
+      if(await appConfirm("この端末の同期設定(トークン・暗号化パスワード)を削除します。クラウド上の暗号化データとバックアップは残ります。よろしいですか?", {okLabel:"解除する", danger:true})){
+        await disableSync();
+      }
+      return;
+    }
+    if(c !== "edit") return;
+  }
+  const token = await appPrompt("①GitHubのアクセストークンを貼り付けてください(gist権限のもの)。\n作り方: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → gistにチェック", { title:"同期の設定 1/3", value: sync ? sync.token : "", password: true });
   if(!token || !token.trim()) return;
-  const pass = prompt("②暗号化パスワードを決めてください(両端末で同じものを入力)。\nクラウド上のデータはこのパスワードで暗号化され、他人には読めなくなります。\n※忘れるとクラウドのデータを取り出せなくなるので必ず控えてください", sync ? (sync.pass||"") : "");
+  const pass = await appPrompt("②暗号化パスワードを決めてください(両端末で同じものを入力)。\nクラウド上のデータはこのパスワードで暗号化され、他人には読めなくなります。\n※自動同期のため、パスワードはこの端末の中に保存されます(暗号化が守るのはクラウド上のデータのみです)。\n※忘れるとクラウドのデータを取り出せなくなるので必ず控えてください", { title:"同期の設定 2/3", value: sync ? (sync.pass||"") : "", password: true });
   if(pass === null) return;
   if(!pass.trim()){ toast("暗号化パスワードは必須です", true); return; }
-  const gid = prompt("③もう1台で設定済みなら「同期ID」を入力。\nこの端末が1台目なら空欄のままOKを押してください(新規作成します)", sync ? sync.gistId : "");
+  const gid = await appPrompt("③もう1台で設定済みなら「同期ID」を入力。\nこの端末が1台目なら空欄のままOKを押してください(新規作成します)", { title:"同期の設定 3/3", value: sync ? sync.gistId : "" });
   if(gid === null) return;
+  keyCache.clear(); // パスワード変更に備えて鍵キャッシュを破棄
+  cloudCache = { etag: null, content: null }; // 同期先・パスワードが変わるためキャッシュも破棄
+  syncHalted = false;
+  lastPushedFp = null;
   try{
     setSyncStatus("設定中…");
     if(gid && gid.trim()){
@@ -1707,9 +2255,8 @@ async function setupSync(){
       await saveSyncConfig();
       await syncNow(true);
     }else{
-      const tmpSync = { token: token.trim(), pass: pass.trim() };
-      sync = tmpSync;
-      const content = await encryptState(sync.pass);
+      sync = { token: token.trim(), pass: pass.trim() };
+      const content = await encryptPayloadNow(payloadOf(state));
       const res = await fetch("https://api.github.com/gists", {
         method: "POST",
         headers: { "Authorization": "Bearer " + sync.token, "Accept": "application/vnd.github+json", "Content-Type": "application/json" },
@@ -1722,13 +2269,16 @@ async function setupSync(){
       if(res.status === 401) throw new Error("token");
       if(!res.ok) throw new Error("http" + res.status);
       const g = await res.json();
-      sync = { token: token.trim(), gistId: g.id, pass: pass.trim(), lastAt: state.savedAt || Date.now() };
+      sync.gistId = g.id;
+      sync.lastAt = Date.now();
+      lastPushedFp = fingerprint(payloadOf(state));
       await saveSyncConfig();
       syncOkStatus();
-      alert("暗号化同期を開始しました。\n\nもう1台の端末では「同期を設定」で、同じトークン・同じ暗号化パスワードと、この同期IDを入力してください:\n\n" + g.id + "\n\n(同期IDはこの画面の下にも常に表示されます)");
+      await appAlert("暗号化同期を開始しました。\n\nもう1台の端末では「同期を設定」で、同じトークン・同じ暗号化パスワードと、この同期IDを入力してください:\n\n" + g.id + "\n\n(同期IDはこの画面の下にも常に表示されます)\n※タブを閉じる瞬間の自動送信はベストエフォートです。届かなかった変更も次回の同期で反映されます。", "同期の設定完了");
     }
   }catch(e){
     sync = null;
+    keyCache.clear();
     setSyncStatus(syncErrMsg(e), true);
   }
 }
@@ -1761,25 +2311,44 @@ function countMonthArticles(key){
   const s = (state.months[key]||{}).signs || {};
   return Object.keys(s).filter(id=>s[id] && s[id].body).length;
 }
+function monthMaxTs(key){
+  const mm = state.months[key];
+  if(!mm) return 0;
+  let t = mm.sky ? itemTs(mm.sky) : 0;
+  const sg = mm.signs || {};
+  for(const id in sg) t = Math.max(t, itemTs(sg[id]));
+  return t;
+}
+function monthHasSky(key){
+  const mm = state.months[key];
+  return !!(mm && mm.sky && mm.sky.body);
+}
 async function clearCurrentMonth(){
   const n = countMonthArticles(state.current);
-  if(n === 0){ toast(`${labelOf(state.current)}には記事がありません`, true); return; }
-  if(!confirm(`${labelOf(state.current)}の${n}記事をすべて削除します。\n実行前に自動でバックアップを書き出します。\nよろしいですか?`)) return;
-  exportBackup(); // 削除前に自動バックアップ
+  const sky = monthHasSky(state.current);
+  if(n === 0 && !sky){ toast(`${labelOf(state.current)}には記事も星データもありません`, true); return; }
+  const what = `${n ? n+"記事" : ""}${n && sky ? "と" : ""}${sky ? "星データ" : ""}`;
+  if(!(await appConfirm(`${labelOf(state.current)}の${what}をすべて削除します。\n実行前に自動でバックアップをダウンロードします。\nよろしいですか?`, {okLabel:"すべて削除する", danger:true}))) return;
+  autoBackupDownload(); // 削除前の自動バックアップ(共有シートなし)
+  // 一括削除は個別墓標を大量生成せず、グループ墓標1件で表す(墓標上限の圧迫防止)
+  addTomb(state.tombs, "g_month_" + state.current, Math.max(Date.now(), monthMaxTs(state.current) + 1)); // 月内のどの項目よりも必ず新しい墓標(細工tsでも消せる)
   delete state.months[state.current];
   if(await save()){ toast(`${labelOf(state.current)}を空にしました(バックアップ書き出し済み)`); render(); }
 }
 async function clearOldMonths(){
-  const v = prompt("この年月「より前」の号をすべて削除します。\n基準の年月を入力(例:26 8 → 2026年8月号より前を削除。8月号は残ります)");
+  const v = await appPrompt("この年月「より前」の号をすべて削除します。\n基準の年月を入力(例:26 8 → 2026年8月号より前を削除。8月号は残ります)", {title:"古い号を削除", placeholder:"26 8"});
   if(!v) return;
   const { y, m } = classifyNums(pickNums(v));
   if(y === null || m === null){ toast("年月を読み取れませんでした(例:26 8)", true); return; }
   const boundary = keyOf(y, m);
-  const targets = Object.keys(state.months).filter(k => k < boundary && countMonthArticles(k) > 0);
-  if(!targets.length){ toast(`${labelOf(boundary)}より前に記事はありません`, true); return; }
+  const targets = Object.keys(state.months).filter(k => k < boundary && (countMonthArticles(k) > 0 || monthHasSky(k)));
+  if(!targets.length){ toast(`${labelOf(boundary)}より前に記事も星データもありません`, true); return; }
   const total = targets.reduce((a,k)=>a+countMonthArticles(k), 0);
-  if(!confirm(`${labelOf(boundary)}より前の ${targets.length}ヶ月分・${total}記事 をすべて削除します。\n実行前に自動でバックアップを書き出します。\nよろしいですか?`)) return;
-  exportBackup(); // 削除前に自動バックアップ
+  const skyN = targets.filter(monthHasSky).length;
+  if(!(await appConfirm(`${labelOf(boundary)}より前の ${targets.length}ヶ月分(記事${total}本${skyN ? `・星データ${skyN}件` : ""})をすべて削除します。\n実行前に自動でバックアップをダウンロードします。\nよろしいですか?`, {okLabel:"すべて削除する", danger:true}))) return;
+  autoBackupDownload(); // 削除前の自動バックアップ(共有シートなし)
+  // 期間一括削除もグループ墓標1件で表す(同期先でも確実に削除が伝播する)
+  addTomb(state.tombs, "g_before_" + boundary, Math.max(Date.now(), targets.reduce((a,k)=>Math.max(a, monthMaxTs(k)), 0) + 1)); // 対象のどの項目よりも必ず新しい墓標
   for(const k of Object.keys(state.months)){ if(k < boundary) delete state.months[k]; }
   if(await save()){ toast(`${targets.length}ヶ月分・${total}記事を削除しました(バックアップ書き出し済み)`); render(); }
 }
@@ -1791,29 +2360,111 @@ async function clearAllPrev(){
   }
   for(const x of state.extras){ if(x.prev) n++; }
   if(n === 0){ toast("削除できる「前の版」はありません", true); return; }
-  if(!confirm(`保存されている「前の版」${n}件をすべて削除して軽量化します。\n(現在の本文はすべて残ります。前の版に戻す機能だけ使えなくなります)\nよろしいですか?`)) return;
+  if(!(await appConfirm(`保存されている「前の版」${n}件をすべて削除して軽量化します。\n(現在の本文はすべて残ります。前の版に戻す機能だけ使えなくなります)\n※この軽量化はこの端末で行われ、同期時に両端末で同じ形に収束します\nよろしいですか?`, {okLabel:"削除して軽量化", danger:true}))) return;
+  const nowTs = Date.now();
   for(const k in state.months){
     const s = (state.months[k]||{}).signs || {};
-    for(const id in s){ if(s[id] && s[id].prev) delete s[id].prev; }
+    for(const id in s){ if(s[id] && s[id].prev){ delete s[id].prev; s[id].ts = nowTs; } }
+    const sk = (state.months[k]||{}).sky;
+    if(sk && sk.prev){ delete sk.prev; sk.ts = nowTs; }
   }
-  for(const x of state.extras){ if(x.prev) delete x.prev; }
+  for(const x of state.extras){ if(x.prev){ delete x.prev; x.ts = nowTs; } }
   if(await save()){ toast(`前の版${n}件を削除しました`); render(); }
 }
 
 // ---- misc ui ----
 function showOverlay(id){ document.getElementById(id).classList.add("open"); }
 function hideOverlay(id){ document.getElementById(id).classList.remove("open"); }
+
+// ---- アプリ内モーダル(confirm/prompt/alertは全面禁止。Promiseで代替)----
+let __modalQueue = Promise.resolve();
+function modalIsOpen(){ return document.getElementById("appModalBack").classList.contains("open"); }
+function showModal(opts){
+  // opts: {title, msg, input:{placeholder,value,password}, buttons:[{label, value, primary, danger}]}
+  const run = ()=> new Promise(resolve=>{
+    const back = document.getElementById("appModalBack");
+    const inp = document.getElementById("mInput");
+    document.getElementById("mTitle").textContent = opts.title || "確認";
+    document.getElementById("mMsg").textContent = opts.msg || "";
+    const btnBox = document.getElementById("mBtns");
+    btnBox.innerHTML = "";
+    if(opts.input){
+      inp.style.display = "block";
+      inp.type = opts.input.password ? "password" : "text";
+      inp.placeholder = opts.input.placeholder || "";
+      inp.value = opts.input.value || "";
+    }else{
+      inp.style.display = "none"; inp.value = "";
+    }
+    let done = false;
+    const finish = (v)=>{
+      if(done) return; done = true;
+      back.classList.remove("open");
+      document.removeEventListener("keydown", onKey, true);
+      resolve(v);
+      if(typeof onModalClosed === "function") onModalClosed();
+    };
+    let primaryBtn = null;
+    (opts.buttons || [{label:"OK", value:true, primary:true}]).forEach(b=>{
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "m-btn" + (b.primary ? " primary" : "") + (b.danger ? " danger" : "");
+      el.textContent = b.label;
+      el.onclick = ()=> finish(opts.input && b.primary && !b.danger ? inp.value : b.value);
+      if(b.primary && !b.danger && !primaryBtn) primaryBtn = el;
+      btnBox.appendChild(el);
+    });
+    const onKey = (ev)=>{
+      // モーダルの外にある要素へのSpaceキー入力を遮断(Tabで背景に抜けた場合のボタン誤爆防止)
+      if(ev.key === " " && ev.target && !back.contains(ev.target)){ ev.preventDefault(); return; }
+      if(ev.key === "Enter" && !ev.isComposing){
+        // Enterは危険色でない主ボタンのみ実行(誤爆防止)
+        if(primaryBtn){ ev.preventDefault(); ev.stopPropagation(); primaryBtn.click(); }
+      }else if(ev.key === "Escape"){
+        ev.preventDefault(); ev.stopPropagation(); finish(opts.cancelValue !== undefined ? opts.cancelValue : null);
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    try{ if(document.activeElement && !back.contains(document.activeElement)) document.activeElement.blur(); }catch(e){} // 背景のフォーカスを外す
+    back.classList.add("open");
+    if(opts.input) setTimeout(()=>{ inp.focus(); inp.select(); }, 60);
+  });
+  const p = __modalQueue.then(run);
+  __modalQueue = p.catch(()=>{});
+  return p;
+}
+function appAlert(msg, title){
+  return showModal({ title: title || "お知らせ", msg, cancelValue: true, buttons: [{label:"OK", value:true, primary:true}] });
+}
+function appConfirm(msg, opts){
+  opts = opts || {};
+  return showModal({
+    title: opts.title || "確認", msg, cancelValue: false,
+    buttons: [
+      { label: opts.okLabel || "実行する", value: true, primary: true, danger: !!opts.danger },
+      { label: "キャンセル", value: false }
+    ]
+  }).then(v=> v === true);
+}
+function appPrompt(msg, opts){
+  opts = opts || {};
+  return showModal({
+    title: opts.title || "入力", msg, cancelValue: null,
+    input: { placeholder: opts.placeholder || "", value: opts.value || "", password: !!opts.password },
+    buttons: [ { label: opts.okLabel || "OK", value: "__ok__", primary: true }, { label: "キャンセル", value: null } ]
+  });
+}
 let toastTimer;
 function toast(msg, err){
   const t = document.getElementById("toast");
   t.textContent = msg;
   t.className = "toast show" + (err?" err":"");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=> t.className="toast", 1800);
+  toastTimer = setTimeout(()=> t.className="toast", err ? 4200 : 1800); // エラーは読み切れるまで長めに表示
 }
 
 // events
-document.getElementById("vBack").onclick = ()=> hideOverlay("viewer");
+document.getElementById("vBack").onclick = ()=>{ hideOverlay("viewer"); onModalClosed(); };
 document.getElementById("vEdit").onclick = openEditor;
 document.getElementById("vCopy").onclick = copyBody;
 document.getElementById("vRevert").onclick = revertCurrent;
@@ -1823,8 +2474,9 @@ document.getElementById("vCopyB").onclick = ()=> copyPart("B");
 document.getElementById("autoPasteBtn").onclick = autoPaste;
 document.getElementById("seqMainBtn").onclick = seqCopy;
 document.getElementById("seqBackBtn").onclick = seqBack;
-document.getElementById("eCancel").onclick = ()=>{ quickPaste = false; hideOverlay("editor"); render(); };
-document.getElementById("eCancel2").onclick = ()=>{ quickPaste = false; hideOverlay("editor"); render(); };
+function closeEditor(){ quickPaste = false; hideOverlay("editor"); render(); onModalClosed(); }
+document.getElementById("eCancel").onclick = closeEditor;
+document.getElementById("eCancel2").onclick = closeEditor;
 document.getElementById("eSave").onclick = saveEditor;
 document.getElementById("eDelete").onclick = deleteCurrent;
 // クイックペースト:貼り付けを検知したら自動で保存まで実行
@@ -1862,12 +2514,12 @@ document.getElementById("importFile").onchange = (ev)=>{
   if(f) importBackup(f);
   ev.target.value = "";
 };
-document.getElementById("addExtra").onclick = ()=>{ current = {kind:"extra", index:-1}; openEditor(); };
-document.getElementById("undoBtn").onclick = undoPaste;
+document.getElementById("addExtra").onclick = ()=>{ current = {kind:"extra", id:null}; openEditor(); };
+document.getElementById("undoBtn").onclick = undoAction;
 
 // ---- 月ナビ・年月ピッカー ----
-document.getElementById("mPrev").onclick = async ()=>{ state.current = shiftMonth(state.current, -1); await save(true); render(); };
-document.getElementById("mNext").onclick = async ()=>{ state.current = shiftMonth(state.current, +1); await save(true); render(); };
+document.getElementById("mPrev").onclick = async ()=>{ state.current = shiftMonth(state.current, -1); await save(true, {localOnly:true}); render(); };
+document.getElementById("mNext").onclick = async ()=>{ state.current = shiftMonth(state.current, +1); await save(true, {localOnly:true}); render(); };
 // 全角数字→半角に変換し、数字以外(「年」「月」など)は除去
 // ※ \uFF10-\uFF19 = 全角の0〜9(文字コード指定で確実に)
 function normDigits(v){
@@ -1931,9 +2583,10 @@ function goPicker(){
     return;
   }
   state.current = keyOf(y, m);
-  save(true);
+  save(true, {localOnly:true});
   hideOverlay("picker");
   render();
+  onModalClosed();
 }
 function syncPickerFields(){
   // プルダウンだけ追従させる(入力中の欄は書き換えない)
@@ -1983,7 +2636,7 @@ document.getElementById("pYear").addEventListener("keydown", (ev)=>{
 document.getElementById("pMonth").addEventListener("keydown", (ev)=>{
   if(ev.key === "Enter" && !ev.isComposing){ ev.preventDefault(); goPicker(); }
 });
-document.getElementById("pCancel").onclick = ()=> hideOverlay("picker");
+document.getElementById("pCancel").onclick = ()=>{ hideOverlay("picker"); onModalClosed(); };
 document.getElementById("pGo").onclick = goPicker;
 
 // stars bg
