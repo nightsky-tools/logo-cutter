@@ -1008,12 +1008,12 @@ async function pasteToDoc(i){
   if(d.ver && newVer){
     const cmp = compareVer(newVer, d.ver);
     if(cmp === -1){
-      if(!confirm(`⚠ 貼り付けようとしているのは ${newVer} で、格納済みの ${d.ver} より古い版のようです。\nそれでも上書きしますか?`)) return;
+      if(!(await askConfirm("古い版の上書き確認", `⚠ 貼り付けようとしているのは ${newVer} で、格納済みの ${d.ver} より古い版のようです。\nそれでも上書きしますか?`, "上書きする", true))) return;
     }else if(cmp === 0){
-      if(!confirm(`格納済みと同じ版(${d.ver})のようです。上書きしますか?`)) return;
+      if(!(await askConfirm("同じ版の上書き確認", `格納済みと同じ版(${d.ver})のようです。上書きしますか?`, "上書きする"))) return;
     }
   }else if(d.body && d.body.trim()){
-    if(!confirm(`${d.name}は格納済み${d.ver ? "("+d.ver+")" : ""}です。上書きしますか?`)) return;
+    if(!(await askConfirm("上書きの確認", `${d.name}は格納済み${d.ver ? "("+d.ver+")" : ""}です。上書きしますか?`, "上書きする"))) return;
   }
   applyBody(i, text);
 }
@@ -1075,7 +1075,7 @@ async function partialPaste(i){
     text.includes("=====" + b.name + "_START=====") || text.includes("◆◆" + b.name + "ここから◆◆")
   ).length;
   if(markerHits >= 2){
-    if(confirm("コピー内容に区切り記号が複数含まれています。命令書の全文のようです。\n全体ペースト(丸ごと差し替え)しますか?\n(キャンセルすると部分ペーストを続けます)")){
+    if(await askConfirm("全体ペーストの提案", "コピー内容に区切り記号が複数含まれています。命令書の全文のようです。\n全体ペースト(丸ごと差し替え)しますか?\n(キャンセルすると部分ペーストを続けます)", "丸ごと差し替える")){
       applyBody(i, text);
       return;
     }
@@ -1084,14 +1084,14 @@ async function partialPaste(i){
   let target = null, content = text;
   const g = guessTarget(text, blocks);
   if(g){
-    if(confirm(g.reason + "を検出しました。\n「" + g.field.name + "」の中身に貼り付けます。よろしいですか?\n(キャンセルすると手動で選べます)")){
+    if(await askConfirm("貼り付け先の確認", g.reason + "を検出しました。\n「" + g.field.name + "」の中身に貼り付けます。よろしいですか?\n(キャンセルすると手動で選べます)", "貼り付ける")){
       target = g.field;
       content = g.content;
     }
   }
   if(!target){
     if(blocks.length === 1){
-      if(!confirm("「" + blocks[0].name + "」の区切りの中身だけを、コピーしてある内容(" + text.length.toLocaleString() + "字)に差し替えます。\n区切りの外は変わりません。よろしいですか?")) return;
+      if(!(await askConfirm("部分ペーストの確認", "「" + blocks[0].name + "」の区切りの中身だけを、コピーしてある内容(" + text.length.toLocaleString() + "字)に差し替えます。\n区切りの外は変わりません。よろしいですか?", "差し替える"))) return;
       target = blocks[0];
     }else{
       const v = await _modal({
@@ -1311,14 +1311,14 @@ function openFiller(i){
         toast("読み取れません。欄を長押し→ペーストしてください", true);
       }
     };
-    bulk.querySelector(".bk-apply").onclick = ()=>{
+    bulk.querySelector(".bk-apply").onclick = async ()=>{
       const t = bulk.querySelector(".bk-text").value;
       if(!t.trim()){ toast("先に共通の文を入力(または貼り付け)してください", true); return; }
       const sel = Array.from(box.querySelectorAll(".fill-field"))
         .filter(w=> w.querySelector(".ff-sel") && w.querySelector(".ff-sel").checked);
       if(!sel.length){ toast("入れたい項目の□にチェックを入れてください", true); return; }
       const overwrite = sel.filter(w=> w.querySelector(".ff-text").value.trim());
-      if(overwrite.length && !confirm(`チェックした中に入力済みの欄が${overwrite.length}個あります。上書きしますか?`)) return;
+      if(overwrite.length && !(await askConfirm("上書きの確認", `チェックした中に入力済みの欄が${overwrite.length}個あります。上書きしますか?`, "上書きする"))) return;
       sel.forEach(w=>{ w.querySelector(".ff-text").value = t; });
       captureDraft();
       toast(`${sel.length}個の欄に同じ文を入れました`);
@@ -1397,7 +1397,7 @@ async function copyFilled(){
   const texts = Array.from(document.querySelectorAll("#fBody .ff-text")).map(t=>t.value);
   const emptyNames = fillerFields.filter((f, idx)=> !(texts[idx]||"").trim()).map(f=>f.name);
   if(emptyNames.length){
-    if(!confirm(`未入力の項目があります:${emptyNames.join("、")}\nそのままコピーしますか?(未入力の箇所は元の記載のまま残ります)`)) return;
+    if(!(await askConfirm("未入力のままコピー", `未入力の項目があります:${emptyNames.join("、")}\nそのままコピーしますか?(未入力の箇所は元の記載のまま残ります)`, "コピーする"))) return;
   }
   let outText = applyFields(d.body, fillerFields, texts);
   // 完成文からは区切り記号の行を取り除く(AIに渡す文をきれいにし、
@@ -1436,7 +1436,7 @@ function renderHistory(d){
 async function restoreHistory(hi){
   const d = state.docs[current];
   const h = d.history[hi];
-  if(!confirm(`${h.ver||"この過去の版"}を現在の版として復元しますか?\n(いま格納されている ${d.ver||"現在の版"} は履歴に残ります)`)) return;
+  if(!(await askConfirm("過去の版の復元", `${h.ver||"この過去の版"}を現在の版として復元しますか?\n(いま格納されている ${d.ver||"現在の版"} は履歴に残ります)`, "復元する"))) return;
   // 現在の版を履歴の先頭へ、選んだ版を現在へ
   d.history.splice(hi, 1);
   d.history.unshift({ body: d.body, ver: d.ver, updated: d.updated });
@@ -1497,7 +1497,7 @@ async function saveEditor(){
 }
 async function deleteDoc(){
   const d = state.docs[current];
-  if(!confirm(`「${d.name}」の枠を削除しますか?\n本文と履歴${d.history.length}件もすべて消えます。この操作は取り消せません。`)) return;
+  if(!(await askConfirm("枠の削除", `「${d.name}」の枠を削除しますか?\n本文と履歴${d.history.length}件もすべて消えます。この操作は取り消せません。`, "削除する", true))) return;
   exportBackup(); // 念のため自動バックアップ
   state.tombstones = (state.tombstones||[]).concat([{id: d.id, ts: Date.now()}]).slice(-100);
   state.docs.splice(current, 1);
@@ -1509,18 +1509,60 @@ async function deleteDoc(){
 }
 
 // ---- backup ----
-function exportBackup(){
+// pick=true(「全データを書き出し」ボタン):保存先を選べる形で書き出す
+//   iPhone/Mac Safari → 共有シート(「"ファイル"に保存」でiCloud Driveの共通フォルダへ)
+//   Mac Chrome → 保存ダイアログ(iCloud Driveフォルダも選択可)
+// pick=false(削除前などの自動バックアップ):従来どおり黙ってダウンロード
+async function exportBackup(pick){
   try{
     const out = Object.assign({}, state, { syncHint: (sync && sync.gistId) ? { gistId: sync.gistId } : undefined });
-    const blob = new Blob([JSON.stringify(out, null, 2)], {type:"application/json"});
+    const json = JSON.stringify(out, null, 2);
+    const n = new Date();
+    const fname = `prompt-vault-${n.getFullYear()}${String(n.getMonth()+1).padStart(2,"0")}${String(n.getDate()).padStart(2,"0")}.json`;
+    const done = ()=>{
+      state.lastBackupAt = Date.now();
+      save(true);
+    };
+    if(pick === true){
+      // 1) 共有シート(iPhone・Mac Safari):iCloud Driveの同じフォルダに保存できる
+      try{
+        const file = new File([json], fname, {type:"application/json"});
+        if(navigator.canShare && navigator.canShare({files:[file]})){
+          await navigator.share({files:[file], title:"命令書保管庫バックアップ"});
+          done();
+          toast("バックアップを書き出しました(iCloud Driveに保存すれば両端末で使えます)");
+          return;
+        }
+      }catch(e){
+        if(e && e.name === "AbortError") return; // 共有シートでキャンセル
+        // 共有が使えない環境 → 次の方法へ
+      }
+      // 2) 保存ダイアログ(Chrome系):保存先フォルダを自分で選べる
+      if(window.showSaveFilePicker){
+        try{
+          const h = await window.showSaveFilePicker({
+            suggestedName: fname,
+            types: [{description:"バックアップ(JSON)", accept:{"application/json":[".json"]}}]
+          });
+          const w = await h.createWritable();
+          await w.write(json);
+          await w.close();
+          done();
+          toast("バックアップを保存しました");
+          return;
+        }catch(e){
+          if(e && e.name === "AbortError") return; // 保存ダイアログでキャンセル
+        }
+      }
+    }
+    // 3) 従来のダウンロード(自動バックアップ・上記が使えない環境)
+    const blob = new Blob([json], {type:"application/json"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    const n = new Date();
-    a.download = `prompt-vault-${n.getFullYear()}${String(n.getMonth()+1).padStart(2,"0")}${String(n.getDate()).padStart(2,"0")}.json`;
+    a.download = fname;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
-    state.lastBackupAt = Date.now();
-    save(true);
+    done();
     toast("バックアップを書き出しました");
   }catch(e){
     toast("書き出しに失敗しました", true);
@@ -1534,9 +1576,24 @@ function importBackup(file){
       const hint = parsed && parsed.syncHint && parsed.syncHint.gistId;
       const data = sanitize(parsed);
       if(!data) throw new Error("format");
-      // OK=統合(いまのデータとバックアップを合体・新しい方を優先)/キャンセル=置き換え
-      const doMerge = confirm("復元方法を選んでください。\n\n[OK] 統合:いまのデータとバックアップを合体します(同じ命令書は新しい方を採用。おすすめ)\n[キャンセル] 置き換え:いまのデータを消してバックアップの内容だけにします");
+      // 統合(命令書ごとに更新が新しい方を採用)を標準にする。
+      // → 一番新しいものはそのまま残り、古いものだけがファイル側の新しい内容に置き換わる
+      const choice = await _modal({
+        title: "ファイルから復元",
+        msg: "統合(おすすめ):いまのデータとファイルを合体します。同じ命令書は更新が新しい方をそのまま残し、古い方だけを新しい内容に置き換えます。\n\n置き換え:いまのデータをすべて消して、ファイルの内容だけにします。",
+        buttons: [
+          {label:"統合する(新しい方を採用)", value:"merge", style:"primary"},
+          {label:"置き換える", value:"replace", style:"danger"},
+          {label:"キャンセル", value:null}
+        ]
+      });
+      if(choice !== "merge" && choice !== "replace") return;
+      const doMerge = (choice === "merge");
+      let mergeNote = "";
       if(doMerge){
+        // 統合前の状態を控えておき、統合後に実際の結果を数える(表示用)
+        const before = Object.create(null);
+        for(const x of (state.docs||[])) if(x && x.id) before[x.id] = x.ts||0;
         // 復元は明示的な操作なので、バックアップ内の命令書・カテゴリーは
         // 過去に「削除」した記録(墓標)があっても必ず生き返らせる。
         // 更新時刻も今に引き上げ、あとで同期しても古い削除記録に負けないようにする
@@ -1545,16 +1602,31 @@ function importBackup(file){
         const backIds = new Set((data.docs||[]).map(x=>x.id).concat((data.cats||[]).map(c=>"cat:"+c.id)));
         state.tombstones = (state.tombstones||[]).filter(t=> !backIds.has(t.id));
         state = sanitize(mergeStates(state, data)) || state;
+        let nAdd = 0, nUpd = 0, nKeep = 0;
+        for(const x of (state.docs||[])){
+          if(!x || !x.id) continue;
+          if(!(x.id in before)) nAdd++;
+          else if((x.ts||0) > before[x.id]) nUpd++;
+          else nKeep++;
+        }
+        mergeNote = `:追加${nAdd}件・新しい内容に更新${nUpd}件・最新のまま${nKeep}件`;
       }else{
-        if(!confirm("いまのデータは消えて、バックアップの内容だけになります。本当に置き換えますか?")) return;
+        const ok = await askConfirm("置き換えの確認",
+          "いまのデータは消えて、ファイルの内容だけになります。本当に置き換えますか?",
+          "置き換える", true);
+        if(!ok) return;
         state = data;
       }
       ensurePresets();
       if(await save()){
-        toast(doMerge ? "統合して復元しました" : "置き換えて復元しました");
+        toast(doMerge ? ("統合して復元しました" + mergeNote) : "置き換えて復元しました");
         render();
         if(hint && (!sync || !sync.gistId)){
-          setTimeout(()=> alert("このバックアップにはクラウド同期のID(同期ID)が含まれていました:\n\n" + hint + "\n\n新しい端末で同期を再開する場合は、「同期の設定」でトークンとパスワードと一緒にこのIDを入力してください。"), 300);
+          setTimeout(()=> _modal({
+            title: "同期IDが見つかりました",
+            msg: "このバックアップにはクラウド同期のID(同期ID)が含まれていました:\n\n" + hint + "\n\n新しい端末で同期を再開する場合は、「同期の設定」でトークンとパスワードと一緒にこのIDを入力してください。",
+            buttons: [{label:"OK", value:true, style:"primary"}]
+          }), 300);
         }
       }
     }catch(e){
@@ -2170,7 +2242,14 @@ async function matCopy(i, forcePick){
 
 // ---- misc ----
 function showOverlay(id){ document.getElementById(id).classList.add("open"); }
-function hideOverlay(id){ document.getElementById(id).classList.remove("open"); }
+function hideOverlay(id){
+  document.getElementById(id).classList.remove("open");
+  // 開いている間に見送った自動同期があれば、全部閉じた時点で取り込む
+  if(deferredSync && !anyOverlayOpen()){
+    deferredSync = false;
+    if(sync && sync.token) syncNow();
+  }
+}
 let toastTimer;
 function toast(msg, err){
   const t = document.getElementById("toast");
@@ -2381,7 +2460,7 @@ document.getElementById("bfPaste").onclick = async ()=>{
     toast("読み取れません。欄を長押し→ペーストしてください", true);
   }
 };
-document.getElementById("bfApply").onclick = ()=>{
+document.getElementById("bfApply").onclick = async ()=>{
   const q = document.getElementById("bfFilter").value.trim();
   const t = document.getElementById("bfText").value;
   if(!t.trim()){ toast("差し込む共通の文を入力(または貼り付け)してください", true); return; }
@@ -2414,7 +2493,7 @@ document.getElementById("bfApply").onclick = ()=>{
     toast(`該当する項目がありませんでした(${crit}・対象${bfTargets().length}冊)。チップを選び直すか、ワードを見直してください`, true);
     return;
   }
-  if(overwrite && !confirm(`入力済みの下書きを${overwrite}箇所上書きします。よろしいですか?`)) return;
+  if(overwrite && !(await askConfirm("下書きの上書き確認", `入力済みの下書きを${overwrite}箇所上書きします。よろしいですか?`, "上書きする"))) return;
   let fieldCount = 0;
   for(const p of plans){
     fillDrafts[p.id] = { names: p.names, values: p.values, ts: Date.now() };
@@ -2533,7 +2612,7 @@ document.getElementById("resetCountBtn").onclick = async ()=>{
   state.countReset = Date.now();
   if(await save()){ render(); toast("使用回数をリセットしました(直前の状態はバックアップ済み)"); }
 };
-document.getElementById("exportBtn").onclick = exportBackup;
+document.getElementById("exportBtn").onclick = ()=> exportBackup(true);
 document.getElementById("importBtn").onclick = ()=> document.getElementById("importFile").click();
 document.getElementById("importFile").onchange = (ev)=>{
   const f = ev.target.files[0];
@@ -2714,13 +2793,24 @@ function syncErrMsg(e){
 }
 function scheduleCloudPush(){
   if(!sync || !sync.token || syncBusy) return;
+  pushPending = true;
   clearTimeout(pushTimer);
   pushTimer = setTimeout(async ()=>{
-    try{ await pushCloud(); syncOkStatus("(自動)"); }
+    try{ await pushCloud(); pushPending = false; syncOkStatus("(自動)"); }
     catch(e){ setSyncStatus(syncErrMsg(e), true); }
   }, 3000);
 }
+// 閉じる直前・バックグラウンド移行時:送信待ちの変更があれば待たずに即送信
+let flushBusy = false;
+async function flushCloudPush(tag){
+  if(!sync || !sync.token || !pushPending || syncBusy || flushBusy) return;
+  flushBusy = true;
+  clearTimeout(pushTimer);
+  try{ await pushCloud(); pushPending = false; syncOkStatus(tag || "(終了時)"); }catch(e){}
+  finally{ flushBusy = false; }
+}
 let syncBusy = false;
+let pushPending = false;
 async function syncNow(){
   if(!sync || !sync.token){ toast("先に「同期の設定」を行ってください", true); return; }
   if(syncBusy) return; // 二重実行の防止(クラウド保管庫の分裂対策)
@@ -2739,15 +2829,18 @@ async function syncNow(){
     }
     await save(true);
     await pushCloud();
+    pushPending = false;
     render();
     syncOkStatus();
   }catch(e){ setSyncStatus(syncErrMsg(e), true); }
   finally{ syncBusy = false; }
 }
 async function setupSync(){
-  const t = prompt("GitHubトークンを入力(github.com→Settings→Developer settings→Personal access tokens→gist権限のみでOK)。\n同期を解除する場合は「解除」と入力", sync ? sync.token : "");
-  if(t === null) return;
-  if(t.trim() === "解除"){
+  const t = await askText("同期の設定 1/3:GitHubトークン",
+    "トークンを入力(解除する場合は「解除」)", sync ? sync.token : "");
+  if(t === null || t === undefined) return;
+  if(t === ""){ toast("トークンを入力してください(github.com→Settings→Developer settings→Personal access tokens→gist権限のみでOK)", true); return; }
+  if(t === "解除"){
     sync = null;
     try{
       if(hasAppStorage) await window.storage.delete(SYNC_KEY);
@@ -2756,11 +2849,14 @@ async function setupSync(){
     setSyncStatus("同期は解除されました(クラウド上のデータは残っています)");
     return;
   }
-  const p = prompt("暗号化パスワードを決めて入力(MacとiPhoneで同じものを使います。忘れると復元できません)", sync ? sync.pass : "");
-  if(p === null || !p.trim()){ toast("パスワードは必須です", true); return; }
-  const g = prompt("同期ID(2台目の設定なら、1台目に表示されているIDを入力。1台目・初回は空欄のままOK)", sync ? (sync.gistId||"") : "");
-  if(g === null) return;
-  sync = { token: t.trim(), pass: p.trim(), gistId: (g||"").trim(), lastAt: 0 };
+  const p = await askText("同期の設定 2/3:暗号化パスワード",
+    "MacとiPhoneで同じものを(忘れると復元不可)", sync ? sync.pass : "");
+  if(p === null || p === undefined) return;
+  if(!p){ toast("パスワードは必須です", true); return; }
+  const g = await askText("同期の設定 3/3:同期ID",
+    "2台目なら1台目のIDを。初回は空欄でOK", sync ? (sync.gistId||"") : "");
+  if(g === null || g === undefined) return;
+  sync = { token: t, pass: p, gistId: (g||"").trim(), lastAt: 0 };
   await saveSyncConfig();
   syncNow();
 }
@@ -2913,7 +3009,27 @@ document.getElementById("lockSetupBtn").onclick = setupLock;
 document.getElementById("syncSetupBtn").onclick = setupSync;
 document.getElementById("syncNowBtn").onclick = syncNow;
 
+// 閉じる・ホームに戻る・別アプリへ切り替え → 送信待ちがあれば即クラウドへ
+// 画面に戻ってきた → クラウドの最新を取り込む(もう1台での更新を反映)
+// ※編集画面などが開いている間は取り込まない(編集対象の枠がずれて
+//   別の命令書に保存・削除してしまう事故を防ぐ)。閉じた時点で取り込む。
+let deferredSync = false;
+function anyOverlayOpen(){
+  return !!document.querySelector(".overlay.open, .modal-bg.open");
+}
+document.addEventListener("visibilitychange", ()=>{
+  if(!bootDone || !sync || !sync.token) return;
+  if(document.visibilityState === "hidden"){
+    flushCloudPush("(終了時)");
+  }else{
+    if(anyOverlayOpen()) deferredSync = true;
+    else syncNow();
+  }
+});
+window.addEventListener("pagehide", ()=>{ if(bootDone) flushCloudPush("(終了時)"); });
+
 // 起動:ロック確認 → 読み込み → 設定があれば自動で同期
+let bootDone = false;
 (async function(){
   await loadLockConfig();
   if(lockCfg){
@@ -2925,6 +3041,7 @@ document.getElementById("syncNowBtn").onclick = syncNow;
   await loadDrafts();
   await load();
   renderLockStatus();
+  bootDone = true;
   if(sync && sync.token){
     setSyncStatus("同期設定あり・確認中…");
     syncNow();
