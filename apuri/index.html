@@ -235,7 +235,7 @@
 
   <div class="foot-head">
     <div class="fh-kick">設置済みアプリ</div>
-    <div class="fh-desc">名前を<b>タップするとURLをコピー</b>、<b>長押し(0.5秒)でURLの中身を表示</b>。URLは設置した時の場所で固定なので、上の入力欄を変えても変わりません。</div>
+    <div class="fh-desc">一覧は<b>GitHubの実物から自動で作られます</b>(📤で設置したものも勝手に並ぶ)。名前を<b>タップするとURLをコピー</b>、<b>長押し(0.5秒)でURLの中身を表示</b>。</div>
     <input type="text" id="appSearch" placeholder="🔍 アプリを検索(名前・フォルダ名・URL)" autocapitalize="off" autocorrect="off">
   </div>
   <div class="search-empty" id="searchEmpty">該当するアプリがありません</div>
@@ -261,6 +261,68 @@ const KNOWN = [
   { name:"鑑定書検品スキャナ", folder:"kantei-scanner" },
   { name:"出生図計算機",       folder:"chart-calc" },
 ];
+
+// ===== GitHub上のアプリ一覧(自動取得) =====
+// 公開リポジトリの一覧APIは合鍵なしで読める(回数制限があるので結果は端末に控える)。
+// 各アプリの題名は、公開ページ(同じサイト内)から読む。
+const AUTO_KEY = "deploy-helper-autolist-v1";
+let autoApps = null;   // [{folder, title}] または null(未取得)
+let autoStatus = "";
+if(storageOk){
+  try{
+    const raw = localStorage.getItem(AUTO_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(parsed && Array.isArray(parsed.apps)) autoApps = parsed.apps;
+    }
+  }catch(e){}
+}
+function saveAutoApps(){
+  if(!storageOk) return;
+  try{ localStorage.setItem(AUTO_KEY, JSON.stringify({ts: Date.now(), apps: autoApps})); }catch(e){}
+}
+// 題名や名前の「芯」(版番号・空白を除きNFCで揃える)。同一アプリ判定用。
+function normCore(s){
+  s = String(s||"").normalize("NFC");
+  s = s.replace(/[\s_・()\-]*[vV]?[0-9][0-9.()]*\s*$/, "");
+  return s.replace(/\s+/g,"").toLowerCase();
+}
+async function fetchAutoApps(){
+  autoStatus = "GitHubから一覧を取得中…";
+  buildFoot();
+  try{
+    const r = await fetch(`https://api.github.com/repos/${DEFAULT_ACCT}/${DEFAULT_REPO}/git/trees/main?recursive=1`);
+    if(!r.ok) throw new Error("一覧API " + r.status);
+    const j = await r.json();
+    const folders = [];
+    for(const it of (j.tree || [])){
+      if(it && it.type === "blob" && typeof it.path === "string"){
+        if(it.path === "index.html") folders.push("");
+        else if(it.path.endsWith("/index.html")) folders.push(it.path.slice(0, -"/index.html".length));
+      }
+    }
+    const apps = [];
+    for(const f of folders){
+      let title = "";
+      try{
+        const pr = await fetch(`https://${DEFAULT_ACCT}.github.io/${DEFAULT_REPO}/` + (f ? f + "/" : ""), {cache: "no-cache"});
+        if(pr.ok){
+          const html = (await pr.text()).slice(0, 30000);
+          const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+          if(m) title = m[1].replace(/\s+/g, " ").trim();
+        }
+      }catch(e){}
+      apps.push({folder: f, title: title});
+    }
+    autoApps = apps;
+    autoStatus = "GitHubの実物から自動作成(" + new Date().toLocaleTimeString("ja-JP", {hour: "2-digit", minute: "2-digit"}) + " 更新)";
+    saveAutoApps();
+  }catch(e){
+    autoStatus = autoApps ? "更新に失敗(前回の控えを表示中)" : "GitHubに繋がらないため固定リストを表示中";
+  }
+  buildFoot();
+  render();  // 衝突チェックにも最新一覧を反映
+}
 
 // ===== 日本語 → フォルダ名(ローマ字スラッグ)変換 =====
 const WORD_DICT = {
@@ -534,6 +596,15 @@ function collisionOf(name, folder, acct, repo){
     if(self && normFolder(self.folder) === nf) return null;
     const hit = KNOWN.find(k => normFolder(k.folder) === nf);
     if(hit) return hit.name;
+  }
+  // GitHubの実物との衝突(同じ芯のアプリなら「更新」なので許可)
+  if(inDefaultPlace && Array.isArray(autoApps)){
+    const hitA = autoApps.find(a => a.folder && normFolder(a.folder) === nf);
+    if(hitA){
+      const tc = normCore(hitA.title), nc = normCore(name);
+      const sameApp = tc && nc && (nc.indexOf(tc) >= 0 || tc.indexOf(nc) >= 0);
+      if(!sameApp) return (hitA.title || hitA.folder) + "(GitHub上に存在)";
+    }
   }
   // 自分で設置した記録との衝突(同じ場所・同じ日本語名での再設置=上書き更新は許可)
   const reg = registry.find(r => normFolder(r.folder) === nf && samePlace(r, acct, repo));
@@ -906,21 +977,37 @@ function render(){
     steps.appendChild(s);
   }
 
-  // ---- 設置済みアプリの一覧(名前をタップ=URLコピー/長押し=URL表示/上の検索欄で絞り込み)----
-  // ここのURLは「設置した時の場所」で完全固定。上の入力欄を何に変えても一切影響しない。
+  // ---- 設置済みアプリの一覧(GitHubの実物から自動作成) ----
+  buildFoot();
+}
+
+// 一覧の描画(GitHubの自動一覧 + 手動記録)。URLは設置場所で固定。
+function buildFoot(){
   const foot = $("foot");
+  if(!foot) return;
   foot.innerHTML = "";
-  const knownSec = document.createElement("div");
-  knownSec.className = "app-section";
-  const knownList = document.createElement("div");
-  knownList.className = "applist";
-  KNOWN.forEach(a=>{
-    knownList.appendChild(appItem(a.name, `https://${DEFAULT_ACCT}.github.io/${DEFAULT_REPO}/${a.folder}/`));
-  });
-  knownSec.appendChild(knownList);
-  foot.appendChild(knownSec);
-  // 自分で設置した記録(保存してある設置先でURLを組み立てる)
-  if(registry.length){
+  const autoSec = document.createElement("div");
+  autoSec.className = "app-section";
+  const head = document.createElement("div");
+  const usingAuto = Array.isArray(autoApps) && autoApps.length > 0;
+  head.innerHTML = `<div style="color:var(--amber);font-family:var(--mono);letter-spacing:.1em;font-size:10px;margin:0 0 10px">GitHub上のアプリ ${esc(autoStatus)} <button type="button" id="autoRefresh" style="background:none;border:1px solid var(--line-2);border-radius:999px;color:var(--ink-dim);font-size:10px;padding:3px 10px;cursor:pointer;margin-left:6px">🔄 更新</button></div>`;
+  autoSec.appendChild(head);
+  const list = document.createElement("div");
+  list.className = "applist";
+  const items = usingAuto
+    ? autoApps.map(a => ({label: a.title || (a.folder || "(トップページ)"), folder: a.folder}))
+    : KNOWN.map(k => ({label: k.name, folder: k.folder}));
+  for(const a of items){
+    list.appendChild(appItem(a.label, `https://${DEFAULT_ACCT}.github.io/${DEFAULT_REPO}/` + (a.folder ? a.folder + "/" : "")));
+  }
+  autoSec.appendChild(list);
+  foot.appendChild(autoSec);
+  const rb = head.querySelector("#autoRefresh");
+  if(rb) rb.onclick = ()=>{ fetchAutoApps(); };
+  // 自分で記録したアプリ(別リポジトリ等)。自動一覧に載っている同じ場所のものは省く
+  const autoSet = new Set((autoApps || []).map(a => normFolder(a.folder)));
+  const rest = registry.filter(r => !(samePlace(r, DEFAULT_ACCT, DEFAULT_REPO) && autoSet.has(normFolder(r.folder))));
+  if(rest.length){
     const regSec = document.createElement("div");
     regSec.className = "app-section";
     const rt = document.createElement("div");
@@ -928,7 +1015,7 @@ function render(){
     regSec.appendChild(rt);
     const regList = document.createElement("div");
     regList.className = "applist";
-    for(const r of [...registry].sort((a,b)=>(b.ts||0)-(a.ts||0))){
+    for(const r of [...rest].sort((a,b)=>(b.ts||0)-(a.ts||0))){
       const differentPlace = normPlace(r.acct, r.repo) !== normPlace(DEFAULT_ACCT, DEFAULT_REPO);
       regList.appendChild(appItem(
         r.name,
@@ -1007,6 +1094,7 @@ $("appSearch").addEventListener("input", applyAppFilter);
 // よく使うアプリのボタンでも手直しリセット
 syncAcctLock();
 render();
+fetchAutoApps();
 </script>
 </body>
 </html>
