@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude HTML サルベージ v2</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg:#EEF2F6;
+    --panel:#FFFFFF;
+    --ink:#17243B;
+    --ink-soft:#5A6A85;
+    --line:#D7DEE8;
+    --accent:#2450E6;
+    --accent-soft:#E4EAFE;
+    --amber:#B7791F;
+    --amber-soft:#FBF0DC;
+    --teal:#0E7E70;
+    --teal-soft:#DDF2EF;
+    --radius:14px;
+    --mono:"SFMono-Regular",Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Yu Gothic","Meiryo",sans-serif;
+    line-height:1.6;
+    min-height:100vh;
+  }
+  .wrap{max-width:880px;margin:0 auto;padding:32px 20px 80px}
+
+  header{margin-bottom:28px}
+  .eyebrow{
+    font-size:12px;letter-spacing:.18em;color:var(--accent);
+    font-weight:700;text-transform:uppercase;margin-bottom:6px;
+  }
+  h1{font-size:clamp(24px,4.5vw,34px);font-weight:800;letter-spacing:.01em}
+  .sub{color:var(--ink-soft);font-size:14px;margin-top:8px;max-width:60ch}
+
+  .howto{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 20px;margin-bottom:20px;font-size:14px;
+  }
+  .howto summary{cursor:pointer;font-weight:700;color:var(--accent);list-style:none}
+  .howto summary::before{content:"▸ ";}
+  .howto[open] summary::before{content:"▾ ";}
+  .howto ol{margin:12px 0 0 20px;color:var(--ink-soft)}
+  .howto li{margin-bottom:6px}
+  .howto b{color:var(--ink)}
+
+  .drop{
+    display:block;
+    border:2px dashed var(--line);border-radius:var(--radius);
+    background:var(--panel);
+    padding:40px 20px;text-align:center;cursor:pointer;
+    transition:border-color .15s,background .15s;
+  }
+  .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+  .drop p{color:var(--ink-soft);font-size:14px}
+  .drop .big{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:4px}
+  .drop input{display:none}
+  .busy{display:none;margin-top:14px;font-size:14px;color:var(--ink-soft)}
+  .busy.show{display:block}
+
+  .toolbar{display:none;gap:10px;margin:24px 0 4px;flex-wrap:wrap;align-items:center}
+  .toolbar.show{display:flex}
+  .search{
+    flex:1;min-width:220px;
+    padding:11px 14px;border:1px solid var(--line);border-radius:10px;
+    font-size:14px;background:var(--panel);color:var(--ink);
+    font-family:inherit;
+  }
+  .search:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+  .stat{font-size:13px;color:var(--ink-soft);white-space:nowrap}
+  .stat b{color:var(--ink)}
+  .filters{display:none;gap:14px;margin-bottom:8px;font-size:13px;color:var(--ink-soft);flex-wrap:wrap}
+  .filters.show{display:flex}
+  .filters label{cursor:pointer;user-select:none}
+  .filters input{accent-color:var(--accent);margin-right:4px}
+
+  .rail{position:relative;margin-top:14px}
+  .rail::before{
+    content:"";position:absolute;left:9px;top:8px;bottom:8px;
+    width:2px;background:var(--line);border-radius:1px;
+  }
+  .card{
+    position:relative;margin:0 0 14px 32px;
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;
+  }
+  .card::before{
+    content:"";position:absolute;left:-29px;top:24px;
+    width:12px;height:12px;border-radius:50%;
+    background:var(--panel);border:3px solid var(--ink-soft);
+  }
+  .card.latest{border-color:var(--accent)}
+  .card.latest::before{border-color:var(--accent);background:var(--accent)}
+
+  .card-top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .badge{
+    font-size:11px;font-weight:800;letter-spacing:.08em;
+    color:#fff;background:var(--accent);
+    padding:2px 9px;border-radius:99px;
+  }
+  .card h3{font-size:16px;font-weight:700;flex:1;min-width:150px;overflow-wrap:anywhere}
+  .meta{font-size:12px;color:var(--ink-soft);margin-top:4px}
+  .meta .conv{color:var(--amber);background:var(--amber-soft);padding:1px 7px;border-radius:6px;font-weight:600}
+  .meta .kind{font-family:var(--mono);font-size:11px;border:1px solid var(--line);padding:1px 6px;border-radius:6px;margin-left:6px}
+  .meta .kind.react{color:var(--teal);background:var(--teal-soft);border-color:var(--teal-soft)}
+  .size{font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+
+  .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
+  button{
+    font-family:inherit;font-size:13px;font-weight:700;
+    padding:8px 15px;border-radius:9px;border:1px solid var(--line);
+    background:var(--panel);color:var(--ink);cursor:pointer;
+    transition:background .12s;
+  }
+  button:hover{background:var(--bg)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{background:#1B3FBF}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .note{font-size:12px;color:var(--ink-soft)}
+
+  .preview{display:none;margin-top:14px}
+  .preview.show{display:block}
+  .preview iframe{
+    width:100%;height:420px;border:1px solid var(--line);
+    border-radius:10px;background:#fff;
+  }
+
+  .empty{
+    display:none;text-align:center;color:var(--ink-soft);
+    padding:50px 20px;font-size:14px;
+  }
+  .empty.show{display:block}
+  .err{
+    display:none;background:#FDECEC;border:1px solid #E8A0A0;color:#8C2B2B;
+    border-radius:10px;padding:12px 16px;margin-top:16px;font-size:14px;
+  }
+  .err.show{display:block}
+  .info{
+    display:none;background:var(--amber-soft);border:1px solid #E4C98C;color:#7A5410;
+    border-radius:10px;padding:12px 16px;margin-top:16px;font-size:13px;
+  }
+  .info.show{display:block}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Artifact Salvage v2</div>
+    <h1>Claude HTML サルベージ</h1>
+    <p class="sub">Claudeの全トーク履歴(エクスポートデータ)からHTML・Reactアプリを掘り出して、最新のものから順に並べます。検索して、プレビューして、そのままダウンロード。</p>
+  </header>
+
+  <details class="howto" open>
+    <summary>エクスポートデータの入手方法</summary>
+    <ol>
+      <li>claude.ai の <b>設定 → プライバシー → データをエクスポート</b> をクリック</li>
+      <li>届いたメールからデータ(zip)をダウンロード</li>
+      <li>その <b>zipファイルごと</b>、または中の <b>conversations.json</b> を下にドロップ</li>
+    </ol>
+  </details>
+
+  <label class="drop" id="drop">
+    <p class="big">ここに conversations.json または zip をドロップ</p>
+    <p>クリックしてファイルを選択もできます(データはブラウザ内だけで処理されます)</p>
+    <input type="file" id="file" accept=".json,.zip">
+  </label>
+  <p class="busy" id="busy">読み込み中…(大きいファイルは少し時間がかかります)</p>
+
+  <div class="err" id="err"></div>
+  <div class="info" id="info"></div>
+
+  <div class="toolbar" id="toolbar">
+    <input class="search" id="q" type="search" placeholder="アプリ名・トーク名・内容で検索(例: 家計簿)">
+    <span class="stat" id="stat"></span>
+  </div>
+  <div class="filters" id="filters">
+    <label><input type="checkbox" id="fTitleOnly">名前だけで絞り込む</label>
+    <label><input type="checkbox" id="fHtml" checked>HTML</label>
+    <label><input type="checkbox" id="fReact" checked>React (JSX)</label>
+    <label><input type="checkbox" id="fDup">重複も表示</label>
+  </div>
+
+  <div class="rail" id="results"></div>
+  <div class="empty" id="empty">条件に合うものが見つかりませんでした。キーワードやフィルタを変えてみてください。</div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const drop = $('drop'), fileInput = $('file'), results = $('results');
+  let items = [];
+
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault(); drop.classList.remove('over');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+  // 検索はデバウンス(大きい履歴でも固まりにくく)
+  let timer = null;
+  $('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(render, 200); });
+  ['fHtml','fReact','fDup','fTitleOnly'].forEach(id => $(id).addEventListener('change', render));
+
+  function showErr(msg){ const el=$('err'); el.textContent=msg; el.classList.add('show'); }
+  function clearMsg(){ $('err').classList.remove('show'); $('info').classList.remove('show'); }
+  function showInfo(msg){ const el=$('info'); el.textContent=msg; el.classList.add('show'); }
+
+  async function handleFile(file){
+    clearMsg();
+    $('busy').classList.add('show');
+    // 描画を先に反映させてから重い処理へ
+    await new Promise(r => setTimeout(r, 30));
+    try{
+      let text;
+      if (/\.zip$/i.test(file.name)) {
+        if (typeof JSZip === 'undefined') { showErr('zip読み込み用ライブラリが利用できません(オフラインの可能性)。zipを解凍して conversations.json を直接ドロップしてください。'); return; }
+        const zip = await JSZip.loadAsync(file);
+        const entry = Object.values(zip.files).find(f => /conversations\.json$/i.test(f.name));
+        if (!entry) { showErr('zip内に conversations.json が見つかりませんでした。'); return; }
+        text = await entry.async('string');
+      } else {
+        text = await file.text();
+      }
+      const data = JSON.parse(text);
+      const convs = Array.isArray(data) ? data : (data.conversations || []);
+      items = extractAll(convs);
+
+      // フォールバック:想定形式で0件なら、JSON全体を深く走査して文字列から直接探す
+      if (!items.length) {
+        items = deepScanFallback(data);
+        if (items.length) showInfo('注意: エクスポート形式が想定と異なっていたため、簡易走査モードで抽出しました。トーク名や日時が「不明」になる場合があります。');
+      }
+
+      finalizeItems(items);
+      $('toolbar').classList.add('show');
+      $('filters').classList.add('show');
+      render();
+      if (!items.length) showErr('HTML/Reactアプリが1件も見つかりませんでした。Artifactを含むトークがエクスポートに含まれているかご確認ください。');
+    }catch(e){
+      console.error(e);
+      showErr('ファイルを読み込めませんでした: ' + e.message);
+    }finally{
+      $('busy').classList.remove('show');
+    }
+  }
+
+  // ---- 抽出ロジック ----
+  function extractAll(convs){
+    const out = [];
+    for (const conv of convs){
+      if (!conv || typeof conv !== 'object') continue;
+      const convName = conv.name || '(無題のトーク)';
+      const artifacts = new Map(); // id -> item
+
+      const msgs = Array.isArray(conv.chat_messages) ? conv.chat_messages.slice() : [];
+      msgs.sort((a,b)=> ts(a && a.created_at) - ts(b && b.created_at));
+      for (const msg of msgs){
+        if (!msg || (msg.sender && msg.sender !== 'assistant')) continue;
+        const date = msg.created_at || conv.updated_at || conv.created_at || null;
+        const texts = [];
+        if (typeof msg.text === 'string' && msg.text) texts.push(msg.text);
+        if (typeof msg.content === 'string' && msg.content) texts.push(msg.content);
+        const blocks = Array.isArray(msg.content) ? msg.content : [];
+        for (const b of blocks){
+          if (!b) continue;
+          if (b.type === 'text' && typeof b.text === 'string') texts.push(b.text);
+          if (b.type === 'tool_use' && b.input) handleToolUse(b, artifacts, date);
+        }
+        for (const t of texts) handleText(t, artifacts, date, out.length + artifacts.size);
+      }
+      for (const a of artifacts.values()){ a.conv = convName; out.push(a); }
+    }
+    return out;
+  }
+
+  function handleToolUse(b, artifacts, date){
+    const inp = b.input || {};
+    const typeStr = String(inp.type || '') + ' ' + String(inp.language || '');
+    const format = /react|jsx|tsx/i.test(typeStr) ? 'react' : (/html/i.test(typeStr) ? 'html' : null);
+    const id = inp.id || inp.identifier || ('tool-' + Math.random().toString(36).slice(2));
+    const cmd = inp.command || 'create';
+    if ((cmd === 'create' || cmd === 'rewrite') && typeof inp.content === 'string' && inp.content){
+      const fmt = format || detectFormat(inp.content);
+      if (fmt){
+        artifacts.set(id, { id, title: inp.title || id, content: inp.content, date, kind: 'artifact', format: fmt });
+      }
+    } else if (cmd === 'update' && artifacts.has(id) && typeof inp.old_str === 'string' && inp.old_str.length > 0 && typeof inp.new_str === 'string'){
+      const a = artifacts.get(id);
+      // 最初の1箇所だけ置換(全置換による破損を防ぐ)
+      const idx = a.content.indexOf(inp.old_str);
+      if (idx >= 0){
+        a.content = a.content.slice(0, idx) + inp.new_str + a.content.slice(idx + inp.old_str.length);
+        a.date = date;
+      }
+    }
+  }
+
+  function handleText(text, artifacts, date, seed){
+    // 1) <antArtifact> タグ
+    const artRe = /<antArtifact([^>]*)>([\s\S]*?)<\/antArtifact>/gi;
+    let m, found = false;
+    while ((m = artRe.exec(text)) !== null){
+      found = true;
+      const attrs = m[1], body = m[2].trim();
+      const get = k => { const r = new RegExp(k + '="([^"]*)"','i').exec(attrs); return r ? r[1] : null; };
+      const typeStr = (get('type')||'') + ' ' + (get('language')||'');
+      const id = get('identifier') || ('art-' + seed + '-' + m.index);
+      const fmt = /react|jsx|tsx/i.test(typeStr) ? 'react' : (/html/i.test(typeStr) ? 'html' : detectFormat(body));
+      if (fmt){
+        artifacts.set(id, { id, title: get('title') || id, content: body, date, kind: 'artifact', format: fmt });
+      }
+    }
+    if (found) return;
+    // 2) コードブロック(言語指定なしも対象に)
+    const fenceRe = /```([A-Za-z]*)[^\S\n]*\n([\s\S]*?)```/g;
+    while ((m = fenceRe.exec(text)) !== null){
+      const lang = (m[1]||'').toLowerCase();
+      const body = m[2].trim();
+      let fmt = null;
+      if (lang === 'html') fmt = looksLikeHtml(body) ? 'html' : null;
+      else if (lang === 'jsx' || lang === 'tsx') fmt = 'react';
+      else if (lang === '' ) fmt = detectFormat(body);
+      if (fmt){
+        const id = 'code-' + seed + '-' + m.index;
+        artifacts.set(id, { id, title: guessTitle(body, fmt), content: body, date, kind: 'code', format: fmt });
+      }
+    }
+  }
+
+  // 想定形式で0件だったとき:JSONを深く走査し、長めの文字列すべてを対象に探す
+  function deepScanFallback(data){
+    const artifacts = new Map();
+    let seed = 0;
+    // 反復処理(再帰だと深いネストでスタックオーバーフローするため)
+    const stack = [data];
+    while (stack.length){
+      const node = stack.pop();
+      if (typeof node === 'string'){
+        if (node.length > 200) handleText(node, artifacts, null, seed++);
+      } else if (Array.isArray(node)){
+        for (const v of node) stack.push(v);
+      } else if (node && typeof node === 'object'){
+        for (const k in node) stack.push(node[k]);
+      }
+    }
+    const out = [];
+    for (const a of artifacts.values()){ a.conv = '(トーク名不明)'; out.push(a); }
+    return out;
+  }
+
+  function looksLikeHtml(s){
+    if (!s) return false;
+    const head = s.slice(0, 600).toLowerCase();
+    return head.includes('<!doctype html') || head.includes('<html') ||
+           (head.includes('<body') && head.includes('<')) ||
+           (/<(div|section|main|canvas|svg|style|script)\b/.test(head) && s.length > 300);
+  }
+  function looksLikeReact(s){
+    if (!s || s.length < 200) return false;
+    return /export\s+default\s/.test(s) && /\bfrom\s+['"]react['"]|React\./.test(s) && /<[A-Za-z]/.test(s);
+  }
+  function detectFormat(s){
+    if (looksLikeReact(s)) return 'react';
+    if (looksLikeHtml(s)) return 'html';
+    return null;
+  }
+  function guessTitle(code, fmt){
+    if (fmt === 'html'){
+      const m = /<title>([^<]{1,80})<\/title>/i.exec(code);
+      if (m && m[1].trim()) return m[1].trim();
+    } else {
+      const m = /(?:function|const)\s+([A-Z][A-Za-z0-9_]{2,40})/.exec(code);
+      if (m) return m[1];
+    }
+    return fmt === 'react' ? 'Reactコードブロック' : 'HTMLコードブロック';
+  }
+
+  function ts(d){
+    if (!d) return null;
+    const t = new Date(d).getTime();
+    return isNaN(t) ? null : t;
+  }
+
+  // 並べ替え・重複判定・検索インデックスの事前計算
+  function finalizeItems(list){
+    // 日時があるもの優先で新しい順、日時不明は最後
+    list.sort((a,b)=>{
+      const ta = ts(a.date), tb = ts(b.date);
+      if (ta === null && tb === null) return 0;
+      if (ta === null) return 1;
+      if (tb === null) return -1;
+      return tb - ta;
+    });
+    // 完全一致の内容は「重複」としてマーク(いちばん新しい1件だけ残す)
+    const seen = new Set();
+    for (const it of list){
+      it.dup = seen.has(it.content);
+      if (!it.dup) seen.add(it.content);
+      it.search = (it.title + '\n' + it.conv + '\n' + it.content).toLowerCase();
+      it.titleSearch = (it.title + '\n' + it.conv).toLowerCase();
+    }
+  }
+
+  // ---- 表示 ----
+  function fmtDate(d){
+    const t = ts(d);
+    return t === null ? '日時不明' : new Date(t).toLocaleString('ja-JP',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+  function fmtSize(n){ return n>1024 ? (n/1024).toFixed(1)+' KB' : n+' B'; }
+  function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  function render(){
+    const q = $('q').value.trim().toLowerCase();
+    const showHtml = $('fHtml').checked, showReact = $('fReact').checked, showDup = $('fDup').checked, titleOnly = $('fTitleOnly').checked;
+    const hits = items.filter(it =>
+      (it.format === 'html' ? showHtml : showReact) &&
+      (showDup || !it.dup) &&
+      (!q || (titleOnly ? it.titleSearch : it.search).includes(q))
+    );
+    $('stat').innerHTML = '<b>' + hits.length + '</b> / ' + items.length + ' 件';
+    $('empty').classList.toggle('show', items.length>0 && hits.length===0);
+    results.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    // 「最新」バッジは日時が分かっている先頭の1件だけに付ける
+    let latestMarked = false;
+    hits.forEach((it) => {
+      const isLatest = !latestMarked && ts(it.date) !== null;
+      if (isLatest) latestMarked = true;
+      const card = document.createElement('div');
+      card.className = 'card' + (isLatest ? ' latest' : '');
+      const kindLabel = (it.kind==='artifact' ? 'Artifact' : 'code block') + (it.format==='react' ? ' / React' : '');
+      card.innerHTML =
+        '<div class="card-top">' +
+          (isLatest ? '<span class="badge">最新</span>' : '') +
+          '<h3>' + esc(it.title) + '</h3>' +
+          '<span class="size">' + fmtSize(it.content.length) + (it.dup ? ' ・重複' : '') + '</span>' +
+        '</div>' +
+        '<div class="meta"><span class="conv">' + esc(it.conv) + '</span>' +
+          '<span class="kind' + (it.format==='react' ? ' react' : '') + '">' + kindLabel + '</span> ・ ' + fmtDate(it.date) +
+        '</div>' +
+        '<div class="actions">' +
+          '<button class="primary" data-act="dl">ダウンロード' + (it.format==='react' ? ' (.jsx)' : '') + '</button>' +
+          (it.format==='html' ? '<button data-act="pv">プレビュー</button>' : '') +
+          '<button data-act="cp">コードをコピー</button>' +
+          (it.format==='react' ? '<span class="note">Reactはこのツール上ではプレビューできません</span>' : '') +
+        '</div>' +
+        (it.format==='html' ? '<div class="preview"><iframe sandbox="allow-scripts" title="プレビュー"></iframe></div>' : '');
+      card.addEventListener('click', e => {
+        const act = e.target.dataset && e.target.dataset.act;
+        if (!act) return;
+        if (act === 'dl'){
+          const blob = new Blob([it.content], {type: it.format==='html' ? 'text/html' : 'text/plain'});
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          const base = (it.title.replace(/[\\/:*?"<>|]/g,'_').trim() || 'app');
+          a.download = base + (it.format==='html' ? '.html' : '.jsx');
+          a.click();
+          setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+        } else if (act === 'pv'){
+          const pv = card.querySelector('.preview');
+          const open = pv.classList.toggle('show');
+          const fr = pv.querySelector('iframe');
+          if (open && !fr.srcdoc) fr.srcdoc = it.content;
+          e.target.textContent = open ? 'プレビューを閉じる' : 'プレビュー';
+        } else if (act === 'cp'){
+          const done = () => { e.target.textContent = 'コピーしました ✓'; setTimeout(()=> e.target.textContent = 'コードをコピー', 1500); };
+          if (navigator.clipboard && navigator.clipboard.writeText){
+            navigator.clipboard.writeText(it.content).then(done, () => fallbackCopy(it.content, done));
+          } else fallbackCopy(it.content, done);
+        }
+      });
+      frag.appendChild(card);
+    });
+    results.appendChild(frag);
+  }
+
+  function fallbackCopy(text, done){
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){}
+    document.body.removeChild(ta);
+  }
+})();
+</script>
+</body>
+</html>
