@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>万能HTML変換ツール</title>
+<style>
+:root{
+  --bg:#0b1026;
+  --bg2:#121a3a;
+  --panel:#161f45;
+  --line:#2a3568;
+  --text:#e8ebf7;
+  --sub:#9aa3c7;
+  --accent:#ffd166;
+  --accent2:#7aa2ff;
+  --ok:#6fe3a5;
+  --err:#ff8080;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+  background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);
+  color:var(--text);
+  min-height:100vh;
+  padding:24px 16px 64px;
+}
+.wrap{max-width:860px;margin:0 auto}
+header{margin-bottom:20px}
+h1{font-size:22px;font-weight:700;letter-spacing:.04em}
+h1 .star{color:var(--accent)}
+header p{color:var(--sub);font-size:13px;margin-top:6px;line-height:1.7}
+
+.dropzone{
+  border:2px dashed var(--line);
+  border-radius:14px;
+  padding:34px 16px;
+  text-align:center;
+  background:rgba(255,255,255,.02);
+  cursor:pointer;
+  transition:border-color .15s,background .15s;
+}
+.dropzone.drag{border-color:var(--accent);background:rgba(255,209,102,.06)}
+.dropzone .big{font-size:15px;font-weight:600}
+.dropzone .hint{color:var(--sub);font-size:12px;margin-top:8px;line-height:1.8}
+input[type=file]{display:none}
+
+.paste-area{margin-top:14px}
+.paste-area textarea{
+  width:100%;min-height:110px;resize:vertical;
+  background:var(--panel);color:var(--text);
+  border:1px solid var(--line);border-radius:10px;
+  padding:12px;font-size:13px;line-height:1.7;
+  font-family:inherit;
+}
+.paste-area textarea:focus{outline:2px solid var(--accent2);outline-offset:1px}
+.row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+button{
+  border:none;border-radius:9px;padding:10px 16px;
+  font-size:13px;font-weight:600;cursor:pointer;
+  font-family:inherit;
+  background:var(--panel);color:var(--text);
+  border:1px solid var(--line);
+  transition:filter .1s;
+}
+button:hover{filter:brightness(1.2)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:#1a1400;border-color:var(--accent)}
+button.small{padding:6px 12px;font-size:12px}
+
+.items{margin-top:26px;display:flex;flex-direction:column;gap:14px}
+.item{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:14px;
+}
+.item-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.badge{
+  font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;
+  background:rgba(122,162,255,.15);color:var(--accent2);
+  border:1px solid rgba(122,162,255,.4);
+  white-space:nowrap;
+}
+.badge.img{background:rgba(111,227,165,.12);color:var(--ok);border-color:rgba(111,227,165,.4)}
+.item-name{font-size:13px;font-weight:600;word-break:break-all;flex:1;min-width:120px}
+.item-size{font-size:11px;color:var(--sub);white-space:nowrap}
+.item-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.preview{
+  margin-top:10px;
+  background:#fff;color:#222;
+  border-radius:8px;
+  max-height:280px;overflow:auto;
+  padding:14px;font-size:13px;line-height:1.8;
+  display:none;
+}
+.preview.show{display:block}
+.preview img{max-width:100%}
+.preview table{border-collapse:collapse}
+.preview th,.preview td{border:1px solid #ccc;padding:4px 8px;font-size:12px}
+.preview pre{background:#f4f4f4;padding:10px;border-radius:6px;overflow:auto;font-size:12px}
+.preview h1,.preview h2,.preview h3{margin:.6em 0 .3em}
+.preview p,.preview ul,.preview ol,.preview blockquote{margin:.5em 0}
+.preview ul,.preview ol{padding-left:1.5em}
+.preview blockquote{border-left:3px solid #ccc;padding-left:10px;color:#555}
+.preview .raw{white-space:pre-wrap;word-break:break-word}
+
+.bulk{margin-top:18px;display:none;gap:8px;flex-wrap:wrap}
+.bulk.show{display:flex}
+.toast{
+  position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(80px);
+  background:var(--accent);color:#1a1400;
+  padding:10px 22px;border-radius:24px;font-size:13px;font-weight:700;
+  transition:transform .25s;pointer-events:none;z-index:99;
+}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.empty-note{color:var(--sub);font-size:12px;margin-top:26px;text-align:center;line-height:1.9}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1><span class="star">✦</span> 万能HTML変換ツール</h1>
+  <p>ファイルをドロップ、またはテキストを貼り付けると、単体で開けるHTMLファイルに変換します。<br>対応:テキスト / Markdown / CSV・TSV / JSON / 画像(base64埋め込み)。すべてブラウザ内で完結、外部送信なし。</p>
+</header>
+
+<div class="dropzone" id="dz" role="button" tabindex="0" aria-label="ファイルを選択">
+  <div class="big">ここにファイルをドロップ / タップして選択</div>
+  <div class="hint">.txt .md .csv .tsv .json .html / .png .jpg .webp .gif<br>複数ファイル同時OK</div>
+  <input type="file" id="fileInput" multiple>
+</div>
+
+<div class="paste-area">
+  <textarea id="pasteBox" placeholder="ここにテキストを貼り付けて「変換」を押す(Markdown・CSV・JSONは自動判別)"></textarea>
+  <div class="row" style="align-items:center">
+    <button class="primary" id="convertPaste">貼り付けテキストを変換</button>
+    <button id="clearAll">全てクリア</button>
+    <label style="font-size:12px;color:var(--sub);display:flex;align-items:center;gap:6px;cursor:pointer">
+      <input type="checkbox" id="rawMode" style="accent-color:var(--accent)">
+      無加工モード(空行・空白・記法を一切変えない)
+    </label>
+  </div>
+</div>
+
+<div class="items" id="items"></div>
+
+<div class="bulk" id="bulk">
+  <button class="primary" id="dlAll">全てダウンロード</button>
+  <button id="dlMerged">結合して1つのHTMLでダウンロード</button>
+</div>
+
+<p class="empty-note" id="emptyNote">まだ何も変換していません。ファイルかテキストを送ってください。</p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+
+var items = []; // {name, type, html, bodyHtml}
+var dz = document.getElementById('dz');
+var fileInput = document.getElementById('fileInput');
+var itemsEl = document.getElementById('items');
+var bulkEl = document.getElementById('bulk');
+var emptyNote = document.getElementById('emptyNote');
+var toastEl = document.getElementById('toast');
+var toastTimer = null;
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 1800);
+}
+
+/* ---------- エスケープ ---------- */
+function esc(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ---------- Markdown → HTML(軽量パーサ・外部依存なし) ---------- */
+function mdToHtml(src){
+  var lines = src.replace(/\r\n?/g,'\n').split('\n');
+  var out = [];
+  var i = 0;
+
+  function safeUrl(u){
+    if(/^\s*(javascript|vbscript|data:(?!image\/))/i.test(u)) return '#';
+    return u;
+  }
+  function inline(t){
+    t = esc(t);
+    // 画像
+    t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, function(m,a,u){ return '<img src="'+safeUrl(u)+'" alt="'+a+'">'; });
+    // リンク
+    t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function(m,a,u){ return '<a href="'+safeUrl(u)+'">'+a+'</a>'; });
+    // 太字
+    t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    // 斜体
+    t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    // 取り消し
+    t = t.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+    // インラインコード
+    t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+    return t;
+  }
+
+  while(i < lines.length){
+    var line = lines[i];
+
+    // コードブロック
+    var fence = line.match(/^```(\w*)/);
+    if(fence){
+      var code = [];
+      i++;
+      while(i < lines.length && !/^```/.test(lines[i])){ code.push(lines[i]); i++; }
+      i++;
+      out.push('<pre><code>' + esc(code.join('\n')) + '</code></pre>');
+      continue;
+    }
+    // 水平線
+    if(/^(\*{3,}|-{3,}|_{3,})\s*$/.test(line)){ out.push('<hr>'); i++; continue; }
+    // 見出し
+    var h = line.match(/^(#{1,6})\s+(.*)/);
+    if(h){ var lv = h[1].length; out.push('<h'+lv+'>'+inline(h[2])+'</h'+lv+'>'); i++; continue; }
+    // 引用
+    if(/^>\s?/.test(line)){
+      var q = [];
+      while(i < lines.length && /^>\s?/.test(lines[i])){ q.push(lines[i].replace(/^>\s?/,'')); i++; }
+      out.push('<blockquote>' + mdToHtml(q.join('\n')) + '</blockquote>');
+      continue;
+    }
+    // テーブル
+    if(/\|/.test(line) && i+1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i+1]) && /-{2,}/.test(lines[i+1])){
+      var headCells = line.split('|').map(function(c){return c.trim();}).filter(function(c,idx,arr){ return !(c==='' && (idx===0||idx===arr.length-1)); });
+      i += 2;
+      var rows = [];
+      while(i < lines.length && /\|/.test(lines[i])){
+        var cells = lines[i].split('|').map(function(c){return c.trim();});
+        if(cells[0]==='') cells.shift();
+        if(cells.length && cells[cells.length-1]==='') cells.pop();
+        rows.push(cells);
+        i++;
+      }
+      var t = '<table><thead><tr>';
+      headCells.forEach(function(c){ t += '<th>'+inline(c)+'</th>'; });
+      t += '</tr></thead><tbody>';
+      rows.forEach(function(r){
+        t += '<tr>';
+        r.forEach(function(c){ t += '<td>'+inline(c)+'</td>'; });
+        t += '</tr>';
+      });
+      t += '</tbody></table>';
+      out.push(t);
+      continue;
+    }
+    // リスト
+    if(/^(\s*)([-*+]|\d+\.)\s+/.test(line)){
+      var ordered = /^\s*\d+\.\s+/.test(line);
+      var tag = ordered ? 'ol' : 'ul';
+      var lis = [];
+      while(i < lines.length && /^(\s*)([-*+]|\d+\.)\s+/.test(lines[i])){
+        lis.push('<li>' + inline(lines[i].replace(/^(\s*)([-*+]|\d+\.)\s+/,'')) + '</li>');
+        i++;
+      }
+      out.push('<'+tag+'>' + lis.join('') + '</'+tag+'>');
+      continue;
+    }
+    // 空行
+    if(/^\s*$/.test(line)){ i++; continue; }
+    // 段落(連続行をまとめる)
+    var para = [];
+    while(i < lines.length && !/^\s*$/.test(lines[i]) && !/^(#{1,6}\s|>|```|([-*+]|\d+\.)\s)/.test(lines[i])){
+      para.push(lines[i]); i++;
+    }
+    out.push('<p>' + para.map(inline).join('<br>') + '</p>');
+  }
+  return out.join('\n');
+}
+
+/* ---------- CSV/TSV → HTML table ---------- */
+function csvToHtml(src, delim){
+  var rows = [];
+  var cur = [''];
+  var inQ = false;
+  var s = src.replace(/\r\n?/g,'\n');
+  for(var i=0;i<s.length;i++){
+    var ch = s[i];
+    if(inQ){
+      if(ch === '"'){
+        if(s[i+1] === '"'){ cur[cur.length-1] += '"'; i++; }
+        else inQ = false;
+      } else cur[cur.length-1] += ch;
+    } else {
+      if(ch === '"') inQ = true;
+      else if(ch === delim) cur.push('');
+      else if(ch === '\n'){ rows.push(cur); cur = ['']; }
+      else cur[cur.length-1] += ch;
+    }
+  }
+  if(cur.length > 1 || cur[0] !== '') rows.push(cur);
+  if(!rows.length) return '<p>(空のデータ)</p>';
+  var html = '<table><thead><tr>';
+  rows[0].forEach(function(c){ html += '<th>'+esc(c)+'</th>'; });
+  html += '</tr></thead><tbody>';
+  for(var r=1;r<rows.length;r++){
+    html += '<tr>';
+    rows[r].forEach(function(c){ html += '<td>'+esc(c)+'</td>'; });
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  return html;
+}
+
+/* ---------- 無加工 → HTML(1文字も変えない。エスケープのみ) ---------- */
+function rawToHtml(src){
+  // \r はHTMLパーサに正規化されるため文字参照で保持する
+  return '<div class="raw">' + esc(src).replace(/\r/g, '&#13;') + '</div>';
+}
+
+/* ---------- プレーンテキスト → HTML ---------- */
+function txtToHtml(src){
+  var blocks = src.replace(/\r\n?/g,'\n').split(/\n{2,}/);
+  return blocks.map(function(b){
+    if(/^\s*$/.test(b)) return '';
+    return '<p>' + esc(b).replace(/\n/g,'<br>') + '</p>';
+  }).filter(Boolean).join('\n');
+}
+
+/* ---------- JSON → HTML ---------- */
+function jsonToHtml(src){
+  try{
+    var obj = JSON.parse(src);
+    return '<pre><code>' + esc(JSON.stringify(obj, null, 2)) + '</code></pre>';
+  }catch(e){
+    return null;
+  }
+}
+
+/* ---------- 自動判別(貼り付けテキスト用) ---------- */
+function detect(src){
+  var t = src.trim();
+  if(!t) return 'txt';
+  if((t[0]==='{' || t[0]==='[')){
+    try{ JSON.parse(t); return 'json'; }catch(e){}
+  }
+  if(/^\s*</.test(t) && /<\/\w+>|\/>/.test(t)) return 'html';
+  // Markdownの特徴
+  if(/^#{1,6}\s|\n#{1,6}\s|\*\*[^*]+\*\*|^\s*[-*+]\s|\n\s*[-*+]\s|\[[^\]]+\]\([^)]+\)|^```|\n```|^>\s|\n>\s/.test(t)) return 'md';
+  // MDテーブル: ヘッダ行の直後に区切り行(|---|---|)があるパターン
+  if(/\|[^\n]*\n\s*\|?[\s:|-]*-{2,}[\s:|-]*\|?\s*(\n|$)/.test(t)) return 'md';
+  // CSV/TSV: 複数行で区切り文字数が一致
+  var lines = t.split('\n').filter(function(l){return l.trim();});
+  if(lines.length >= 2){
+    function counts(d){ return lines.map(function(l){ return l.split(d).length; }); }
+    var tc = counts('\t');
+    if(tc[0] > 1 && tc.every(function(c){return c === tc[0];})) return 'tsv';
+    var cc = counts(',');
+    if(cc[0] > 1 && cc.every(function(c){return c === cc[0];})) return 'csv';
+  }
+  return 'txt';
+}
+
+/* ---------- HTMLサニタイズ(script等を除去) ---------- */
+function sanitizeHtml(src){
+  // タグ除去後に再組立されるバイパスを防ぐため、変化がなくなるまで繰り返す
+  var prev, cur = src, guard = 0;
+  do {
+    prev = cur;
+    cur = cur
+      .replace(/<script[\s\S]*?<\/script\s*>/gi, '')
+      .replace(/<\/?script[^>]*>/gi, '')
+      .replace(/<iframe[\s\S]*?<\/iframe\s*>/gi, '')
+      .replace(/<\/?iframe[^>]*>/gi, '')
+      .replace(/<\/?(object|embed|base)[^>]*>/gi, '')
+      .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+      .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+      .replace(/\son\w+\s*=\s*[^\s>]+/gi, '')
+      .replace(/javascript:/gi, '');
+    guard++;
+  } while (cur !== prev && guard < 10);
+  return cur;
+}
+
+/* ---------- スタンドアロンHTMLラッパー ---------- */
+function wrapHtml(title, bodyHtml){
+  return '<!DOCTYPE html>\n<html lang="ja">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>' + esc(title) + '</title>\n<style>\nbody{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;max-width:760px;margin:0 auto;padding:32px 20px;line-height:1.9;color:#222;font-size:16px;}\nh1,h2,h3,h4{line-height:1.5;margin:1.4em 0 .5em}\nh1{font-size:1.6em;border-bottom:2px solid #333;padding-bottom:.3em}\nh2{font-size:1.35em;border-bottom:1px solid #ccc;padding-bottom:.25em}\nh3{font-size:1.15em}\np{margin:.8em 0}\nimg{max-width:100%;height:auto}\ntable{border-collapse:collapse;margin:1em 0;width:100%}\nth,td{border:1px solid #bbb;padding:6px 12px;text-align:left}\nth{background:#f2f2f2}\npre{background:#f5f5f5;padding:14px;border-radius:8px;overflow:auto;font-size:13px;line-height:1.6}\ncode{font-family:Menlo,Consolas,monospace;background:#f0f0f0;padding:1px 5px;border-radius:4px;font-size:.9em}\npre code{background:none;padding:0}\nblockquote{border-left:4px solid #ccc;margin:1em 0;padding:.2em 1em;color:#555;background:#fafafa}\nul,ol{padding-left:1.6em;margin:.8em 0}\nhr{border:none;border-top:1px solid #ccc;margin:2em 0}\na{color:#0066cc}\n.raw{white-space:pre-wrap;word-break:break-word;font-family:inherit}\n@media print{body{max-width:none;padding:0}}\n</style>\n</head>\n<body>\n' + bodyHtml + '\n</body>\n</html>\n';
+}
+
+/* ---------- アイテム追加・描画 ---------- */
+function baseName(name){
+  return name.replace(/\.[^.]+$/,'') || 'converted';
+}
+
+function addItem(name, typeLabel, bodyHtml, isImage){
+  var title = baseName(name);
+  var full = wrapHtml(title, bodyHtml);
+  items.push({name: title + '.html', type: typeLabel, html: full, bodyHtml: bodyHtml, isImage: !!isImage});
+  render();
+}
+
+function render(){
+  itemsEl.innerHTML = '';
+  emptyNote.style.display = items.length ? 'none' : 'block';
+  bulkEl.classList.toggle('show', items.length > 1);
+
+  items.forEach(function(it, idx){
+    var div = document.createElement('div');
+    div.className = 'item';
+
+    var head = document.createElement('div');
+    head.className = 'item-head';
+    var badge = document.createElement('span');
+    badge.className = 'badge' + (it.isImage ? ' img' : '');
+    badge.textContent = it.type;
+    var nm = document.createElement('span');
+    nm.className = 'item-name';
+    nm.textContent = it.name;
+    var sz = document.createElement('span');
+    sz.className = 'item-size';
+    sz.textContent = (it.html.length/1024).toFixed(1) + ' KB';
+    head.appendChild(badge); head.appendChild(nm); head.appendChild(sz);
+
+    var actions = document.createElement('div');
+    actions.className = 'item-actions';
+
+    var bPrev = document.createElement('button');
+    bPrev.className = 'small'; bPrev.textContent = 'プレビュー';
+    var bCopy = document.createElement('button');
+    bCopy.className = 'small'; bCopy.textContent = 'HTMLコピー';
+    var bDl = document.createElement('button');
+    bDl.className = 'small primary'; bDl.textContent = 'ダウンロード';
+    var bDel = document.createElement('button');
+    bDel.className = 'small'; bDel.textContent = '削除';
+
+    var prev = document.createElement('div');
+    prev.className = 'preview';
+    prev.innerHTML = it.bodyHtml;
+
+    bPrev.onclick = function(){ prev.classList.toggle('show'); };
+    bCopy.onclick = function(){
+      copyText(it.html).then(function(){ toast('HTMLをコピーしました'); });
+    };
+    bDl.onclick = function(){ download(it.name, it.html); };
+    bDel.onclick = function(){ items.splice(idx,1); render(); };
+
+    actions.appendChild(bPrev); actions.appendChild(bCopy); actions.appendChild(bDl); actions.appendChild(bDel);
+    div.appendChild(head); div.appendChild(actions); div.appendChild(prev);
+    itemsEl.appendChild(div);
+  });
+}
+
+function copyText(t){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    return navigator.clipboard.writeText(t);
+  }
+  return new Promise(function(res){
+    var ta = document.createElement('textarea');
+    ta.value = t; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta); res();
+  });
+}
+
+function download(name, content){
+  var blob = new Blob([content], {type:'text/html;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+/* ---------- ファイル処理 ---------- */
+function handleFiles(fileList){
+  Array.prototype.forEach.call(fileList, function(f){
+    var ext = (f.name.match(/\.([^.]+)$/) || [,''])[1].toLowerCase();
+
+    if(/^(png|jpe?g|webp|gif|svg|bmp)$/.test(ext) || /^image\//.test(f.type)){
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var body = '<h1>' + esc(baseName(f.name)) + '</h1>\n<p><img src="' + e.target.result + '" alt="' + esc(f.name) + '"></p>';
+        addItem(f.name, '画像', body, true);
+        toast('変換: ' + f.name);
+      };
+      reader.readAsDataURL(f);
+      return;
+    }
+
+    var reader2 = new FileReader();
+    reader2.onload = function(e){
+      var text = e.target.result;
+      var body, label;
+      if(document.getElementById('rawMode').checked){ body = rawToHtml(text); label = '無加工'; }
+      else if(ext === 'md' || ext === 'markdown'){ body = mdToHtml(text); label = 'Markdown'; }
+      else if(ext === 'csv'){ body = csvToHtml(text, ','); label = 'CSV'; }
+      else if(ext === 'tsv'){ body = csvToHtml(text, '\t'); label = 'TSV'; }
+      else if(ext === 'json'){ body = jsonToHtml(text) || txtToHtml(text); label = 'JSON'; }
+      else if(ext === 'html' || ext === 'htm'){
+        // 既にHTMLの場合はbody抽出→サニタイズ→再ラップ
+        var m = text.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+        body = sanitizeHtml(m ? m[1] : text);
+        label = 'HTML';
+      }
+      else {
+        // 拡張子不明は自動判別
+        var d = detect(text);
+        if(d === 'md'){ body = mdToHtml(text); label = 'Markdown'; }
+        else if(d === 'json'){ body = jsonToHtml(text); label = 'JSON'; }
+        else if(d === 'csv'){ body = csvToHtml(text, ','); label = 'CSV'; }
+        else if(d === 'tsv'){ body = csvToHtml(text, '\t'); label = 'TSV'; }
+        else { body = txtToHtml(text); label = 'テキスト'; }
+      }
+      addItem(f.name, label, body);
+      toast('変換: ' + f.name);
+    };
+    reader2.readAsText(f, 'UTF-8');
+  });
+}
+
+/* ---------- 貼り付けテキスト処理 ---------- */
+document.getElementById('convertPaste').onclick = function(){
+  var text = document.getElementById('pasteBox').value;
+  if(!text.trim()){ toast('テキストが空です'); return; }
+  var body, label;
+  if(document.getElementById('rawMode').checked){ body = rawToHtml(text); label = '無加工'; }
+  else { var d = detect(text);
+  if(d === 'md'){ body = mdToHtml(text); label = 'Markdown'; }
+  else if(d === 'json'){ body = jsonToHtml(text); label = 'JSON'; }
+  else if(d === 'csv'){ body = csvToHtml(text, ','); label = 'CSV'; }
+  else if(d === 'tsv'){ body = csvToHtml(text, '\t'); label = 'TSV'; }
+  else if(d === 'html'){
+    var m = text.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    body = sanitizeHtml(m ? m[1] : text);
+    label = 'HTML';
+  }
+  else { body = txtToHtml(text); label = 'テキスト'; }
+  }
+  var now = new Date();
+  var stamp = now.getFullYear() + ('0'+(now.getMonth()+1)).slice(-2) + ('0'+now.getDate()).slice(-2) + '-' + ('0'+now.getHours()).slice(-2) + ('0'+now.getMinutes()).slice(-2) + ('0'+now.getSeconds()).slice(-2);
+  addItem('paste-' + stamp + '.txt', label, body);
+  document.getElementById('pasteBox').value = '';
+  toast('変換しました');
+};
+
+/* ---------- ドロップゾーン ---------- */
+dz.onclick = function(){ fileInput.click(); };
+dz.onkeydown = function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fileInput.click(); } };
+fileInput.onchange = function(){ handleFiles(this.files); this.value=''; };
+
+['dragover','dragenter'].forEach(function(ev){
+  dz.addEventListener(ev, function(e){ e.preventDefault(); dz.classList.add('drag'); });
+});
+['dragleave','drop'].forEach(function(ev){
+  dz.addEventListener(ev, function(e){ e.preventDefault(); dz.classList.remove('drag'); });
+});
+dz.addEventListener('drop', function(e){
+  if(e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+});
+
+// ページ全体への貼り付け(画像ペースト対応)
+document.addEventListener('paste', function(e){
+  if(e.target && e.target.id === 'pasteBox') return;
+  var cd = e.clipboardData;
+  if(!cd) return;
+  for(var i=0;i<cd.items.length;i++){
+    var it = cd.items[i];
+    if(it.kind === 'file' && /^image\//.test(it.type)){
+      var f = it.getAsFile();
+      if(f) handleFiles([f]);
+      e.preventDefault();
+      return;
+    }
+  }
+});
+
+/* ---------- 一括操作 ---------- */
+document.getElementById('dlAll').onclick = function(){
+  items.forEach(function(it, i){
+    setTimeout(function(){ download(it.name, it.html); }, i * 300);
+  });
+};
+document.getElementById('dlMerged').onclick = function(){
+  var merged = items.map(function(it){
+    return '<section>\n' + it.bodyHtml + '\n</section>\n<hr>';
+  }).join('\n');
+  merged = merged.replace(/<hr>\s*$/,'');
+  download('merged.html', wrapHtml('結合ドキュメント', merged));
+};
+document.getElementById('clearAll').onclick = function(){
+  items = [];
+  document.getElementById('pasteBox').value = '';
+  render();
+};
+
+render();
+})();
+</script>
+</body>
+</html>
