@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>コード→アプリ化ツール</title>
+<style>
+:root{
+  --bg:#0b1026; --bg2:#121a3a; --panel:#161f45; --line:#2a3568;
+  --text:#e8ebf7; --sub:#9aa3c7; --accent:#ffd166; --accent2:#7aa2ff;
+  --ok:#6fe3a5; --err:#ff8080;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+  background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);
+  color:var(--text); min-height:100vh; padding:24px 16px 64px;
+}
+.wrap{max-width:860px;margin:0 auto}
+h1{font-size:22px;font-weight:700;letter-spacing:.04em}
+h1 .star{color:var(--accent)}
+header p{color:var(--sub);font-size:13px;margin-top:6px;line-height:1.7}
+
+.mode{display:flex;gap:0;margin-top:18px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.mode button{
+  flex:1;border:none;background:var(--panel);color:var(--sub);
+  padding:12px 8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;
+}
+.mode button.active{background:var(--accent);color:#1a1400}
+.mode button:focus-visible{outline:2px solid var(--accent2);outline-offset:-2px}
+
+.pane{margin-top:14px}
+label.field{display:block;font-size:12px;color:var(--sub);margin:12px 0 5px;font-weight:600}
+textarea, input[type=text]{
+  width:100%;background:var(--panel);color:var(--text);
+  border:1px solid var(--line);border-radius:10px;
+  padding:12px;font-size:13px;line-height:1.6;font-family:Menlo,Consolas,monospace;
+}
+textarea:focus, input[type=text]:focus{outline:2px solid var(--accent2);outline-offset:1px}
+textarea{resize:vertical}
+#fullCode{min-height:200px}
+#partHtml,#partCss,#partJs{min-height:100px}
+input[type=text]{font-family:inherit}
+
+.row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
+button.act{
+  border:1px solid var(--line);border-radius:9px;padding:11px 18px;
+  font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;
+  background:var(--panel);color:var(--text);transition:filter .1s;
+}
+button.act:hover{filter:brightness(1.2)}
+button.act:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.act.primary{background:var(--accent);color:#1a1400;border-color:var(--accent)}
+button.act.run{background:var(--ok);color:#03140a;border-color:var(--ok)}
+
+.status{font-size:12px;margin-top:10px;line-height:1.7}
+.status.ok{color:var(--ok)}
+.status.err{color:var(--err)}
+.status.sub{color:var(--sub)}
+
+.preview-box{margin-top:16px;display:none}
+.preview-box.show{display:block}
+.preview-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.preview-head span{font-size:12px;color:var(--sub);font-weight:600}
+iframe{
+  width:100%;height:420px;border:1px solid var(--line);border-radius:10px;
+  background:#fff;
+}
+.console{
+  margin-top:8px;background:#0a0e20;border:1px solid var(--line);border-radius:8px;
+  padding:10px;font-family:Menlo,Consolas,monospace;font-size:11px;line-height:1.7;
+  max-height:140px;overflow:auto;display:none;
+}
+.console.show{display:block}
+.console .e{color:var(--err)}
+.console .i{color:var(--sub)}
+
+.warn{
+  margin-top:16px;font-size:11px;color:var(--sub);line-height:1.8;
+  border-left:3px solid var(--line);padding-left:10px;
+}
+.toast{
+  position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(80px);
+  background:var(--accent);color:#1a1400;
+  padding:10px 22px;border-radius:24px;font-size:13px;font-weight:700;
+  transition:transform .25s;pointer-events:none;z-index:99;max-width:90vw;text-align:center;
+}
+.toast.show{transform:translateX(-50%) translateY(0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1><span class="star">✦</span> コード→アプリ化ツール</h1>
+  <p>コードを貼り付けると、実行テストしてから単体で動く.htmlアプリとして保存できます。<br>すべてブラウザ内で完結、外部送信なし。完成コードは<strong style="color:var(--accent)">1バイトも変更せず</strong>そのまま保存します。</p>
+</header>
+
+<div class="mode" role="tablist">
+  <button id="modeFull" class="active" role="tab" aria-selected="true">完成HTMLをそのまま</button>
+  <button id="modeParts" role="tab" aria-selected="false">部品から組み立て</button>
+</div>
+
+<div class="pane" id="paneFull">
+  <label class="field" for="fullCode">完成HTMLコード(&lt;!DOCTYPE html&gt;から&lt;/html&gt;まで全部)</label>
+  <textarea id="fullCode" placeholder="ここにアプリの完成コードを丸ごと貼り付け" spellcheck="false"></textarea>
+</div>
+
+<div class="pane" id="paneParts" style="display:none">
+  <label class="field" for="partHtml">HTML(body内)</label>
+  <textarea id="partHtml" placeholder="&lt;div id=&quot;app&quot;&gt;...&lt;/div&gt;" spellcheck="false"></textarea>
+  <label class="field" for="partCss">CSS</label>
+  <textarea id="partCss" placeholder="body { ... }" spellcheck="false"></textarea>
+  <label class="field" for="partJs">JavaScript</label>
+  <textarea id="partJs" placeholder="document.getElementById('app')..." spellcheck="false"></textarea>
+</div>
+
+<label class="field" for="fileName">ファイル名</label>
+<input type="text" id="fileName" value="app.html" autocomplete="off">
+
+<div class="row">
+  <button class="act run" id="btnRun">▶ 実行テスト</button>
+  <button class="act primary" id="btnSave">アプリとして保存(.html)</button>
+  <button class="act" id="btnCopy">コードをコピー</button>
+  <button class="act" id="btnClear">クリア</button>
+</div>
+<div class="status sub" id="status">コードを貼り付けて「実行テスト」で動作確認できます。</div>
+
+<div class="preview-box" id="previewBox">
+  <div class="preview-head">
+    <span>実行プレビュー(この中で実際に動きます)</span>
+    <button class="act" id="btnReload" style="padding:5px 12px;font-size:11px">再読込</button>
+  </div>
+  <iframe id="preview" title="実行プレビュー"></iframe>
+  <div class="console" id="consoleBox"></div>
+</div>
+
+<p class="warn">
+・保存内容: 「完成HTMLをそのまま」は貼り付けたコードと完全に同一(改行・空白含む)。「部品から組み立て」はHTML5の雛形に埋め込んで1ファイル化<br>
+・実行テストは自分が信頼するコードだけに使うこと(プレビュー内でscriptが実際に実行されます)<br>
+・iPhoneの貼り付け経由では改行コードCRLF→LFの正規化のみ起きます(アプリ動作への影響なし)<br>
+・localStorage/IndexedDBを使うアプリは、保存後にGitHub Pages等で開いた時に本来の保存領域で動作します
+</p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+
+var mode = 'full';
+var toastEl = document.getElementById('toast');
+var statusEl = document.getElementById('status');
+var toastTimer = null;
+
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 2200);
+}
+function setStatus(msg, cls){
+  statusEl.textContent = msg;
+  statusEl.className = 'status ' + (cls || 'sub');
+}
+function esc(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ---------- モード切替 ---------- */
+var btnFull = document.getElementById('modeFull');
+var btnParts = document.getElementById('modeParts');
+function setMode(m){
+  mode = m;
+  btnFull.classList.toggle('active', m==='full');
+  btnParts.classList.toggle('active', m==='parts');
+  btnFull.setAttribute('aria-selected', m==='full');
+  btnParts.setAttribute('aria-selected', m==='parts');
+  document.getElementById('paneFull').style.display = m==='full' ? '' : 'none';
+  document.getElementById('paneParts').style.display = m==='parts' ? '' : 'none';
+}
+btnFull.onclick = function(){ setMode('full'); };
+btnParts.onclick = function(){ setMode('parts'); };
+
+/* ---------- 貼り付け時の自動判定・ファイル名補完 ---------- */
+document.getElementById('fullCode').addEventListener('input', function(){
+  var code = this.value;
+  // <title>からファイル名を自動提案(ユーザーが変更済みなら触らない)
+  var fn = document.getElementById('fileName');
+  if(fn.value === 'app.html' || fn.dataset.auto === '1'){
+    var m = code.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if(m){
+      var name = m[1].trim().replace(/[\\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g,'');
+      if(name){ fn.value = name + '.html'; fn.dataset.auto = '1'; }
+    }
+  }
+});
+document.getElementById('fileName').addEventListener('input', function(){
+  delete this.dataset.auto;
+});
+
+/* ---------- コード組み立て ---------- */
+function assemble(){
+  if(mode === 'full'){
+    return document.getElementById('fullCode').value;
+  }
+  var h = document.getElementById('partHtml').value;
+  var c = document.getElementById('partCss').value;
+  var j = document.getElementById('partJs').value;
+  var title = document.getElementById('fileName').value.replace(/\.html?$/i,'') || 'app';
+  // scriptを安全に埋め込む: JS内の閉じscriptタグを分割してパーサ誤終了を防ぐ
+  var safeJs = j.replace(/<\/script/gi, '<\\/script');
+  return '<!DOCTYPE html>\n<html lang="ja">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">\n<title>' + esc(title) + '</title>\n<style>\n' + c + '\n</style>\n</head>\n<body>\n' + h + '\n<script>\n' + safeJs + '\n<\/script>\n</body>\n</html>\n';
+}
+
+function validate(code){
+  if(!code.trim()) return 'コードが空です';
+  if(mode === 'full'){
+    if(!/<html[\s>]/i.test(code) && !/<!DOCTYPE/i.test(code)){
+      return '警告: <!DOCTYPE html>や<html>が見つかりません。完成コードではなく部品の場合は「部品から組み立て」を使ってください';
+    }
+    // 基本タグの対応チェック(数のみ、厳密な構文解析ではない)
+    var opens = (code.match(/<script[\s>]/gi)||[]).length;
+    var closes = (code.match(/<\/script/gi)||[]).length;
+    if(opens !== closes){
+      return '警告: <script>の開始' + opens + '個に対し終了' + closes + '個。コードが途中で切れている可能性があります';
+    }
+    if(!/<\/html>\s*$/i.test(code.trim())){
+      return '警告: </html>で終わっていません。貼り付けが途中で切れていないか確認してください';
+    }
+  }
+  return null;
+}
+
+/* ---------- 実行テスト ---------- */
+var consoleBox = document.getElementById('consoleBox');
+function clearConsole(){ consoleBox.innerHTML=''; consoleBox.classList.remove('show'); }
+function logConsole(msg, cls){
+  var d = document.createElement('div');
+  d.className = cls || 'i';
+  d.textContent = msg;
+  consoleBox.appendChild(d);
+  consoleBox.classList.add('show');
+  consoleBox.scrollTop = consoleBox.scrollHeight;
+}
+
+var currentBlobUrl = null;
+function run(){
+  var code = assemble();
+  var warn = validate(code);
+  if(warn && !code.trim()){ setStatus(warn, 'err'); return; }
+  if(warn) setStatus(warn, 'err'); else setStatus('実行中… プレビューで動作を確認してください。', 'ok');
+
+  clearConsole();
+  document.getElementById('previewBox').classList.add('show');
+  var iframe = document.getElementById('preview');
+
+  if(currentBlobUrl){ URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
+  var blob = new Blob([code], {type:'text/html;charset=utf-8'});
+  currentBlobUrl = URL.createObjectURL(blob);
+
+  iframe.onload = function(){
+    try{
+      var w = iframe.contentWindow;
+      w.onerror = function(msg, src, line, col){
+        logConsole('エラー: ' + msg + ' (行' + line + ')', 'e');
+        setStatus('実行時エラーが発生しました。下のコンソールを確認してください。', 'err');
+        return false;
+      };
+      var origErr = w.console.error;
+      w.console.error = function(){
+        logConsole('console.error: ' + Array.prototype.map.call(arguments, String).join(' '), 'e');
+        origErr.apply(w.console, arguments);
+      };
+      logConsole('読み込み完了。エラーが出ればここに表示されます。', 'i');
+    }catch(e){
+      logConsole('コンソール接続不可(動作自体はプレビューで確認可能)', 'i');
+    }
+  };
+  iframe.src = currentBlobUrl;
+}
+
+document.getElementById('btnRun').onclick = run;
+document.getElementById('btnReload').onclick = run;
+
+/* ---------- 保存(バイト同一) ---------- */
+document.getElementById('btnSave').onclick = function(){
+  var code = assemble();
+  if(!code.trim()){ setStatus('コードが空です', 'err'); return; }
+  var warn = validate(code);
+  var name = (document.getElementById('fileName').value.trim() || 'app.html');
+  if(!/\.html?$/i.test(name)) name += '.html';
+  var blob = new Blob([code], {type:'text/html;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  if(warn){
+    toast('保存しました(警告あり: ステータス参照)');
+  } else {
+    toast('保存しました: ' + name);
+    setStatus('保存完了。「ファイル」アプリ等からGitHub Pagesへアップロードできます。', 'ok');
+  }
+};
+
+/* ---------- コピー ---------- */
+document.getElementById('btnCopy').onclick = function(){
+  var code = assemble();
+  if(!code.trim()){ setStatus('コードが空です', 'err'); return; }
+  var done = function(){ toast('コピーしました(' + (code.length/1024).toFixed(1) + ' KB)'); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(code).then(done);
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = code; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta); done();
+  }
+};
+
+/* ---------- クリア ---------- */
+document.getElementById('btnClear').onclick = function(){
+  document.getElementById('fullCode').value = '';
+  document.getElementById('partHtml').value = '';
+  document.getElementById('partCss').value = '';
+  document.getElementById('partJs').value = '';
+  document.getElementById('fileName').value = 'app.html';
+  delete document.getElementById('fileName').dataset.auto;
+  document.getElementById('previewBox').classList.remove('show');
+  clearConsole();
+  if(currentBlobUrl){ URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
+  setStatus('クリアしました。', 'sub');
+};
+
+/* ---------- ファイルドロップにも対応(.html/.js/.css) ---------- */
+document.addEventListener('dragover', function(e){ e.preventDefault(); });
+document.addEventListener('drop', function(e){
+  e.preventDefault();
+  var f = e.dataTransfer.files[0];
+  if(!f) return;
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    var text = ev.target.result;
+    var ext = (f.name.match(/\.([^.]+)$/)||[,''])[1].toLowerCase();
+    if(ext === 'js'){ setMode('parts'); document.getElementById('partJs').value = text; }
+    else if(ext === 'css'){ setMode('parts'); document.getElementById('partCss').value = text; }
+    else { setMode('full'); document.getElementById('fullCode').value = text;
+           document.getElementById('fileName').value = f.name; delete document.getElementById('fileName').dataset.auto; }
+    toast('読み込み: ' + f.name);
+  };
+  reader.readAsText(f, 'UTF-8');
+});
+
+})();
+</script>
+</body>
+</html>
