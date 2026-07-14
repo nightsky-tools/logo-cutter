@@ -104,8 +104,10 @@
     content:attr(data-n);position:absolute;top:-6px;right:10px;font-family:var(--mono);
     font-size:52px;font-weight:800;color:rgba(255,255,255,.035);letter-spacing:-.04em;
   }
+  .step.easy{border-color:var(--go-deep)}
   .step h2{font-size:14px;letter-spacing:.02em;margin-bottom:4px;display:flex;align-items:baseline;gap:9px}
   .step h2 .tag{font-family:var(--mono);font-size:10px;color:var(--amber);letter-spacing:.14em;flex-shrink:0}
+  .step.easy h2 .tag{color:var(--go)}
   .step .note{font-size:12px;color:var(--ink-dim);line-height:1.9;margin-bottom:12px}
   .step .note b{color:var(--ink);font-weight:600}
   .step .note .k{font-family:var(--mono);background:#0f1017;border:1px solid var(--line-2);border-radius:5px;padding:1px 6px;font-size:11px;color:var(--amber)}
@@ -186,7 +188,7 @@
   <header>
     <div class="kick">Nightsky Deploy Helper</div>
     <h1>アプリ設置ヘルパー<br><span class="thin">入力するのは、変わる所だけ。</span></h1>
-    <div class="lead">アプリの名前を<b style="color:var(--ink)">日本語で打つだけ</b>。GitHub用のフォルダ名(英字)を自動で考えて、手入力する<b style="color:var(--ink)">フォルダ名・ファイル名・URL</b>をぜんぶ下に出します。各行の「コピー」を押して貼るだけ。長いURLを手で打つ必要はもうありません。</div>
+    <div class="lead">アプリの名前を<b style="color:var(--ink)">日本語で打つだけ</b>。GitHub用のフォルダ名(英字)を自動で考えて、手入力する<b style="color:var(--ink)">フォルダ名・ファイル名・URL</b>をぜんぶ下に出します。工房リモートのアドレスを登録してあれば、<b style="color:var(--ink)">📤ボタンで設置までiPhone完結</b>です。</div>
   </header>
 
   <div class="config">
@@ -221,6 +223,11 @@
     <div class="row">
       <label>よく使うアプリ(タップで名前が入ります)</label>
       <div class="seg" id="appSeg"></div>
+    </div>
+    <div class="row">
+      <label for="remoteAddr">工房リモートのアドレス(📤連携・任意)</label>
+      <input type="text" id="remoteAddr" placeholder="例:http://100.99.61.94:8091" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="url">
+      <div class="field-hint">入れておくと、フォルダ名が決まった時に「📤 工房リモートで設置」の近道ボタンが出ます(GitHub画面の手作業が不要に)。このアドレスは<b style="color:var(--ink)">この端末の中にだけ保存</b>され、公開ファイルには含まれません。</div>
     </div>
   </div>
 
@@ -338,6 +345,13 @@ function safeUrl(u){
     return u;
   }catch(e){ return "#"; }
 }
+// 工房リモート(Tailscale内)のアドレス検証。http://ホスト名またはIP(:ポート)だけを許す。
+// パス・?・#・@・空白などが混ざっていたら無効("")。
+function remoteBase(){
+  const v = String(remoteAddr||"").trim().replace(/\/+$/,"");
+  if(!/^https?:\/\/[a-zA-Z0-9.\-]+(:\d{1,5})?$/.test(v)) return "";
+  return v;
+}
 
 // localStorageが使えるか先に確認
 let storageOk = true;
@@ -357,6 +371,13 @@ for(const a of KNOWN){
     render();
   };
   seg.appendChild(b);
+}
+
+// ===== 工房リモートのアドレス(この端末にだけ保存) =====
+const REMOTE_KEY = "deploy-helper-remote-v1";
+let remoteAddr = "";
+if(storageOk){
+  try{ remoteAddr = localStorage.getItem(REMOTE_KEY) || ""; }catch(e){}
 }
 
 // ===== 設置の記録(この端末に保存し、次回の衝突チェックに使う) =====
@@ -714,7 +735,7 @@ function render(){
     const w = document.createElement("div");
     w.className = "warn-box danger";
     const which = (!acctValid && !repoValid) ? "アカウント名とリポジトリ名" : (!acctValid ? "アカウント名" : "リポジトリ名");
-    w.innerHTML = `⚠ ${which}に使えない文字が入っています。GitHubの名前は<b>半角の英数字と「-」（リポジトリは「.」「_」も可）</b>だけです。<br><b>「/」「\\」「@」「空白」などが混ざったURLは開かないでください</b>（別サイトに飛ばされる恐れがあります）。`;
+    w.innerHTML = `⚠ ${which}に使えない文字が入っています。GitHubの名前は<b>半角の英数字と「-」(リポジトリは「.」「_」も可)</b>だけです。<br><b>「/」「\\」「@」「空白」などが混ざったURLは開かないでください</b>(別サイトに飛ばされる恐れがあります)。`;
     steps.appendChild(w);
   }
 
@@ -729,6 +750,41 @@ function render(){
     const w = document.createElement("div");
     w.className = "warn-box danger";
     w.innerHTML = `⚠ このフォルダ名 <b>${esc(folder)}</b> は、このリポジトリ内で既に「${esc(collision)}」で使われています。<br>このまま設置すると<b>「${esc(collision)}」を上書きして壊してしまいます</b>。下の手直し欄で別の名前(例:${esc(folder)}-2)にしてください。`;
+    steps.appendChild(w);
+  }
+
+  // ---- 近道:📤 工房リモートで設置(アドレス登録済み・初期の設置先の時だけ)----
+  const rb = remoteBase();
+  if(name && folder && validFolder && !collision && rb && inDefaultPlace){
+    const s = document.createElement("div");
+    s.className = "step easy"; s.dataset.n = "📤";
+    const h = document.createElement("h2");
+    h.innerHTML = `<span class="tag">EASY</span><span>近道:工房リモートで設置(iPhone完結)</span>`;
+    s.appendChild(h);
+    const p = document.createElement("div");
+    p.className = "note";
+    p.innerHTML = (info && info.known)
+      ? `「${esc(name)}」の公開先を選んだ状態で📤画面を開きます。新版ファイルを選んで「公開する」だけで<b>更新完了</b>(ファイル名は「アプリ名.html」のままでOK)。下のSTEP1〜3は不要です。`
+      : `フォルダ名 <b>${esc(folder)}</b> を引き継いで📤画面を開きます。ファイルを選んで「公開する」だけで<b>設置完了</b>(新フォルダは1回だけ確認が出ます)。<b>ファイル名は「アプリ名.html」のままでOK</b>(自動で index.html として置かれます)。下のSTEP1〜3は不要です(非常用に残してあります)。`;
+    s.appendChild(p);
+    const open = document.createElement("div");
+    open.className = "open-row";
+    const oa = document.createElement("a");
+    oa.className = "open-btn";
+    oa.href = rb + "/publish?dest=" + encodeURIComponent(folder);
+    oa.target = "_blank"; oa.rel = "noopener";
+    oa.textContent = "📤 工房リモートで設置する ↗";
+    open.appendChild(oa);
+    s.appendChild(open);
+    const on = document.createElement("div");
+    on.className = "open-note";
+    on.textContent = "※Tailscale接続中のみ開けます。PINを聞かれたら、いつものPIN付きURLで工房リモートを一度開き直せば記憶されます。設置が済んだら、下の「✓ 設置が終わったら押す」も忘れずに。";
+    s.appendChild(on);
+    steps.appendChild(s);
+  }else if(name && folder && validFolder && !collision && !rb && inDefaultPlace){
+    const w = document.createElement("div");
+    w.className = "warn-box";
+    w.innerHTML = `💡 上の設定欄に<b>工房リモートのアドレス</b>を入れておくと、ここに「📤で設置」の近道ボタンが出ます(STEP1〜3が不要になります)。`;
     steps.appendChild(w);
   }
 
@@ -778,7 +834,7 @@ function render(){
   // ---- STEP 3:ファイル名 ----
   {
     const s = stepEl("3", "RENAME", "ファイルの名前を確認",
-      `Claudeからダウンロードしたアプリの<b>ファイル名を、必ずこれにする</b>。作ったフォルダを開いてから <b>Add file → Upload files</b> でドロップ → <b>Commit changes</b>。`);
+      `<b>この手動アップの時だけ</b>、ファイル名を必ずこれにする(📤で設置するならファイル名は自由)。作ったフォルダを開いてから <b>Add file → Upload files</b> でドロップ → <b>Commit changes</b>。`);
     s.appendChild(copyRow("index.html"));
     const tip = document.createElement("div");
     tip.className = "note";
@@ -791,7 +847,7 @@ function render(){
   // ---- STEP 4:開くURL ----
   {
     const s = stepEl("4", "LIVE", "できたアプリを開く",
-      `アップから<b>数分〜10分ほど</b>待ってから、このURLで開きます(すぐ開けなくても失敗ではありません)。開けたら <b>共有 → ホーム画面に追加</b> でアイコン化。`);
+      `アップから<b>数分〜10分ほど</b>待ってから、このURLで開きます(すぐ開けなくても失敗ではありません。📤で設置した場合は<b>約1分</b>)。開けたら <b>共有 → ホーム画面に追加</b> でアイコン化。`);
     // 既存アプリを選んだままリポジトリ欄を変えている場合の注意
     if(info && info.known && !(normPlace(acct, repo) === normPlace(DEFAULT_ACCT, DEFAULT_REPO))){
       const kw = document.createElement("div");
@@ -937,6 +993,13 @@ $("folderReset").addEventListener("click", ()=>{
   folderOverride = null;
   const { info } = current();
   $("folderOverride").value = info ? info.folder : "";
+  render();
+});
+// 工房リモートのアドレス(この端末にだけ保存)
+$("remoteAddr").value = remoteAddr;
+$("remoteAddr").addEventListener("input", (e)=>{
+  remoteAddr = e.target.value;
+  if(storageOk){ try{ localStorage.setItem(REMOTE_KEY, remoteAddr.trim()); }catch(e2){} }
   render();
 });
 // 検索欄:一覧の絞り込みだけ行う(画面全体は作り直さないので入力中もフォーカスが飛ばない)
