@@ -309,7 +309,7 @@
 
 <div class="wrap">
   <header>
-    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-09f</small></h1>
+    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-12a</small></h1>
   </header>
 
   <div class="cat-row" id="catRow"></div>
@@ -877,6 +877,7 @@ function render(){
       </div>
       <div class="dc-actions" style="margin-top:8px">
         <button class="dc-act fill matcopy">⚡素材コピー(記事・星データ入り)</button>
+        <button class="dc-act matcfg" style="flex:0 0 auto;min-width:52px" title="記事・星データをどの欄に入れるかを設定し直す">⚙<br>入れ方</button>
       </div>` : `
       <div class="dc-actions">
         <button class="dc-act copy">コピー${d.copies ? ` <b class="copy-n">${d.copies}</b>` : ""}</button>
@@ -889,6 +890,13 @@ function render(){
       const mb = el.querySelector(".matcopy");
       mb.onclick = ()=> matCopy(i, false);
       attachLongPress(mb, ()=> matCopy(i, true)); // 長押しで星座を選び直せる
+      const mc = el.querySelector(".matcfg");
+      if(mc) mc.onclick = async ()=>{                 // build 2026-07-12a: 長押し不要で入れ方を設定し直す
+        const dx = state.docs[i];
+        if(!dx.body || !dx.body.trim()){ toast(`${dx.name}は未格納です`, true); return; }
+        const c = detectFields(dx.body).length ? await matSetup(dx) : await matSetupNoFields(dx);
+        if(c) toast("入れ方を保存しました(⚡素材コピー・連続コピーの両方に反映)");
+      };
     }
     el.querySelector(".wpaste").onclick = ()=> pasteToDoc(i);
     attachLongPress(el, ()=>{
