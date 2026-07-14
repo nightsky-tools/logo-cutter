@@ -137,9 +137,10 @@ iframe{
 
 <p class="warn">
 ・保存内容: 「完成HTMLをそのまま」は貼り付けたコードと完全に同一(改行・空白含む)。「部品から組み立て」はHTML5の雛形に埋め込んで1ファイル化<br>
+・実行テストのプレビューにはエラー捕捉用スクリプト1行が自動挿入されます(<strong>保存ファイルには入りません</strong>。改行を足さないためエラーの行番号もずれません)<br>
 ・実行テストは自分が信頼するコードだけに使うこと(プレビュー内でscriptが実際に実行されます)<br>
 ・iPhoneの貼り付け経由では改行コードCRLF→LFの正規化のみ起きます(アプリ動作への影響なし)<br>
-・localStorage/IndexedDBを使うアプリは、保存後にGitHub Pages等で開いた時に本来の保存領域で動作します
+・<strong>重要:</strong> プレビューはこのページと同じlocalStorage/IndexedDB領域を共有します。本番アプリと同じドメインにこのツールを置いてテストすると実データに影響し得るため、別リポジトリに置くかテスト前にバックアップを推奨
 </p>
 </div>
 
@@ -245,6 +246,27 @@ function logConsole(msg, cls){
   consoleBox.scrollTop = consoleBox.scrollHeight;
 }
 
+/* プレビュー専用のエラー捕捉(1行・改行なし=行番号がずれない)。保存ファイルには一切入らない */
+var PROBE = '<script>(function(){function s(m){try{parent.postMessage({__pv:1,m:m},"*")}catch(e){}}window.addEventListener("error",function(e){s("エラー: "+(e.message||e.type)+(e.lineno?" (行"+e.lineno+")":""))});window.addEventListener("unhandledrejection",function(e){s("未処理のPromiseエラー: "+String(e.reason))});var o=console.error;console.error=function(){s("console.error: "+Array.prototype.map.call(arguments,String).join(" "));o.apply(console,arguments)};})();<\/script>';
+function buildPreviewCode(code){
+  var m = code.match(/<head[^>]*>/i);
+  if(m) return code.slice(0, m.index+m[0].length) + PROBE + code.slice(m.index+m[0].length);
+  m = code.match(/<html[^>]*>/i);
+  if(m) return code.slice(0, m.index+m[0].length) + PROBE + code.slice(m.index+m[0].length);
+  m = code.match(/<!DOCTYPE[^>]*>/i);
+  if(m) return code.slice(0, m.index+m[0].length) + PROBE + code.slice(m.index+m[0].length);
+  return PROBE + code;
+}
+window.addEventListener('message', function(e){
+  var iframe = document.getElementById('preview');
+  if(e.source !== iframe.contentWindow) return;
+  var d = e.data;
+  if(d && d.__pv === 1 && typeof d.m === 'string'){
+    logConsole(d.m, 'e');
+    setStatus('実行時エラーが発生しました。下のコンソールを確認してください。', 'err');
+  }
+});
+
 var currentBlobUrl = null;
 function run(){
   var code = assemble();
@@ -256,27 +278,16 @@ function run(){
   document.getElementById('previewBox').classList.add('show');
   var iframe = document.getElementById('preview');
 
+  if(/localStorage|indexedDB/i.test(code) && /^https?:$/.test(location.protocol)){
+    logConsole('注意: このコードは端末保存(localStorage/IndexedDB)を使用します。プレビューはこのページと同じ保存領域を共有するため、同じドメインに本番アプリを置いている場合、テストが実データに影響する可能性があります。心配な場合は先にバックアップを取ってください。', 'i');
+  }
+
   if(currentBlobUrl){ URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
-  var blob = new Blob([code], {type:'text/html;charset=utf-8'});
+  var blob = new Blob([buildPreviewCode(code)], {type:'text/html;charset=utf-8'});
   currentBlobUrl = URL.createObjectURL(blob);
 
   iframe.onload = function(){
-    try{
-      var w = iframe.contentWindow;
-      w.onerror = function(msg, src, line, col){
-        logConsole('エラー: ' + msg + ' (行' + line + ')', 'e');
-        setStatus('実行時エラーが発生しました。下のコンソールを確認してください。', 'err');
-        return false;
-      };
-      var origErr = w.console.error;
-      w.console.error = function(){
-        logConsole('console.error: ' + Array.prototype.map.call(arguments, String).join(' '), 'e');
-        origErr.apply(w.console, arguments);
-      };
-      logConsole('読み込み完了。エラーが出ればここに表示されます。', 'i');
-    }catch(e){
-      logConsole('コンソール接続不可(動作自体はプレビューで確認可能)', 'i');
-    }
+    logConsole('読み込み完了。起動時・実行時のエラーはここに表示されます。', 'i');
   };
   iframe.src = currentBlobUrl;
 }
@@ -297,7 +308,7 @@ document.getElementById('btnSave').onclick = function(){
   a.download = name;
   document.body.appendChild(a);
   a.click();
-  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 3000);
   if(warn){
     toast('保存しました(警告あり: ステータス参照)');
   } else {
@@ -311,12 +322,20 @@ document.getElementById('btnCopy').onclick = function(){
   var code = assemble();
   if(!code.trim()){ setStatus('コードが空です', 'err'); return; }
   var done = function(){ toast('コピーしました(' + (code.length/1024).toFixed(1) + ' KB)'); };
+  var fallbackCopy = function(){
+    try{
+      var ta = document.createElement('textarea');
+      ta.value = code; document.body.appendChild(ta);
+      ta.focus(); ta.select(); ta.setSelectionRange(0, code.length);
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if(ok) done(); else setStatus('コピーできませんでした。テキスト欄を長押しして手動でコピーしてください。', 'err');
+    }catch(e){ setStatus('コピーできませんでした。テキスト欄を長押しして手動でコピーしてください。', 'err'); }
+  };
   if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(code).then(done);
+    navigator.clipboard.writeText(code).then(done, fallbackCopy);
   } else {
-    var ta = document.createElement('textarea');
-    ta.value = code; document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); document.body.removeChild(ta); done();
+    fallbackCopy();
   }
 };
 
