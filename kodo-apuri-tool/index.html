@@ -122,6 +122,8 @@ iframe{
   <button class="act run" id="btnRun">▶ 実行テスト</button>
   <button class="act primary" id="btnSave">アプリとして保存(.html)</button>
   <button class="act" id="btnCopy">コードをコピー</button>
+  <button class="act" id="btnOpen">📂 ファイルを読み込む</button>
+  <input type="file" id="fileOpen" accept=".html,.htm,.js,.css,.txt" style="display:none">
   <button class="act" id="btnClear">クリア</button>
 </div>
 <div class="status sub" id="status">コードを貼り付けて「実行テスト」で動作確認できます。</div>
@@ -353,11 +355,8 @@ document.getElementById('btnClear').onclick = function(){
   setStatus('クリアしました。', 'sub');
 };
 
-/* ---------- ファイルドロップにも対応(.html/.js/.css) ---------- */
-document.addEventListener('dragover', function(e){ e.preventDefault(); });
-document.addEventListener('drop', function(e){
-  e.preventDefault();
-  var f = e.dataTransfer.files[0];
+/* ---------- ファイル読み込み(ボタン=iPhone対応 と ドロップ=PC対応) ---------- */
+function loadFile(f){
   if(!f) return;
   var reader = new FileReader();
   reader.onload = function(ev){
@@ -367,9 +366,23 @@ document.addEventListener('drop', function(e){
     else if(ext === 'css'){ setMode('parts'); document.getElementById('partCss').value = text; }
     else { setMode('full'); document.getElementById('fullCode').value = text;
            document.getElementById('fileName').value = f.name; delete document.getElementById('fileName').dataset.auto; }
-    toast('読み込み: ' + f.name);
+    toast('読み込み: ' + f.name + '(' + (text.length/1024).toFixed(1) + ' KB)');
+    setStatus('読み込みました。「コードをコピー」でそのままコピーできます(バイト同一)。', 'ok');
   };
+  reader.onerror = function(){ setStatus('ファイルを読み込めませんでした', 'err'); };
   reader.readAsText(f, 'UTF-8');
+}
+document.getElementById('btnOpen').onclick = function(){
+  document.getElementById('fileOpen').click();
+};
+document.getElementById('fileOpen').onchange = function(e){
+  loadFile(e.target.files[0]);
+  e.target.value = '';
+};
+document.addEventListener('dragover', function(e){ e.preventDefault(); });
+document.addEventListener('drop', function(e){
+  e.preventDefault();
+  loadFile(e.dataTransfer.files[0]);
 });
 
 })();
