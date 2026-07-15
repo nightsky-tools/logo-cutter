@@ -566,9 +566,10 @@ function detectFields(body){
 }
 function escReg(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function blockRegex(f){
+  // gフラグ:同じ名前の区切りが複数あっても全箇所を置換する({{タグ}}や🥳と同じ挙動に統一)
   if(f.fmt === "dia")
-    return new RegExp("(◆◆" + escReg(f.name) + "ここから◆◆)[\\s\\S]*?(◆◆" + escReg(f.name) + "ここまで◆◆)");
-  return new RegExp("(=====" + escReg(f.name) + "_START=====)[\\s\\S]*?(=====" + escReg(f.name) + "_END=====)");
+    return new RegExp("(◆◆" + escReg(f.name) + "ここから◆◆)[\\s\\S]*?(◆◆" + escReg(f.name) + "ここまで◆◆)", "g");
+  return new RegExp("(=====" + escReg(f.name) + "_START=====)[\\s\\S]*?(=====" + escReg(f.name) + "_END=====)", "g");
 }
 // 区切りの中身だけを差し替える(区切り記号は残す)
 function replaceBlock(body, f, v){
@@ -723,7 +724,8 @@ async function save(silent){
     scheduleCloudPush();
     return true;
   }catch(e){
-    if(!silent) toast("保存に失敗しました。バックアップ書き出しをおすすめします", true);
+    // silent保存でも失敗は必ず知らせる(黙って消えるのが一番危険なため)
+    toast("⚠ 端末への保存に失敗しました。この画面を閉じると変更が消える可能性があります。バックアップ書き出しを", true);
     return silent ? true : false;
   }
 }
@@ -1918,7 +1920,7 @@ async function seqSetup(){
     const c = detectFields(dx.body).length ? await matSetup(dx) : await matSetupNoFields(dx);
     if(!c) return false;
   }
-  state.seqPos = { month: mk, idx: 0, label: null, steps };
+  state.seqPos = { month: mk, idx: 0, label: null, steps, ts: Date.now() };
   save(true);
   return true;
 }
@@ -1961,6 +1963,7 @@ async function seqPeekText(){
   const r = composeDoc(it.doc, seqCfgOf(it.doc), signs[it.signId].body, it.signNm, sp.month, av);
   bridgePendingPeek = true;
   if(r.skyWarn) setTimeout(()=> toast(r.skyWarn, true), 1200);
+  if(r.draftNote) setTimeout(()=> toast(r.draftNote), r.skyWarn ? 3600 : 1200);
   return { text: r.text };
 }
 async function seqAckNext(){
@@ -1975,6 +1978,7 @@ async function seqAckNext(){
   if(countOnce("c:" + it.doc.id)) it.doc.copies = (it.doc.copies || 0) + 1;
   state.seqPos.idx = idx + 1;
   state.seqPos.label = items[idx + 1] ? items[idx + 1].label : null;
+  state.seqPos.ts = Date.now();
   save(true);
   toast(`${it.label}:自動化経由で受け渡しました`);
   render();
@@ -2003,11 +2007,11 @@ async function seqCopy(){
     const v = await _modal({ title: "この号は全工程コピー済みです", buttons: btns });
     if(v === "next"){
       state.seqPos.month = nextK;
-      state.seqPos.idx = 0; state.seqPos.label = null;
+      state.seqPos.idx = 0; state.seqPos.label = null; state.seqPos.ts = Date.now();
       save(true); renderSeq();
       toast(`${artLabelOf(nextK)}に切り替えました。押すとコピーを開始します`);
     }else if(v === "again"){
-      state.seqPos.idx = 0; state.seqPos.label = null;
+      state.seqPos.idx = 0; state.seqPos.label = null; state.seqPos.ts = Date.now();
       save(true); renderSeq();
       toast("最初に戻りました。もう一度押すとコピーを開始します");
     }else if(v === "chg"){
@@ -2028,8 +2032,10 @@ async function seqCopy(){
   if(countOnce("c:" + it.doc.id)) it.doc.copies = (it.doc.copies || 0) + 1;
   state.seqPos.idx = idx + 1;
   state.seqPos.label = items[idx + 1] ? items[idx + 1].label : null;
+  state.seqPos.ts = Date.now();
   save(true);
   toast(`${it.label}:コピーしました(${r.text.length.toLocaleString()}字)`);
+  if(r.draftNote) setTimeout(()=> toast(r.draftNote), r.skyWarn ? 4800 : 2400);
   if(r.skyWarn) setTimeout(()=> toast(r.skyWarn, true), 2400);
   render();
 }
@@ -2040,6 +2046,7 @@ async function seqBack(){
   if(idx <= 0){ toast("これより前はありません", true); return; }
   state.seqPos.idx = idx - 1;
   state.seqPos.label = items[idx - 1].label;
+  state.seqPos.ts = Date.now();
   save(true);
   renderSeq();
   toast(`1つ戻りました。次は「${items[idx - 1].label}」`);
@@ -2051,6 +2058,7 @@ async function seqSkip(){
   if(idx >= items.length) return;
   state.seqPos.idx = idx + 1;
   state.seqPos.label = items[idx + 1] ? items[idx + 1].label : null;
+  state.seqPos.ts = Date.now();
   save(true);
   renderSeq();
   toast(`「${items[idx].label}」をコピーせずに飛ばしました`);
@@ -2104,19 +2112,49 @@ function composeDoc(d, cfg, artBody, signNm, mk, av){
     if(!skyBody) skyWarn = `⚠ ${artLabelOf(nk)}の星データが記事保管庫に未格納です`;
   }
   const fields = detectFields(d.body);
-  const artTarget = (cfg.art && cfg.art !== "__END__") ? fields.find(f=> f.name === cfg.art) : null;
+  // 設定に保存した目印名を本文の目印と照合する。完全一致がなければ、
+  // 🥳番号が同じ目印を探して追従する(本文の🥳行を書き換えても設定が生きるように)
+  const warns = [];
+  const findField = (want)=>{
+    if(!want || want === "__END__") return null;
+    let f = fields.find(x=> x.name === want);
+    if(f) return f;
+    const m = String(want).match(/^🥳(\d+)/);
+    if(m){
+      const cand = fields.filter(x=> (x.name.match(/^🥳(\d+)/)||[])[1] === m[1]);
+      if(cand.length > 1){
+        const w = `⚠ 🥳${m[1]}が${cand.length}種類あるため「${cand[0].name}」に入れました(番号の重複を直してください)`;
+        if(!warns.includes(w)) warns.push(w);
+      }
+      f = cand[0];
+    }
+    return f || null;
+  };
+  const artTarget = findField(cfg.art);
+  // タイトル行だけを入れる欄(記事本文とは別に設定できる)
+  let titleTarget = findField(cfg.artTitle);
+  if(titleTarget && titleTarget === artTarget) titleTarget = null; // 同じ欄なら全文を優先
   // 記事と同じ欄に星データが指定されていたら、星データは末尾扱いにする(上書き消失の防止)
-  const skyConflict = !!(cfg.sky && cfg.sky !== "__END__" && cfg.sky === cfg.art);
-  const skyTarget = (skyBody && !skyConflict && cfg.sky && cfg.sky !== "__END__") ? fields.find(f=> f.name === cfg.sky) : null;
+  const skyConflict = !!(cfg.sky && cfg.sky !== "__END__" && (cfg.sky === cfg.art || (findField(cfg.sky) && (findField(cfg.sky) === artTarget || findField(cfg.sky) === titleTarget))));
+  const skyTarget = (skyBody && !skyConflict) ? findField(cfg.sky) : null;
+  // 🥳番号で追従できた場合は、設定の目印名を現在の本文に合わせて直しておく(次回以降も一致するように)
+  if(artTarget && cfg.art !== "__END__" && cfg.art !== artTarget.name) cfg.art = artTarget.name;
+  if(titleTarget && cfg.artTitle !== titleTarget.name) cfg.artTitle = titleTarget.name;
+  if(skyTarget && cfg.sky !== "__END__" && cfg.sky !== skyTarget.name) cfg.sky = skyTarget.name;
   let base = d.body;
-  if(artTarget || skyTarget){
+  const draftUsed = [];
+  if(artTarget || skyTarget || titleTarget){
     const draft = fillDrafts[d.id];
     const values = fields.map(f=>{
-      if(artTarget && f.name === cfg.art) return artText;
-      if(skyTarget && f.name === cfg.sky) return skyBody;
+      if(artTarget && f === artTarget) return artText;
+      if(titleTarget && f === titleTarget) return firstLineOf(artBody);
+      if(skyTarget && f === skyTarget) return skyBody;
       if(draft && Array.isArray(draft.names)){
         const di = draft.names.indexOf(f.name);
-        if(di !== -1 && draft.values && draft.values[di]) return draft.values[di];
+        if(di !== -1 && draft.values && draft.values[di]){
+          draftUsed.push(f.name); // 差し込み画面の下書きが完成文に入ったことを必ず知らせる
+          return draft.values[di];
+        }
       }
       return "";
     });
@@ -2129,8 +2167,18 @@ function composeDoc(d, cfg, artBody, signNm, mk, av){
   }
   if(skyBody && cfg.sky && !skyTarget){
     text += "\n\n━━━━━ 翌月(" + artLabelOf(nk).replace("号","") + ")の天文データ ━━━━━\n\n" + skyBody;
+    // 目印に入れる設定なのに本文に見つからなかった場合は、黙って末尾にせず知らせる
+    if(cfg.sky !== "__END__" && !skyWarn){
+      skyWarn = skyConflict
+        ? "⚠ 記事と同じ目印のため、星データは末尾に付けました(⚙入れ方で別の目印を選べます)"
+        : `⚠ 目印「${cfg.sky}」が本文に見つからず、星データを末尾に付けました(⚙入れ方で設定し直してください)`;
+    }
   }
-  return { text, skyWarn };
+  if(!skyWarn && warns.length) skyWarn = warns[0];
+  const draftNote = draftUsed.length
+    ? `📝 差し込み画面の下書きも入れました:${draftUsed.slice(0,3).join("、")}${draftUsed.length > 3 ? ` ほか${draftUsed.length-3}件` : ""}(不要なら差し込み画面で下書きを消してください)`
+    : null;
+  return { text, skyWarn, draftNote };
 }
 function firstLineOf(t){
   for(const line of String(t||"").split("\n")){ if(line.trim()) return line.trim(); }
@@ -2159,10 +2207,25 @@ async function matSetup(d){
     if(fv === null) return null;
     art = fv; artTitleOnly = (q1 === "title");
   }else if(q1 === "end"){ art = "__END__"; }
+  // タイトル行を別の欄にも入れる(記事の全文を欄か末尾に入れる設定の時だけ聞く)
+  let artTitle = null;
+  if(art && !artTitleOnly){
+    const remain = fields.filter(f=> f.name !== art);
+    if(remain.length){
+      const tv = await _modal({
+        title: "記事のタイトル行はどうする?",
+        msg: "記事の1行目(タイトル)だけを、別の欄にも入れられます。",
+        buttons: remain.map(f=>({ label: `「${f.name}」に入れる`, value: "F:" + f.name, style: "ghost" }))
+          .concat([{ label: "入れない(全文だけでよい)", value: "NONE", style: "primary" }])
+      });
+      if(tv === null) return null;
+      if(tv && tv !== "NONE") artTitle = tv.slice(2);
+    }
+  }
   const q3 = await _modal({
     title: "翌月の星データは?",
     msg: "記事の号+1ヶ月の星データを記事保管庫から自動で探します。",
-    buttons: fields.filter(f=> f.name !== art).map(f=>({ label: `「${f.name}」に差し込む`, value: "F:" + f.name, style: "ghost" }))
+    buttons: fields.filter(f=> f.name !== art && f.name !== artTitle).map(f=>({ label: `「${f.name}」に差し込む`, value: "F:" + f.name, style: "ghost" }))
       .concat([
         { label: "末尾に付ける", value: "END", style: "ghost" },
         { label: "入れない", value: "NONE", style: "ghost" }
@@ -2171,7 +2234,7 @@ async function matSetup(d){
   let sky = null;
   if(q3 === "END") sky = "__END__";
   else if(q3 && q3 !== "NONE") sky = q3.slice(2);
-  d.autoMat = { art, artTitleOnly, sky };
+  d.autoMat = { art, artTitleOnly, artTitle, sky };
   save(true);
   return d.autoMat;
 }
@@ -2237,6 +2300,7 @@ async function matCopy(i, forcePick){
   save(true);
   render();
   toast(`${d.name}:${nmS}の素材入りでコピーしました(${text.length.toLocaleString()}字)`);
+  if(r.draftNote) setTimeout(()=> toast(r.draftNote), skyWarn ? 4800 : 2400);
   if(skyWarn) setTimeout(()=> toast(skyWarn, true), 2400);
 }
 
@@ -2720,7 +2784,11 @@ function mergeStates(a, b){
     markSeq: Math.max(a.markSeq||1, b.markSeq||1),
     customMarks: Array.from(new Set([...(a.customMarks||[]), ...(b.customMarks||[])])).slice(0, 50),
     countReset: Math.max(ra, rb),
-    seqPos: a.seqPos || b.seqPos || null, // 工程設定:自分に無ければ相手側(バックアップ等)から引き継ぐ
+    seqPos: (()=>{ // 工程の現在位置:最後に操作した方を採用(片方に無ければある方)
+      const sa = a.seqPos, sb = b.seqPos;
+      if(sa && sb) return ((sb.ts||0) > (sa.ts||0)) ? sb : sa;
+      return sa || sb || null;
+    })(),
     lastSkyMonth: a.lastSkyMonth || b.lastSkyMonth || null,
     lastMatMonth: a.lastMatMonth || b.lastMatMonth || null
   };
