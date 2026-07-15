@@ -1493,8 +1493,10 @@ async function tryAutoImport(text){
   try{ if(localStorage.getItem("nightsky-last-copy-fp") === String(fp)) return; }catch(e){} // 命令書保管庫が直前にコピーしたものも取り込まない
   // ---- 星データ(【○年○月の天体イベント一覧】)なら、該当月の星データとして自動格納 ----
   // 月はデータの見出しから判定するので、表示中の号とズレていても正しい月に入る
+  // ※本物の星データは必ずこの見出しで「始まる」。見出しが文の途中にある場合は、
+  //   星データを埋め込んだ命令書の完成文(⚡素材コピー・連続コピー)なので取り込まない
   const skyM = t.match(/【(\d{4})年(\d{1,2})月の天体イベント一覧/);
-  if(skyM){
+  if(skyM && skyM.index <= 100 && !/命令書/.test(t.slice(0, 300)) && !t.includes("━━━━━ 翌月")){
     const skyKey = `${skyM[1]}-${String(Number(skyM[2])).padStart(2,"0")}`;
     if(!validKey(skyKey)) return;
     const curSky = (state.months[skyKey]||{}).sky;
