@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>画像プロンプト分配</title>
 <style>
-:root{ --night:#0d1026; --panel:#151a38; --line:#2a3160; --gold:#e8c66a; --txt:#e8eaf6; --dim:#8890b5; --green:#7ee0a3; }
+:root{ --night:#0d1026; --panel:#151a38; --line:#2a3160; --gold:#e8c66a; --txt:#e8eaf6; --dim:#8890b5; --green:#7ee0a3; --red:#e08585; }
 *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
 body{ background:radial-gradient(ellipse at top, #171d42 0%, var(--night) 60%); min-height:100vh; color:var(--txt);
   font-family:"Hiragino Mincho ProN","Yu Mincho",serif; padding:20px 14px 60px; }
@@ -21,6 +21,7 @@ textarea:focus{ outline:none; border-color:var(--gold); }
   border-radius:14px; padding:14px; font-size:.95rem; font-family:inherit; letter-spacing:.12em; cursor:pointer; margin-top:10px; }
 .btn:active{ transform:scale(.985); }
 .btn.gold{ border-color:var(--gold); color:var(--gold); }
+.btn.danger{ border-color:var(--red); color:var(--red); }
 #seqBtn{ border-color:var(--green); color:var(--green); background:#12203a; padding:18px 14px; font-size:1.02rem; line-height:1.6; }
 #seqBtn small{ display:block; color:var(--dim); font-size:.68rem; letter-spacing:.1em; margin-top:6px; font-family:sans-serif; }
 .row{ display:flex; gap:10px; }
@@ -36,9 +37,20 @@ textarea:focus{ outline:none; border-color:var(--gold); }
 #toast{ position:fixed; left:50%; bottom:90px; transform:translateX(-50%) translateY(20px); background:#1d2547; color:var(--txt);
   border:1px solid var(--gold); border-radius:12px; padding:12px 18px; font-size:.85rem; opacity:0; pointer-events:none;
   transition:.25s; max-width:88vw; text-align:center; z-index:30; font-family:sans-serif; }
-#toast.err{ border-color:#e08585; }
-#toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+#toast.err{ border-color:var(--red); }
+#toast.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
+#toast button{ display:block; margin:8px auto 0; background:none; border:1px solid var(--green); color:var(--green);
+  border-radius:8px; padding:6px 16px; font-size:.82rem; cursor:pointer; font-family:sans-serif; }
 .empty{ color:var(--dim); text-align:center; font-size:.8rem; padding:26px 0; line-height:2; }
+#syncStatus,#storeWarn{ color:var(--dim); font-size:.72rem; margin-top:8px; text-align:center; font-family:sans-serif; line-height:1.8; }
+#storeWarn{ color:#e2b25a; display:none; }
+.mback{ position:fixed; inset:0; background:rgba(5,7,20,.78); display:none; align-items:center; justify-content:center; z-index:50; padding:16px; }
+.mback.open{ display:flex; }
+.mbox{ background:var(--panel); border:1px solid var(--gold); border-radius:14px; padding:18px; max-width:480px; width:100%; }
+.mmsg{ font-size:.88rem; line-height:1.9; white-space:pre-wrap; font-family:sans-serif; }
+.minput{ width:100%; margin-top:12px; background:#0f1330; border:1px solid var(--line); border-radius:10px;
+  color:var(--txt); padding:12px; font-size:16px; font-family:sans-serif; display:none; }
+.minput:focus{ outline:none; border-color:var(--gold); }
 </style>
 </head>
 <body>
@@ -56,7 +68,13 @@ textarea:focus{ outline:none; border-color:var(--gold); }
     <button class="btn" id="syncSetupBtn">同期を設定</button>
     <button class="btn" id="syncNowBtn">今すぐ同期</button>
   </div>
-  <div id="syncStatus" style="color:var(--dim);font-size:.72rem;margin-top:8px;text-align:center;font-family:sans-serif"></div>
+  <div class="row">
+    <button class="btn" id="exportBtn">書き出し</button>
+    <button class="btn" id="restoreBtn">復元</button>
+  </div>
+  <input type="file" id="restoreFile" accept=".json,application/json,text/plain" style="display:none">
+  <div id="syncStatus"></div>
+  <div id="storeWarn"></div>
 
   <button class="btn" id="seqBtn" style="margin-top:16px"></button>
   <button class="btn" id="backBtn" style="display:none">← 1つ戻る</button>
@@ -64,30 +82,395 @@ textarea:focus{ outline:none; border-color:var(--gold); }
   <div id="list"></div>
 </div>
 <div id="toast"></div>
+<div class="mback" id="modalBack">
+  <div class="mbox">
+    <div class="mmsg" id="mMsg"></div>
+    <input class="minput" id="mInput" type="text" autocomplete="off">
+    <div id="mBtns"></div>
+  </div>
+</div>
 <script>
-const KEY = "prompt-splitter-v1";
-let state = { items: [], idx: 0, copied: [], savedAt: 0 };
-try{
-  const raw = localStorage.getItem(KEY);
-  if(raw){
-    const s = JSON.parse(raw);
-    if(s && Array.isArray(s.items)) state = Object.assign(state, s);
-    state.items = state.items.map(x => (typeof x === "string") ? { label: "", text: x } : x);
-  }
-}catch(e){}
-function save(){
-  try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
-  if(typeof scheduleCloudPush === "function") scheduleCloudPush();
+// =====================================================================
+// 基本ユーティリティ
+// =====================================================================
+const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+let _uidSeq = 0;
+function uid(){
+  _uidSeq = (_uidSeq + 1) % 46656; // 36^3
+  const r = Math.floor(Math.random() * 2821109907456).toString(36); // 36^8
+  const id = "p" + Date.now().toString(36) + _uidSeq.toString(36).padStart(3, "0") + r.padStart(8, "0");
+  return ID_RE.test(id) ? id : ("p" + Math.floor(Math.random() * 1e15).toString(36));
 }
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
+function num(v){ v = Number(v); return (Number.isFinite(v) && v >= 0) ? Math.floor(v) : 0; }
+function str(v, max){ return (typeof v === "string" ? v : "").slice(0, max); }
+function el(id){ return document.getElementById(id); }
+
+// =====================================================================
+// サニタイズ(外部から入るデータは全てここを通す・単一関数)
+// 上限: 束1つ / 項目300件 / 本文3万字 / ラベル64字 / 墓標20件
+// =====================================================================
+const MAX_ITEMS = 300, MAX_TEXT = 30000, MAX_LABEL = 64, MAX_TOMBS = 20;
+function migrateV1(s){
+  // 旧形式 {items, idx, copied, savedAt} → v2。ts不明分は savedAt(無ければ0=常に負ける安全側)
+  const ts = num(s.savedAt);
+  const idx = num(s.idx);
+  const items = Array.isArray(s.items) ? s.items : [];
+  return { v: 2, bundle: items.length ? {
+    id: uid(), ts,
+    items: items.map(x => (typeof x === "string") ? { label: "", text: x } : { label: x && x.label, text: x && x.text }),
+    copied: items.map((_, i) => ({ v: (Array.isArray(s.copied) && s.copied[i] === true) || i < idx, ts }))
+  } : null, tombs: [] };
+}
+function sanitizePayload(p){
+  const out = { v: 2, bundle: null, tombs: [] };
+  if(!p || typeof p !== "object") return out;
+  let src = p;
+  if(Array.isArray(p.items)) src = migrateV1(p); // 旧形式の受け入れ
+  const b = src.bundle;
+  if(b && typeof b === "object" && Array.isArray(b.items)){
+    const items = b.items.slice(0, MAX_ITEMS).map(it => {
+      if(typeof it === "string") it = { label: "", text: it };
+      if(!it || typeof it !== "object") it = {};
+      return { label: str(it.label, MAX_LABEL), text: str(it.text, MAX_TEXT) };
+    }).filter(it => it.text.length > 0);
+    if(items.length){
+      const rawCopied = Array.isArray(b.copied) ? b.copied : [];
+      out.bundle = {
+        id: (typeof b.id === "string" && ID_RE.test(b.id)) ? b.id : uid(),
+        ts: num(b.ts),
+        items,
+        copied: items.map((_, i) => {
+          const c = rawCopied[i];
+          if(c && typeof c === "object") return { v: c.v === true, ts: num(c.ts) };
+          return { v: c === true, ts: 0 };
+        })
+      };
+    }
+  }
+  if(Array.isArray(src.tombs)){
+    const seen = new Map();
+    src.tombs.forEach(t => {
+      if(t && typeof t.id === "string" && ID_RE.test(t.id)){
+        const ts = num(t.ts), prev = seen.get(t.id);
+        if(!prev || ts > prev.ts) seen.set(t.id, { id: t.id, ts });
+      }
+    });
+    out.tombs = [...seen.values()].sort((a, b2) => b2.ts - a.ts).slice(0, MAX_TOMBS);
+  }
+  return out;
+}
+function fingerprint(p){ return JSON.stringify(sanitizePayload(p)); } // 端末ローカル値(hist等)はsanitizeが落とすので比較対象外
+
+// =====================================================================
+// マージ(純関数・LWW+墓標)
+// =====================================================================
+function sameItems(a, b){
+  return a.length === b.length && a.every((x, i) => x.label === b[i].label && x.text === b[i].text);
+}
+function mergePayloads(pa, pb){
+  const a = sanitizePayload(pa), b = sanitizePayload(pb);
+  const tm = new Map();
+  [...a.tombs, ...b.tombs].forEach(t => { const e = tm.get(t.id); if(!e || t.ts > e.ts) tm.set(t.id, t); });
+  const tombs = [...tm.values()].sort((x, y) => y.ts - x.ts).slice(0, MAX_TOMBS);
+  const tombTs = id => { const t = tm.get(id); return t ? t.ts : -1; };
+  const alive = [a.bundle, b.bundle].filter(x => x && x.ts > tombTs(x.id)); // 項目ts > 墓標ts で生存
+  let bundle = null, lost = null;
+  if(alive.length === 2){
+    const [x, y] = alive;
+    if(x.id === y.id && sameItems(x.items, y.items)){
+      bundle = { id: x.id, ts: Math.max(x.ts, y.ts), items: x.items,
+        copied: x.items.map((_, i) => {
+          const cx = x.copied[i], cy = y.copied[i];
+          if(cx.ts === cy.ts) return { v: cx.v || cy.v, ts: cx.ts }; // 同時刻はコピー済み優先(決定的)
+          return cx.ts > cy.ts ? cx : cy;
+        }) };
+    }else{
+      alive.sort((m, n) => (n.ts - m.ts) || (m.id < n.id ? -1 : m.id > n.id ? 1 :
+        (JSON.stringify(m) < JSON.stringify(n) ? -1 : 1))); // ts同値・id同値(破損クローン)でも内容比較で両端末同一の勝者(非対称ピンポン防止)
+      bundle = alive[0];
+      lost = alive[1]; // 負けた側は呼び出し元が履歴へ退避
+    }
+  }else{
+    bundle = alive[0] || null;
+  }
+  return { payload: { v: 2, bundle, tombs }, lost };
+}
+// 復元・undo用: 墓標があっても復活させる ts = max(現在時刻, 実効墓標ts+1)
+function reviveBundle(b, tombs, nowTs){
+  const t = (tombs || []).find(x => x.id === b.id);
+  const base = t ? t.ts + 1 : 0;
+  return Object.assign({}, b, { ts: Math.max(num(nowTs) || Date.now(), base) });
+}
+// 自由テキストからのJSON抽出: 文字列リテラル考慮の括弧深度カウント走査(入力サイズ上限+総走査量上限)
+function extractJson(text){
+  const s = String(text || "");
+  if(s.length > 2000000) return null; // 入力サイズ上限
+  let i = s.indexOf("{");
+  let work = 0, tries = 0; // 総走査量上限(悪意ある深い入れ子で二次関数化しないための処理量ガード)
+  while(i !== -1){
+    let depth = 0, inStr = false, escp = false, end = -1;
+    for(let j = i; j < s.length; j++){
+      if(++work > 10000000) return null;
+      const c = s[j];
+      if(inStr){
+        if(escp) escp = false;
+        else if(c === "\\") escp = true;
+        else if(c === '"') inStr = false;
+      }else{
+        if(c === '"') inStr = true;
+        else if(c === "{") depth++;
+        else if(c === "}"){
+          depth--;
+          if(depth === 0){ end = j; break; }
+        }
+      }
+    }
+    if(end === -1) return null; // 閉じ括弧欠落
+    // 事前チェック: JSONオブジェクトは「{」の次(空白除く)が「"」か「}」。違えばparseせず読み飛ばす
+    let k = i + 1;
+    while(k < end && /\s/.test(s[k])) k++;
+    if(s[k] === '"' || k === end){
+      if(++tries > 2000) return null; // parse試行の総量ガード(バランスした不正塊を数千個並べる悪意入力対策)
+      try{ return JSON.parse(s.slice(i, end + 1)); }catch(e){}
+    }
+    i = s.indexOf("{", i + 1); // 失敗時は次の開き括弧から再走査(前方の無関係な塊でも正規JSONを見逃さない)
+  }
+  return null;
+}
+
+// =====================================================================
+// 保存層(localStorage → メモリのみフォールバック+失敗警告)
+// =====================================================================
+const KEY = "prompt-splitter-v2";
+const KEY_V1 = "prompt-splitter-v1";
+let memOnly = false, storeWarned = false;
+try{ localStorage.setItem("__ps_test", "1"); localStorage.removeItem("__ps_test"); }
+catch(e){ memOnly = true; }
+function showStoreWarn(msg){
+  const w = el("storeWarn");
+  w.textContent = msg;
+  w.style.display = "block";
+}
+if(memOnly) showStoreWarn("⚠ この端末ではブラウザ保存が使えません。閉じるとデータが消えます(メモリのみで動作中)");
+
+let state = { bundle: null, tombs: [], hist: [] }; // hist は端末ローカル(同期・比較の対象外)
+(function load(){
+  let raw = null;
+  try{ raw = localStorage.getItem(KEY); }catch(e){}
+  if(!raw){
+    try{ raw = localStorage.getItem(KEY_V1); }catch(e){} // 旧版データの引き継ぎ(旧キーは残す=手動フォールバック)
+  }
+  if(!raw) return;
+  try{
+    const s = JSON.parse(raw);
+    const p = sanitizePayload(s);
+    state.bundle = p.bundle;
+    state.tombs = p.tombs;
+    if(Array.isArray(s.hist)) state.hist = s.hist.slice(0, 3).map(h => ({ b: sanitizePayload({ v: 2, bundle: h && h.b, tombs: [] }).bundle, at: num(h && h.at) })).filter(h => h.b);
+  }catch(e){}
+})();
+function payloadOf(){ return sanitizePayload({ v: 2, bundle: state.bundle, tombs: state.tombs }); }
+function save(skipCloud){
+  if(!memOnly){
+    try{
+      const s = JSON.stringify({ v: 2, bundle: state.bundle, tombs: state.tombs, hist: state.hist });
+      if(s.length > 3500000 && !storeWarned){ storeWarned = true; toast("⚠ 保存データが容量上限に近づいています", true); }
+      localStorage.setItem(KEY, s);
+    }catch(e){
+      if(!storeWarned){ storeWarned = true; showStoreWarn("⚠ 端末への保存に失敗しました。閉じると直近の変更が消える恐れがあります(容量超過など)"); toast("⚠ 端末への保存に失敗しました", true); }
+    }
+  }
+  if(!skipCloud) scheduleCloudPush();
+}
+function pushHist(b){
+  if(!b) return;
+  state.hist.unshift({ b, at: Date.now() });
+  state.hist = state.hist.slice(0, 3);
+}
+
+// =====================================================================
+// トースト(アクションボタン付き)
+// =====================================================================
 let toastTimer = null;
 function toast(m, err){
-  const t = document.getElementById("toast");
+  const t = el("toast");
   t.textContent = m;
   t.className = err ? "err show" : "show";
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=> t.className = err ? "err" : "", 2600);
 }
-function esc(s){ return String(s).replace(/[&<>"']/g, c=>({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
+function toastAction(m, label, fn){
+  const t = el("toast");
+  t.textContent = m;
+  const b = document.createElement("button");
+  b.textContent = label;
+  b.onclick = ()=>{ t.className = ""; fn(); };
+  t.appendChild(b);
+  t.className = "show";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.className = "", 8000);
+}
+
+// =====================================================================
+// アプリ内モーダル(confirm/prompt/alert の代替・Promise)
+// 入力欄ありは Enter(IME確定を除く)で主ボタン実行。危険色ボタンはEnter対象外
+// =====================================================================
+let modalOpen = false, pendingRemote = null;
+function openModal(opt){
+  return new Promise(res => {
+    modalOpen = true;
+    const back = el("modalBack"), msg = el("mMsg"), inp = el("mInput"), btns = el("mBtns");
+    msg.textContent = opt.msg || "";
+    const hasInput = !!opt.input;
+    inp.style.display = hasInput ? "block" : "none";
+    inp.value = opt.value || "";
+    inp.placeholder = opt.placeholder || "";
+    btns.innerHTML = "";
+    let primary = null;
+    (opt.buttons || []).forEach(b => {
+      const btn = document.createElement("button");
+      btn.className = "btn" + (b.cls ? " " + b.cls : "");
+      btn.textContent = b.label;
+      btn.onclick = ()=> done(b.id);
+      if(b.primary && b.cls !== "danger") primary = b; // 危険ボタンはEnter誤爆防止のため対象外
+      btns.appendChild(btn);
+    });
+    function keyH(e){
+      if(e.key === "Enter" && !e.isComposing && hasInput && primary){ e.preventDefault(); done(primary.id); }
+      else if(e.key === "Escape"){ e.preventDefault(); done("cancel"); }
+    }
+    function done(id){
+      document.removeEventListener("keydown", keyH);
+      back.className = "mback";
+      modalOpen = false;
+      const v = inp.value;
+      res({ id, value: v });
+      flushPendingRemote(); // ダイアログ中に保留した取り込みを反映(§2-6)
+    }
+    document.addEventListener("keydown", keyH);
+    back.className = "mback open";
+    if(hasInput) setTimeout(()=> { try{ inp.focus(); }catch(e){} }, 60);
+  });
+}
+async function confirmBox(msg, opt){
+  opt = opt || {};
+  const r = await openModal({ msg, buttons: [
+    { id: "ok", label: opt.okLabel || "OK", cls: opt.danger ? "danger" : "gold", primary: true },
+    { id: "cancel", label: opt.cancelLabel || "やめる" }
+  ]});
+  return r.id === "ok";
+}
+async function promptBox(msg, opt){
+  opt = opt || {};
+  const r = await openModal({ msg, input: true, value: opt.value, placeholder: opt.placeholder, buttons: [
+    { id: "ok", label: opt.okLabel || "OK", cls: "gold", primary: true },
+    { id: "cancel", label: "やめる" }
+  ]});
+  return r.id === "ok" ? r.value : null;
+}
+
+// =====================================================================
+// 分割・取り込み
+// =====================================================================
+const SIGNS = ["牡羊座","牡牛座","双子座","蟹座","獅子座","乙女座","天秤座","蠍座","射手座","山羊座","水瓶座","魚座"];
+function pickLabel(part){
+  const nl = part.indexOf("\n");
+  const first = (nl === -1 ? part : part.slice(0, nl)).trim();
+  const rest = nl === -1 ? "" : part.slice(nl + 1).trim();
+  const looksLabel = first.length <= 32 && SIGNS.some(z => first.includes(z));
+  if(looksLabel && rest){ return { label: first, text: rest }; }
+  return { label: "", text: part };
+}
+function splitPrompts(raw){
+  let t = String(raw || "");
+  t = t.replace(/```[a-zA-Z]*\n?/g, "");
+  return t.split(/😀+/)
+    .map(s => s.replace(/😀/g, "").trim())
+    .filter(s => s.length > 0)
+    .map(pickLabel);
+}
+function curIdx(){
+  if(!state.bundle) return 0;
+  const c = state.bundle.copied;
+  for(let i = 0; i < c.length; i++) if(!c[i].v) return i;
+  return c.length;
+}
+async function ingest(raw){
+  const parts = splitPrompts(raw);
+  if(!parts.length){ toast("😀の目印が見つからないか、中身が空です", true); return false; }
+  if(!String(raw).includes("😀") && state.bundle){
+    toast("😀の目印が見つかりません。保存中のプロンプトはそのまま残しました(入れ替えるなら先に全消去してください)", true);
+    return false;
+  }
+  const idx = curIdx();
+  const total = state.bundle ? state.bundle.items.length : 0;
+  const inProgress = state.bundle && (idx > 0 || state.bundle.copied.some(c => c.v)) && idx < total;
+  if(inProgress){
+    const ok = await confirmBox(`進行中の束(${idx}/${total}まで済み)があります。新しい${parts.length}個に入れ替えますか?\n(やめると今の束と進捗を守ります。入れ替えても直後なら「元に戻す」で復帰できます)`, { okLabel: "入れ替える", danger: true });
+    if(!ok){ toast("入れ替えをやめました。今の束はそのままです"); return false; }
+  }
+  const old = state.bundle;
+  const now = Date.now();
+  state.bundle = { id: uid(), ts: now, items: parts, copied: parts.map(()=> ({ v: false, ts: now })) };
+  if(old) pushHist(old);
+  save();
+  render();
+  if(old){
+    toastAction(`${parts.length}個に分割して入れ替えました`, "元に戻す", undoToLastHist);
+  }else{
+    toast(`${parts.length}個のプロンプトに分割して保存しました。緑のボタンでどうぞ`);
+  }
+  return true;
+}
+function undoToLastHist(){
+  const h = state.hist.shift();
+  if(!h){ toast("戻せる束がありません", true); return; }
+  // 自分が作った墓標があれば除去し、tsは max(現在時刻, 墓標ts+1) で墓標に勝たせる(§3-7)
+  const revived = reviveBundle(h.b, state.tombs, Date.now());
+  state.tombs = state.tombs.filter(t => t.id !== revived.id);
+  if(state.bundle && state.bundle.id !== revived.id) pushHist(state.bundle);
+  state.bundle = revived;
+  save();
+  render();
+  toast("元に戻しました");
+}
+el("inBox").addEventListener("input", async (e)=>{
+  if(modalOpen) return;
+  const v = e.target.value;
+  if(v.includes("😀") && v.trim().length > 10){
+    const ok = await ingest(v);
+    if(ok) e.target.value = "";
+  }
+});
+el("pasteBtn").onclick = async ()=>{
+  if(modalOpen) return;
+  let v = el("inBox").value;
+  if(!v.trim()){
+    try{ v = await navigator.clipboard.readText(); }catch(e){}
+  }
+  if(!v || !v.trim()){ toast("貼り付ける内容がありません。上の枠にペーストしてください", true); return; }
+  const ok = await ingest(v);
+  if(ok) el("inBox").value = "";
+};
+el("clearBtn").onclick = async ()=>{
+  if(!state.bundle){ toast("保存されているプロンプトはありません"); return; }
+  const ok = await confirmBox("保存中のプロンプトを全部消しますか?\n(消した直後なら「元に戻す」で復帰できます)", { okLabel: "全部消す", danger: true });
+  if(!ok) return;
+  const old = state.bundle;
+  if(!old){ toast("同期により既に消えていました"); render(); return; } // ダイアログ中の取り込みで消えた場合の防御(§2-6)
+  pushHist(old);
+  state.tombs.unshift({ id: old.id, ts: Date.now() }); // グループ墓標1件(束単位)で削除を伝播
+  state.tombs = state.tombs.slice(0, MAX_TOMBS);
+  state.bundle = null;
+  save();
+  render();
+  toastAction("全消去しました", "元に戻す", undoToLastHist);
+};
+
+// =====================================================================
+// コピー・進行
+// =====================================================================
 async function copyText(text){
   try{
     await navigator.clipboard.writeText(text);
@@ -101,144 +484,234 @@ async function copyText(text){
     return ok;
   }
 }
-// 分割: 😀が1個以上並んだ箇所を区切りとみなす。コードブロックの``` も除去。絵文字は全て消す
-// 各かたまりの1行目が「星座名」や「◯月」を含む短いラベル行なら、ラベルとして読み取り本文から外す
-const SIGNS = ["牡羊座","牡牛座","双子座","蟹座","獅子座","乙女座","天秤座","蠍座","射手座","山羊座","水瓶座","魚座"];
-function pickLabel(part){
-  const nl = part.indexOf("\n");
-  const first = (nl === -1 ? part : part.slice(0, nl)).trim();
-  const rest = nl === -1 ? "" : part.slice(nl + 1).trim();
-  const looksLabel = first.length <= 32 && SIGNS.some(z => first.includes(z));
-  if(looksLabel && rest){ return { label: first, text: rest }; }
-  return { label: "", text: part };
+function markCopied(i, v){
+  state.bundle.copied[i] = { v: !!v, ts: Date.now() };
 }
-function splitPrompts(raw){
-  let t = String(raw || "");
-  t = t.replace(/```[a-zA-Z]*\n?/g, "");          // コードフェンス除去
-  return t.split(/😀+/)
-    .map(s => s.replace(/😀/g, "").trim())
-    .filter(s => s.length > 0)
-    .map(pickLabel);
-}
-function ingest(raw){
-  const parts = splitPrompts(raw);
-  if(!parts.length){ toast("😀の目印が見つからないか、中身が空です", true); return; }
-  if(!String(raw).includes("😀") && state.items.length){
-    toast("😀の目印が見つかりません。保存中のプロンプトはそのまま残しました(入れ替えるなら先に全消去してください)", true);
-    return;
-  }
-  const inProgress = state.items.length && (state.idx > 0 || state.copied.some(c=>c)) && state.idx < state.items.length;
-  if(inProgress){
-    if(!confirm(`進行中の束(${state.idx}/${state.items.length}まで済み)があります。新しい${parts.length}個に入れ替えますか?\n(キャンセルすると今の束と進捗を守ります)`)){
-      toast("入れ替えをやめました。今の束はそのままです");
-      return;
-    }
-  }
-  state.items = parts;
-  state.idx = 0;
-  state.copied = parts.map(()=> false);
-  state.savedAt = Date.now();
-  save();
-  render();
-  toast(`${parts.length}個のプロンプトに分割して保存しました。緑のボタンでどうぞ`);
-}
-document.getElementById("inBox").addEventListener("input", (e)=>{
-  const v = e.target.value;
-  if(v.includes("😀") && v.trim().length > 10){
-    ingest(v);
-    e.target.value = "";
-  }
-});
-document.getElementById("pasteBtn").onclick = async ()=>{
-  let v = document.getElementById("inBox").value;
-  if(!v.trim()){
-    try{ v = await navigator.clipboard.readText(); }catch(e){}
-  }
-  if(!v || !v.trim()){ toast("貼り付ける内容がありません。上の枠にペーストしてください", true); return; }
-  ingest(v);
-  document.getElementById("inBox").value = "";
-};
-document.getElementById("clearBtn").onclick = ()=>{
-  if(!state.items.length){ toast("保存されているプロンプトはありません"); return; }
-  if(!confirm("保存中のプロンプトを全部消しますか?")) return;
-  state = { items: [], idx: 0, copied: [], savedAt: 0 };
-  save();
-  render();
-  toast("全消去しました");
-};
 async function seqCopy(){
-  if(!state.items.length){ toast("先にプロンプトを貼り付けてください", true); return; }
-  if(state.idx >= state.items.length){
-    if(confirm("全部コピー済みです。最初(1個目)からもう一周しますか?")){
-      state.idx = 0;
-      state.copied = state.items.map(()=> false);
-      save(); render();
-    }
+  if(!state.bundle){ toast("先にプロンプトを貼り付けてください", true); return; }
+  const bid = state.bundle.id; // await中に同期で束が消える/入れ替わる場合の防御(§2-6)
+  const total = state.bundle.items.length;
+  const idx = curIdx();
+  if(idx >= total){
+    const ok = await confirmBox("全部コピー済みです。最初(1個目)からもう一周しますか?", { okLabel: "もう一周する" });
+    if(!ok) return;
+    if(!state.bundle || state.bundle.id !== bid){ toast("同期で内容が変わったため、もう一周は中止しました", true); render(); return; }
+    const now = Date.now();
+    state.bundle.copied = state.bundle.items.map(()=> ({ v: false, ts: now }));
+    save(); render();
     return;
   }
-  const i = state.idx;
-  const ok = await copyText(state.items[i].text);
+  const ok = await copyText(state.bundle.items[idx].text);
   if(!ok){ toast("コピーできませんでした。もう一度押してください", true); return; }
-  state.copied[i] = true;
-  state.idx = i + 1;
+  if(!state.bundle || state.bundle.id !== bid){ toast("コピーはできましたが、同期で内容が変わったため進捗は更新しませんでした", true); render(); return; }
+  markCopied(idx, true);
   save();
   render();
-  toast(`${i + 1}個目${state.items[i].label ? "(" + state.items[i].label + ")" : ""}をコピーしました`);
+  toast(`${idx + 1}個目${state.bundle.items[idx].label ? "(" + state.bundle.items[idx].label + ")" : ""}をコピーしました`);
 }
-document.getElementById("seqBtn").onclick = seqCopy;
-document.getElementById("backBtn").onclick = ()=>{
-  if(state.idx <= 0) return;
-  state.idx -= 1;
-  state.copied[state.idx] = false;
+el("seqBtn").onclick = seqCopy;
+el("backBtn").onclick = ()=>{
+  const idx = curIdx();
+  if(idx <= 0) return;
+  markCopied(idx - 1, false);
   save();
   render();
-  toast(`${state.idx + 1}個目に戻りました`);
+  toast(`${idx}個目に戻りました`);
 };
 async function copyOne(i){
-  const ok = await copyText(state.items[i].text);
+  if(!state.bundle || !state.bundle.items[i]) return;
+  const bid = state.bundle.id;
+  const ok = await copyText(state.bundle.items[i].text);
   if(!ok){ toast("コピーできませんでした", true); return; }
-  state.copied[i] = true;
+  if(!state.bundle || state.bundle.id !== bid){ toast("コピーはできましたが、同期で内容が変わったため進捗は更新しませんでした", true); render(); return; }
+  markCopied(i, true);
   save(); render();
   toast(`${i + 1}個目をコピーしました`);
 }
 function render(){
-  const seq = document.getElementById("seqBtn");
-  const back = document.getElementById("backBtn");
-  const list = document.getElementById("list");
-  if(!state.items.length){
+  const seq = el("seqBtn");
+  const back = el("backBtn");
+  const list = el("list");
+  if(!state.bundle){
     seq.innerHTML = `▶ プロンプト待ち<small>上に貼ると自動で分割されます</small>`;
     back.style.display = "none";
     list.innerHTML = `<div class="empty">まだ何も入っていません。<br>😀😀😀😀区切りのプロンプトを貼ってください。</div>`;
     return;
   }
-  if(state.idx >= state.items.length){
-    seq.innerHTML = `✔ 全${state.items.length}個コピー済み<small>タップで最初からもう一周。新しく貼れば入れ替わります</small>`;
+  const items = state.bundle.items, copied = state.bundle.copied;
+  const idx = curIdx();
+  if(idx >= items.length){
+    seq.innerHTML = `✔ 全${items.length}個コピー済み<small>タップで最初からもう一周。新しく貼れば入れ替わります</small>`;
   }else{
-    const lb = state.items[state.idx].label;
-    seq.innerHTML = `▶ 次は ${state.idx + 1}個目${lb ? "「" + esc(lb) + "」" : ""}をコピー<small>${state.idx + 1}/${state.items.length}・押すとコピーして次へ進みます</small>`;
+    const lb = items[idx].label;
+    seq.innerHTML = `▶ 次は ${idx + 1}個目${lb ? "「" + esc(lb) + "」" : ""}をコピー<small>${idx + 1}/${items.length}・押すとコピーして次へ進みます</small>`;
   }
-  back.style.display = state.idx > 0 ? "block" : "none";
+  back.style.display = idx > 0 ? "block" : "none";
   list.innerHTML = "";
-  state.items.forEach((p, i)=>{
+  items.forEach((p, i)=>{
     const div = document.createElement("div");
-    div.className = "card" + (i === state.idx ? " now" : (state.copied[i] ? " done-item" : ""));
+    div.className = "card" + (i === idx ? " now" : (copied[i].v ? " done-item" : ""));
     const preview = p.text.length > 120 ? p.text.slice(0, 120) + "…" : p.text;
     div.innerHTML = `
-      <div class="head"><span class="num">${i + 1} / ${state.items.length}${p.label ? " ・ " + esc(p.label) : ""}</span>${state.copied[i] ? `<span class="badge">✔ コピー済み</span>` : (i === state.idx ? `<span class="badge">▶ 次はこれ</span>` : "")}</div>
+      <div class="head"><span class="num">${i + 1} / ${items.length}${p.label ? " ・ " + esc(p.label) : ""}</span>${copied[i].v ? `<span class="badge">✔ コピー済み</span>` : (i === idx ? `<span class="badge">▶ 次はこれ</span>` : "")}</div>
       <div class="body">${esc(preview)}</div>
       <button class="btn cbtn">この${i + 1}個目だけコピー</button>`;
     div.querySelector(".cbtn").onclick = ()=> copyOne(i);
     list.appendChild(div);
   });
 }
-render();
-// ---- クラウド同期(iPhone・Mac共用/暗号化・保管庫と同方式) ----
-const SYNC_KEY = "prompt-splitter-sync-v1";
+
+// =====================================================================
+// 実測diff(復元・同期の結果表示は推定でなく前後比較の実測)
+// =====================================================================
+function measureDiff(before, after){
+  const bp = sanitizePayload(before), ap = sanitizePayload(after);
+  if(JSON.stringify(bp) === JSON.stringify(ap)) return "変化なし(すでに最新でした)";
+  if(!bp.bundle && ap.bundle) return `束を追加(${ap.bundle.items.length}件)`;
+  if(bp.bundle && !ap.bundle) return "束を削除(墓標を反映)";
+  if(bp.bundle && ap.bundle && bp.bundle.id === ap.bundle.id){
+    let k = 0;
+    ap.bundle.copied.forEach((c, i)=>{ const o = bp.bundle.copied[i]; if(!o || o.v !== c.v || o.ts !== c.ts) k++; });
+    return k ? `進捗を更新(${k}箇所)` : "束の情報を更新";
+  }
+  return `束を入れ替え(新: ${ap.bundle.items.length}件・元の束は履歴へ)`;
+}
+
+// =====================================================================
+// 書き出し・復元(共有シート → 保存ピッカー → 通常DL の順)
+// =====================================================================
+function stamp(){
+  const n = new Date();
+  const z = x => String(x).padStart(2, "0");
+  return `${n.getFullYear()}${z(n.getMonth()+1)}${z(n.getDate())}-${z(n.getHours())}${z(n.getMinutes())}`;
+}
+function exportText(){
+  const p = payloadOf();
+  return JSON.stringify({ app: "prompt-splitter", exportedAt: new Date().toISOString(), v: 2, bundle: p.bundle, tombs: p.tombs }, null, 1);
+}
+function plainDownload(text, name){
+  const a = document.createElement("a");
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=> URL.revokeObjectURL(url), 4000);
+}
+async function exportData(){
+  const text = exportText();
+  const name = `画像プロンプト分配-backup-${stamp()}.json`;
+  try{
+    const file = new File([text], name, { type: "application/json" });
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      await navigator.share({ files: [file], title: name });
+      toast("書き出しました");
+      return;
+    }
+  }catch(e){ if(e && e.name === "AbortError") return; }
+  try{
+    if(window.showSaveFilePicker){
+      const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: "JSON", accept: { "application/json": [".json"] } }] });
+      const w = await h.createWritable();
+      await w.write(text); await w.close();
+      toast("書き出しました");
+      return;
+    }
+  }catch(e){ if(e && e.name === "AbortError") return; }
+  plainDownload(text, name);
+  toast("バックアップをダウンロードしました");
+}
+el("exportBtn").onclick = exportData;
+el("restoreBtn").onclick = ()=> el("restoreFile").click();
+el("restoreFile").addEventListener("change", async (e)=>{
+  const f = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if(!f) return;
+  if(f.size > 20000000){ toast("ファイルが大きすぎます", true); return; }
+  let text = "";
+  try{ text = await f.text(); }catch(err){ toast("ファイルを読めませんでした", true); return; }
+  let obj = null;
+  try{ obj = JSON.parse(text); }catch(err){ obj = extractJson(text); }
+  const filePayload = sanitizePayload(obj);
+  if(!filePayload.bundle && !filePayload.tombs.length){ toast("このファイルに読み取れるデータがありません", true); return; }
+  const n = filePayload.bundle ? filePayload.bundle.items.length : 0;
+  const r = await openModal({
+    msg: `復元ファイルを読み込みました(束: ${n}件)。どうしますか?`,
+    buttons: [
+      { id: "merge", label: "統合する(推奨)", cls: "gold", primary: true },
+      { id: "replace", label: "置き換える(今のデータを捨てる)", cls: "danger" },
+      { id: "cancel", label: "やめる" }
+    ]
+  });
+  if(r.id === "cancel") return;
+  if(r.id === "replace"){
+    const ok = await confirmBox("本当に置き換えますか?\n今の束・進捗はこのファイルの内容に置き換わります。\n(直前の状態は自動バックアップとしてダウンロードされます)", { okLabel: "置き換える", danger: true });
+    if(!ok) return;
+    plainDownload(exportText(), `画像プロンプト分配-置換前-${stamp()}.json`); // 破壊的操作前の自動バックアップ(黙ってDL)
+    const before = payloadOf();
+    if(state.bundle) pushHist(state.bundle);
+    const tm = new Map();
+    [...state.tombs, ...filePayload.tombs].forEach(t => { const p = tm.get(t.id); if(!p || t.ts > p.ts) tm.set(t.id, t); });
+    state.tombs = [...tm.values()].sort((a,b)=>b.ts-a.ts).slice(0, MAX_TOMBS);
+    state.bundle = filePayload.bundle ? reviveBundle(filePayload.bundle, state.tombs, Date.now()) : null;
+    save();
+    render();
+    toast("置き換えました: " + measureDiff(before, payloadOf()));
+    return;
+  }
+  // 統合: ファイル内の束は墓標があっても復活させる(ts = max(now, 実効墓標ts+1))(§3-4)
+  const before = payloadOf();
+  if(filePayload.bundle){
+    const t = state.tombs.find(x => x.id === filePayload.bundle.id);
+    if(t && t.ts >= filePayload.bundle.ts){
+      filePayload.bundle = reviveBundle(filePayload.bundle, state.tombs, Date.now());
+    }
+  }
+  const m = mergePayloads(before, filePayload);
+  if(m.lost) pushHist(m.lost);
+  state.bundle = m.payload.bundle;
+  state.tombs = m.payload.tombs;
+  save();
+  render();
+  toast("統合の結果: " + measureDiff(before, payloadOf())); // 実測値
+});
+
+// =====================================================================
+// クラウド同期(GitHub Gist / AES-GCM+PBKDF2・鍵キャッシュ・固定salt)
+// =====================================================================
+const SYNC_KEY = "prompt-splitter-sync-v2";
+const SYNC_KEY_V1 = "prompt-splitter-sync-v1";
 const GIST_FILE = "prompt-splitter.json";
-let sync = null;
+let cfg = null;
 let pushTimer = null;
 let syncBusy = false;
-try{ const r = localStorage.getItem(SYNC_KEY); if(r) sync = JSON.parse(r); }catch(e){}
+let errLock = false;       // 復号失敗(パス違い)時は解決までリモートを一切上書きしない(§4-9)
+let remoteTrusted = false; // 既存リモートの取得に一度成功するまでpush禁止
+let booted = false;
+let lastVisSync = 0;
+(function loadCfg(){
+  try{
+    const r = localStorage.getItem(SYNC_KEY);
+    if(r){ cfg = JSON.parse(r); }
+    else{
+      const r1 = localStorage.getItem(SYNC_KEY_V1);
+      if(r1){
+        const s = JSON.parse(r1);
+        if(s && s.token){ cfg = { token: s.token, pass: s.pass || "", gistId: s.gistId || "", salt: "", lastFp: "", lastAt: num(s.lastAt) }; }
+      }
+    }
+    if(cfg){
+      if(typeof cfg.token !== "string" || !cfg.token) cfg = null;
+      else{
+        if(typeof cfg.salt !== "string" || !cfg.salt) cfg.salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+        if(typeof cfg.lastFp !== "string") cfg.lastFp = "";
+        saveCfg();
+      }
+    }
+  }catch(e){ cfg = null; }
+})();
+function saveCfg(){
+  if(memOnly || !cfg) return;
+  try{ localStorage.setItem(SYNC_KEY, JSON.stringify(cfg)); }catch(e){}
+}
 function b64(buf){
   let t = "", u = new Uint8Array(buf);
   for(let i=0; i<u.length; i+=0x8000) t += String.fromCharCode.apply(null, u.subarray(i, i+0x8000));
@@ -249,36 +722,46 @@ async function deriveKey(pass, salt){
   const km = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey({ name:"PBKDF2", salt, iterations:150000, hash:"SHA-256" }, km, { name:"AES-GCM", length:256 }, false, ["encrypt","decrypt"]);
 }
-async function encryptState(pass){
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveKey(pass, salt);
-  const ct = await crypto.subtle.encrypt({ name:"AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(state)));
-  return JSON.stringify({ enc:1, salt:b64(salt), iv:b64(iv), data:b64(ct) });
+// 鍵キャッシュ: 固定saltで初回のみ導出。IVは毎回ランダム(GCMの要件はIV一意性)
+const keyCache = new Map();
+async function keyFor(pass, saltB64){
+  const k = pass + "|" + saltB64;
+  if(keyCache.has(k)) return keyCache.get(k);
+  const key = await deriveKey(pass, unb64(saltB64));
+  if(keyCache.size > 4) keyCache.clear();
+  keyCache.set(k, key);
+  return key;
 }
-async function decryptPayload(text, pass){
+async function encryptPayload(pass, saltB64, obj){
+  const key = await keyFor(pass, saltB64);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name:"AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(obj)));
+  return JSON.stringify({ enc:1, salt: saltB64, iv: b64(iv), data: b64(ct) });
+}
+async function decryptText(text, pass){
   const obj = JSON.parse(text);
-  if(!obj || !obj.enc) return obj;
+  if(!obj || !obj.enc) return obj; // 平文旧データの互換
   try{
-    const key = await deriveKey(pass || "", unb64(obj.salt));
-    const pt = await crypto.subtle.decrypt({ name:"AES-GCM", iv:unb64(obj.iv) }, key, unb64(obj.data));
+    const key = await keyFor(pass || "", obj.salt); // メッセージ内saltから導出(互換維持)
+    const pt = await crypto.subtle.decrypt({ name:"AES-GCM", iv: unb64(obj.iv) }, key, unb64(obj.data));
     return JSON.parse(new TextDecoder().decode(pt));
   }catch(e){ throw new Error("pass"); }
 }
 function setSyncStatus(msg, err){
-  const el = document.getElementById("syncStatus");
-  el.textContent = msg;
-  el.style.color = err ? "#e2b25a" : "";
+  const s = el("syncStatus");
+  s.textContent = msg;
+  s.style.color = err ? "#e2b25a" : "";
 }
 function syncOkStatus(extra){
   const n = new Date();
-  setSyncStatus(`🔒暗号化して同期済み ${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")}${extra||""} ／ 同期ID: ${sync.gistId}`);
+  setSyncStatus(`🔒暗号化して同期済み ${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")}${extra||""} ／ 同期ID: ${cfg.gistId}`);
 }
 function gistHeaders(){
-  return { "Authorization": "Bearer " + sync.token, "Accept": "application/vnd.github+json", "Content-Type": "application/json" };
+  return { "Authorization": "Bearer " + cfg.token, "Accept": "application/vnd.github+json", "Content-Type": "application/json" };
 }
+function dirty(){ return !cfg || fingerprint(payloadOf()) !== cfg.lastFp; }
 async function pullCloud(){
-  const r = await fetch("https://api.github.com/gists/" + sync.gistId, { headers: gistHeaders() });
+  const r = await fetch("https://api.github.com/gists/" + cfg.gistId, { headers: gistHeaders() });
   if(r.status === 404) throw new Error("notfound");
   if(r.status === 401 || r.status === 403) throw new Error("auth");
   if(!r.ok) throw new Error("http" + r.status);
@@ -287,14 +770,17 @@ async function pullCloud(){
   if(!f) return null;
   let text = f.content;
   if(f.truncated){ const rr = await fetch(f.raw_url); text = await rr.text(); }
-  return await decryptPayload(text, sync.pass);
+  return await decryptText(text, cfg.pass); // 復号失敗はthrow→同期停止(リモートを上書きしない)
 }
 async function pushCloud(){
-  const payload = { description: "画像プロンプト分配の同期データ(暗号化済み)",
-    files: { [GIST_FILE]: { content: await encryptState(sync.pass) } } };
+  if(errLock) throw new Error("pass"); // 二重の防御
+  const p = payloadOf();
+  const fp = fingerprint(p);
+  const content = await encryptPayload(cfg.pass, cfg.salt, p);
+  const payload = { description: "画像プロンプト分配の同期データ(暗号化済み)", files: { [GIST_FILE]: { content } } };
   let r;
-  if(sync.gistId){
-    r = await fetch("https://api.github.com/gists/" + sync.gistId, { method: "PATCH", headers: gistHeaders(), body: JSON.stringify(payload) });
+  if(cfg.gistId){
+    r = await fetch("https://api.github.com/gists/" + cfg.gistId, { method: "PATCH", headers: gistHeaders(), body: JSON.stringify(payload) });
   }else{
     payload.public = false;
     r = await fetch("https://api.github.com/gists", { method: "POST", headers: gistHeaders(), body: JSON.stringify(payload) });
@@ -303,65 +789,170 @@ async function pushCloud(){
   if(r.status === 404) throw new Error("notfound");
   if(!r.ok) throw new Error("http" + r.status);
   const g = await r.json();
-  sync.gistId = g.id;
-  sync.lastAt = Date.now();
-  try{ localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); }catch(e){}
+  cfg.gistId = g.id;
+  cfg.lastAt = Date.now();  // 端末ローカル値: 送信ペイロード・差分比較の対象外(§1-7)
+  cfg.lastFp = fp;
+  saveCfg();
 }
 function syncErrMsg(e){
-  if(e && e.message === "pass") return "⚠ 暗号化パスワードが違います(全端末で同じものを設定してください)";
+  if(e && e.message === "pass") return "⚠ 暗号化パスワードが違うか、クラウドのデータを復号できません。解決するまで同期を停止しています(上書きはしません)";
   if(e && e.message === "auth") return "⚠ トークンが無効です(gist権限つきで作り直してください)";
   if(e && e.message === "notfound") return "⚠ 同期IDが見つかりません(IDを確認してください)";
   return "⚠ 同期に失敗しました(通信を確認して「今すぐ同期」を)";
 }
+function flushPendingRemote(){
+  if(pendingRemote && !modalOpen){
+    const r = pendingRemote;
+    pendingRemote = null;
+    applyRemote(r);
+    scheduleCloudPush();
+  }
+}
+// 取り込み: ネットワーク待ち完了後のガード再チェック(起動完了・ダイアログ中は保留)(§2-6)
+function applyRemote(remote){
+  if(!booted || modalOpen){ pendingRemote = remote; return false; }
+  const before = payloadOf();
+  const m = mergePayloads(before, remote);
+  if(fingerprint(m.payload) !== fingerprint(before)){
+    if(m.lost) pushHist(m.lost);
+    state.bundle = m.payload.bundle;
+    state.tombs = m.payload.tombs;
+    save(true);
+    render();
+  }
+  return true;
+}
 function scheduleCloudPush(){
-  if(!sync || !sync.token || syncBusy) return;
+  if(!cfg || !cfg.token || errLock) return;
   clearTimeout(pushTimer);
   pushTimer = setTimeout(async ()=>{
+    if(syncBusy){ scheduleCloudPush(); return; }
+    if(!dirty()) return; // 差分なしなら送らない(ピンポン送信防止)
+    if(cfg.gistId && !remoteTrusted){ syncNow(false); return; } // 未取得のリモートを上書きしない
+    syncBusy = true;
     try{ await pushCloud(); syncOkStatus("(自動)"); }
-    catch(e){ setSyncStatus(syncErrMsg(e), true); }
+    catch(e){ if(e && e.message === "pass") errLock = true; setSyncStatus(syncErrMsg(e), true); }
+    finally{ syncBusy = false; }
   }, 3000);
 }
-async function syncNow(){
-  if(!sync || !sync.token){ toast("先に「同期を設定」を行ってください", true); return; }
+async function syncNow(manual){
+  if(!cfg || !cfg.token){ if(manual) toast("先に「同期を設定」を行ってください", true); return; }
   if(syncBusy) return;
   syncBusy = true;
   setSyncStatus("同期中…");
   try{
-    if(sync.gistId){
+    let deferred = false;
+    if(cfg.gistId){
       const remote = await pullCloud();
-      // 束は号ごとの使い切りデータなので、全体を「保存時刻の新しい方」で採用する
-      if(remote && Array.isArray(remote.items) && (remote.savedAt||0) > (state.savedAt||0)){
-        state = remote;
-        state.items = state.items.map(x => (typeof x === "string") ? { label:"", text:x } : x);
-        save(); render();
+      errLock = false;
+      remoteTrusted = true;
+      if(remote){
+        cfg.lastFp = fingerprint(remote); // 今リモートにある内容
+        saveCfg();
+        deferred = !applyRemote(remote);
       }
+    }else{
+      remoteTrusted = true; // 新規作成
     }
-    await pushCloud();
-    syncOkStatus();
-  }catch(e){ setSyncStatus(syncErrMsg(e), true); }
-  finally{ syncBusy = false; }
-}
-document.getElementById("syncNowBtn").onclick = syncNow;
-document.getElementById("syncSetupBtn").onclick = async ()=>{
-  const t = prompt("GitHubトークンを入力(保管庫と同じものでOK)。解除する場合は「解除」と入力", sync ? sync.token : "");
-  if(t === null) return;
-  if(t.trim() === "解除"){
-    sync = null;
-    try{ localStorage.removeItem(SYNC_KEY); }catch(e){}
-    setSyncStatus("同期は解除されました(クラウド上のデータは残っています)");
-    return;
+    if(deferred){
+      setSyncStatus("操作中のため取り込みを保留しました(ダイアログを閉じると反映・送信します)");
+    }else if(dirty()){
+      await pushCloud();
+      syncOkStatus();
+    }else{
+      syncOkStatus("(変更なし)");
+    }
+  }catch(e){
+    if(e && e.message === "pass") errLock = true;
+    setSyncStatus(syncErrMsg(e), true);
+  }finally{
+    syncBusy = false;
   }
-  const p = prompt("暗号化パスワード(保管庫と同じでOK。全端末で同一に)", sync ? sync.pass : "");
-  if(p === null || !p.trim()){ toast("パスワードは必須です", true); return; }
-  const g = prompt("同期ID(2台目なら1台目に表示されるIDを入力。初回は空欄でOK)", sync ? (sync.gistId||"") : "");
+}
+el("syncNowBtn").onclick = ()=> syncNow(true);
+// 閉じる瞬間の送信: キャッシュ済み鍵での高速暗号化 + fetch keepalive のみ(ベストエフォート)
+function flushPush(){
+  try{
+    if(!cfg || !cfg.token || !cfg.gistId || errLock || !remoteTrusted) return;
+    if(!dirty()) return;
+    if(!keyCache.has(cfg.pass + "|" + cfg.salt)) return; // 鍵未準備なら断念(次回同期で収束)
+    let p = payloadOf();
+    if(pendingRemote){ try{ p = mergePayloads(p, pendingRemote).payload; }catch(e){} } // ダイアログ中に保留した取り込み分を失わずに送る
+    const fp = fingerprint(p);
+    encryptPayload(cfg.pass, cfg.salt, p).then(content =>
+      fetch("https://api.github.com/gists/" + cfg.gistId, {
+        method: "PATCH", headers: gistHeaders(), keepalive: true,
+        body: JSON.stringify({ files: { [GIST_FILE]: { content } } })
+      })
+    ).then(r => {
+      if(r && r.ok){ cfg.lastFp = fp; cfg.lastAt = Date.now(); saveCfg(); }
+    }).catch(()=>{ /* ベストエフォート: 次回同期で収束 */ });
+  }catch(e){}
+}
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible"){
+    if(cfg && cfg.token && cfg.gistId && !syncBusy && Date.now() - lastVisSync > 8000){
+      lastVisSync = Date.now();
+      syncNow(false);
+    }
+  }else{
+    flushPush();
+  }
+});
+window.addEventListener("pagehide", flushPush);
+// 段階式の設定ダイアログ(解除も同じ導線・端末内保存の事実を明記)
+async function setupSync(){
+  if(cfg){
+    const r = await openModal({ msg: "クラウド同期の設定", buttons: [
+      { id: "edit", label: "設定を変更する", cls: "gold", primary: true },
+      { id: "off", label: "同期を解除する", cls: "danger" },
+      { id: "cancel", label: "やめる" }
+    ]});
+    if(r.id === "cancel") return;
+    if(r.id === "off"){
+      const ok = await confirmBox("この端末の同期設定(トークン・暗号化パスワード)を削除しますか?\nクラウド上の暗号化データは残ります。", { okLabel: "解除する", danger: true });
+      if(ok){
+        cfg = null;
+        try{ localStorage.removeItem(SYNC_KEY); localStorage.removeItem(SYNC_KEY_V1); }catch(e){}
+        keyCache.clear();            // 鍵・認証情報・タイマーを全て破棄(§4-8)
+        clearTimeout(pushTimer);
+        errLock = false; remoteTrusted = false; pendingRemote = null;
+        setSyncStatus("同期は解除されました(クラウド上のデータは残っています)");
+      }
+      return;
+    }
+  }
+  const t = await promptBox("① GitHubトークン(gist権限つき)を入力\n(保管庫と同じものでOK)", { value: cfg ? cfg.token : "" });
+  if(t === null) return;
+  if(!t.trim()){ toast("トークンは必須です", true); return; }
+  const p = await promptBox("② 暗号化パスワードを入力\n(全端末で同一にしてください)", { value: cfg ? cfg.pass : "" });
+  if(p === null) return;
+  if(!p.trim()){ toast("パスワードは必須です", true); return; }
+  const g = await promptBox("③ 同期ID\n(2台目なら1台目の画面に出るIDを入力。初回は空欄でOK)", { value: cfg ? (cfg.gistId || "") : "" });
   if(g === null) return;
-  sync = { token: t.trim(), pass: p.trim(), gistId: (g||"").trim(), lastAt: 0 };
-  try{ localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); }catch(e){}
-  syncNow();
-};
-if(sync && sync.token && sync.gistId){ syncNow(); }
-// ---- Mac自動化ブリッジ(入稿ワンキーと同方式) ----
-// AppleScriptがURL末尾に #cmd-next を付けると、次のプロンプトを隠し欄 #bridgeOut に置いて前進する。
+  const ok = await confirmBox(
+    "確認してください:\n" +
+    "・自動同期のため、トークンと暗号化パスワードはこの端末内に保存されます。暗号化が守るのはクラウド上のデータのみで、この端末を読める人にはデータが見えます。\n" +
+    "・画面を閉じる瞬間の送信はベストエフォートです(届かなくても次回同期で追いつきます)。\n" +
+    "この内容で設定しますか?", { okLabel: "設定する" });
+  if(!ok) return;
+  cfg = {
+    token: t.trim(), pass: p.trim(), gistId: (g || "").trim(),
+    salt: (cfg && cfg.salt) || b64(crypto.getRandomValues(new Uint8Array(16))),
+    lastFp: "", lastAt: 0
+  };
+  errLock = false; remoteTrusted = false;
+  saveCfg();
+  keyFor(cfg.pass, cfg.salt).catch(()=>{}); // 鍵を先に温める(閉じる瞬間の送信のため)
+  syncNow(true);
+}
+el("syncSetupBtn").onclick = setupSync;
+
+// =====================================================================
+// Mac自動化ブリッジ(入稿ワンキーと同方式)
+// AppleScriptがURL末尾に #cmd-peek / #cmd-ack / #cmd-next を付けると
+// 隠し欄 #bridgeOut を介して受け渡しする。
+// =====================================================================
 (function(){
   const out = document.createElement("textarea");
   out.id = "bridgeOut";
@@ -370,20 +961,22 @@ if(sync && sync.token && sync.gistId){ syncNow(); }
   document.body.appendChild(out);
   let pendingPeek = false; // 連打対策: peekなしのack(空撃ち)や二重ackを無視して「1個飛ばし」を防ぐ
   function peekText(){
-    if(!state.items.length) return { err: "プロンプトが空です。先に😀区切りのかたまりを貼ってください" };
-    if(state.idx >= state.items.length) return { err: "全" + state.items.length + "個コピー済みです。タブで緑ボタンを押すともう一周できます" };
+    if(!state.bundle) return { err: "プロンプトが空です。先に😀区切りのかたまりを貼ってください" };
+    const idx = curIdx();
+    if(idx >= state.bundle.items.length) return { err: "全" + state.bundle.items.length + "個コピー済みです。タブで緑ボタンを押すともう一周できます" };
     pendingPeek = true;
-    return { text: state.items[state.idx].text };
+    return { text: state.bundle.items[idx].text };
   }
   function ackNext(){
     if(!pendingPeek) return; // 直前にpeekしていないackは無視(二重ack・空撃ち対策)
     pendingPeek = false;
-    if(state.idx >= state.items.length) return;
-    state.copied[state.idx] = true;
-    state.idx += 1;
+    if(!state.bundle) return; // peek後に同期マージ等で束が消えた場合の防御
+    const idx = curIdx();
+    if(idx >= state.bundle.items.length) return;
+    markCopied(idx, true);
     save();
     render();
-    toast(state.idx + "個目を自動化経由で受け渡しました");
+    toast((idx + 1) + "個目を自動化経由で受け渡しました");
   }
   window.addEventListener("hashchange", ()=>{
     const h = location.hash || "";
@@ -401,6 +994,23 @@ if(sync && sync.token && sync.gistId){ syncNow(); }
     }
   });
 })();
+
+// =====================================================================
+// 起動
+// =====================================================================
+render();
+booted = true;
+if(cfg && cfg.token){
+  keyFor(cfg.pass, cfg.salt).catch(()=>{}); // セッション内鍵キャッシュを起動時に準備
+  if(cfg.gistId) syncNow(false);
+}
+// テスト用エクスポート(ブラウザ動作には影響しない)
+if(typeof window !== "undefined"){
+  window.__psTest = { uid, esc, num, str, sanitizePayload, migrateV1, mergePayloads, fingerprint,
+    reviveBundle, extractJson, sameItems, measureDiff, b64, unb64, deriveKey, encryptPayload, decryptText,
+    splitPrompts, pickLabel,
+    _ui: { state, curIdx, payloadOf, applyRemote, flushPendingRemote, undoToLastHist, ingest, seqCopy } };
+}
 </script>
 </body>
 </html>
