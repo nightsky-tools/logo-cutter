@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Claude HTML サルベージ v2</title>
+<title>Claude HTML サルベージ v3</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
@@ -18,6 +18,8 @@
     --amber-soft:#FBF0DC;
     --teal:#0E7E70;
     --teal-soft:#DDF2EF;
+    --danger:#C23434;
+    --danger-soft:#FDECEC;
     --radius:14px;
     --mono:"SFMono-Regular",Consolas,"Courier New",monospace;
   }
@@ -31,13 +33,35 @@
   }
   .wrap{max-width:880px;margin:0 auto;padding:32px 20px 80px}
 
-  header{margin-bottom:28px}
+  header{margin-bottom:20px}
   .eyebrow{
     font-size:12px;letter-spacing:.18em;color:var(--accent);
     font-weight:700;text-transform:uppercase;margin-bottom:6px;
   }
   h1{font-size:clamp(24px,4.5vw,34px);font-weight:800;letter-spacing:.01em}
   .sub{color:var(--ink-soft);font-size:14px;margin-top:8px;max-width:60ch}
+
+  .banner{
+    display:none;border-radius:10px;padding:12px 16px;margin:0 0 14px;font-size:13px;
+    background:var(--amber-soft);border:1px solid #E4C98C;color:#7A5410;
+  }
+  .banner.show{display:block}
+  .banner.err{background:var(--danger-soft);border-color:#E8A0A0;color:#8C2B2B}
+
+  .tabs{display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid var(--line)}
+  .tab{
+    font-family:inherit;font-size:14px;font-weight:700;color:var(--ink-soft);
+    background:none;border:none;border-bottom:3px solid transparent;
+    padding:8px 14px 10px;cursor:pointer;margin-bottom:-2px;border-radius:0;
+  }
+  .tab:hover{background:none;color:var(--ink)}
+  .tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+  .tab .cnt{
+    font-size:11px;font-weight:800;background:var(--accent-soft);color:var(--accent);
+    border-radius:99px;padding:1px 8px;margin-left:6px;
+  }
+  .view{display:none}
+  .view.on{display:block}
 
   .howto{
     background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
@@ -49,6 +73,13 @@
   .howto ol{margin:12px 0 0 20px;color:var(--ink-soft)}
   .howto li{margin-bottom:6px}
   .howto b{color:var(--ink)}
+  .howto textarea{
+    width:100%;min-height:90px;margin-top:12px;padding:10px 12px;
+    border:1px solid var(--line);border-radius:10px;font-family:var(--mono);
+    font-size:12px;color:var(--ink);background:var(--bg);resize:vertical;
+  }
+  .howto textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+  .howto .pastebar{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap}
 
   .drop{
     display:block;
@@ -66,6 +97,7 @@
 
   .toolbar{display:none;gap:10px;margin:24px 0 4px;flex-wrap:wrap;align-items:center}
   .toolbar.show{display:flex}
+  .toolbar.always{display:flex;margin-top:0}
   .search{
     flex:1;min-width:220px;
     padding:11px 14px;border:1px solid var(--line);border-radius:10px;
@@ -97,6 +129,9 @@
   }
   .card.latest{border-color:var(--accent)}
   .card.latest::before{border-color:var(--accent);background:var(--accent)}
+  .libgrid{margin-top:14px}
+  .libgrid .card{margin-left:0}
+  .libgrid .card::before{display:none}
 
   .card-top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
   .badge{
@@ -105,11 +140,19 @@
     padding:2px 9px;border-radius:99px;
   }
   .card h3{font-size:16px;font-weight:700;flex:1;min-width:150px;overflow-wrap:anywhere}
-  .meta{font-size:12px;color:var(--ink-soft);margin-top:4px}
+  .meta{font-size:12px;color:var(--ink-soft);margin-top:4px;overflow-wrap:anywhere}
   .meta .conv{color:var(--amber);background:var(--amber-soft);padding:1px 7px;border-radius:6px;font-weight:600}
   .meta .kind{font-family:var(--mono);font-size:11px;border:1px solid var(--line);padding:1px 6px;border-radius:6px;margin-left:6px}
   .meta .kind.react{color:var(--teal);background:var(--teal-soft);border-color:var(--teal-soft)}
   .size{font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+  .notepv{font-size:13px;color:var(--ink-soft);margin-top:6px;overflow-wrap:anywhere}
+  .tagrow{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .chip{
+    font-size:11px;font-weight:700;color:var(--teal);background:var(--teal-soft);
+    padding:2px 9px;border-radius:99px;border:1px solid transparent;
+  }
+  .chip.filter{cursor:pointer;user-select:none;background:var(--panel);color:var(--ink-soft);border-color:var(--line)}
+  .chip.filter.on{background:var(--teal-soft);color:var(--teal);border-color:var(--teal)}
 
   .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
   button{
@@ -121,6 +164,9 @@
   button:hover{background:var(--bg)}
   button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   button.primary:hover{background:#1B3FBF}
+  button.danger{background:var(--panel);border-color:#E8A0A0;color:var(--danger)}
+  button.danger:hover{background:var(--danger-soft)}
+  button:disabled{opacity:.55;cursor:default}
   button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .note{font-size:12px;color:var(--ink-soft)}
 
@@ -137,7 +183,7 @@
   }
   .empty.show{display:block}
   .err{
-    display:none;background:#FDECEC;border:1px solid #E8A0A0;color:#8C2B2B;
+    display:none;background:var(--danger-soft);border:1px solid #E8A0A0;color:#8C2B2B;
     border-radius:10px;padding:12px 16px;margin-top:16px;font-size:14px;
   }
   .err.show{display:block}
@@ -146,57 +192,1467 @@
     border-radius:10px;padding:12px 16px;margin-top:16px;font-size:13px;
   }
   .info.show{display:block}
+
+  .syncrow{
+    display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:12px 16px;margin-bottom:14px;font-size:13px;
+  }
+  .syncrow .line{flex:1;min-width:200px;color:var(--ink-soft)}
+  .syncrow .line.err{color:var(--danger);font-weight:700}
+  .libops{display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+
+  /* モーダル(confirm/prompt/alert 代替 §5-1) */
+  .modal-back{
+    position:fixed;inset:0;background:rgba(23,36,59,.45);
+    display:flex;align-items:center;justify-content:center;padding:20px;z-index:50;
+  }
+  .modal{
+    background:var(--panel);border-radius:var(--radius);max-width:520px;width:100%;
+    max-height:85vh;overflow:auto;padding:22px 24px;
+    box-shadow:0 20px 60px rgba(23,36,59,.3);
+  }
+  .modal h2{font-size:17px;font-weight:800;margin-bottom:12px}
+  .modal-body{font-size:14px;color:var(--ink);overflow-wrap:anywhere}
+  .modal-body p{margin-bottom:10px;color:var(--ink-soft)}
+  .modal-body p b{color:var(--ink)}
+  .modal-body label{display:block;font-size:13px;font-weight:700;margin:12px 0 4px}
+  .modal-body input[type="text"],.modal-body input[type="password"],.modal-body input[type="url"],
+  .modal-body select,.modal-body textarea{
+    width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;
+    font-family:inherit;font-size:14px;color:var(--ink);background:var(--panel);
+  }
+  .modal-body textarea{min-height:80px;resize:vertical;font-family:var(--mono);font-size:12px}
+  .modal-body input:focus,.modal-body select:focus,.modal-body textarea:focus{
+    outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+  .modal-body .fine{font-size:12px;color:var(--ink-soft);margin-top:8px}
+  .modal-body .warnbox{
+    background:var(--amber-soft);border:1px solid #E4C98C;border-radius:9px;
+    padding:10px 12px;font-size:12px;color:#7A5410;margin-top:10px;
+  }
+  .modal-body ul{margin:6px 0 10px 18px;color:var(--ink-soft);font-size:13px}
+  .modal-body li{margin-bottom:4px}
+  .modal-btns{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;justify-content:flex-end}
+  .modal-btns.stack{flex-direction:column;align-items:stretch}
+  .modal-btns.stack button{width:100%}
+  .rowlist{border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-top:8px}
+  .rowlist .row{
+    display:flex;gap:10px;align-items:center;justify-content:space-between;
+    padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;
+  }
+  .rowlist .row:last-child{border-bottom:none}
+  .rowlist .row .grow{flex:1;min-width:0;overflow-wrap:anywhere}
+  .rowlist .muted{color:var(--ink-soft);font-size:12px}
+
+  /* トースト(元に戻す §3-6) */
+  .toast{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+    background:var(--ink);color:#fff;border-radius:12px;
+    padding:12px 16px;font-size:14px;display:none;gap:14px;align-items:center;
+    box-shadow:0 10px 30px rgba(23,36,59,.35);z-index:60;max-width:calc(100vw - 32px);
+  }
+  .toast.show{display:flex}
+  .toast button{
+    background:none;border:none;color:#8FB0FF;font-weight:800;font-size:14px;
+    padding:2px 4px;white-space:nowrap;
+  }
+  .toast button:hover{background:none;text-decoration:underline}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div class="eyebrow">Artifact Salvage v2</div>
+    <div class="eyebrow">Artifact Salvage v3</div>
     <h1>Claude HTML サルベージ</h1>
-    <p class="sub">Claudeの全トーク履歴(エクスポートデータ)からHTML・Reactアプリを掘り出して、最新のものから順に並べます。検索して、プレビューして、そのままダウンロード。</p>
+    <p class="sub">Claudeの全トーク履歴(エクスポートデータ)からHTML・Reactアプリを掘り出して、検索・プレビュー・ダウンロード。気に入ったものはライブラリに保存して、2台の端末で同期・バックアップできます。</p>
   </header>
 
-  <details class="howto" open>
-    <summary>エクスポートデータの入手方法</summary>
-    <ol>
-      <li>claude.ai の <b>設定 → プライバシー → データをエクスポート</b> をクリック</li>
-      <li>届いたメールからデータ(zip)をダウンロード</li>
-      <li>その <b>zipファイルごと</b>、または中の <b>conversations.json</b> を下にドロップ</li>
-    </ol>
-  </details>
+  <div class="banner" id="banner"></div>
 
-  <label class="drop" id="drop">
-    <p class="big">ここに conversations.json または zip をドロップ</p>
-    <p>クリックしてファイルを選択もできます(データはブラウザ内だけで処理されます)</p>
-    <input type="file" id="file" accept=".json,.zip">
-  </label>
-  <p class="busy" id="busy">読み込み中…(大きいファイルは少し時間がかかります)</p>
-
-  <div class="err" id="err"></div>
-  <div class="info" id="info"></div>
-
-  <div class="toolbar" id="toolbar">
-    <input class="search" id="q" type="search" placeholder="アプリ名・トーク名・内容で検索(例: 家計簿)">
-    <span class="stat" id="stat"></span>
-  </div>
-  <div class="filters" id="filters">
-    <label><input type="checkbox" id="fTitleOnly">名前だけで絞り込む</label>
-    <label><input type="checkbox" id="fHtml" checked>HTML</label>
-    <label><input type="checkbox" id="fReact" checked>React (JSX)</label>
-    <label><input type="checkbox" id="fDup">重複も表示</label>
+  <div class="tabs" role="tablist">
+    <button class="tab on" id="tabExtract" role="tab">掘り出す</button>
+    <button class="tab" id="tabLibrary" role="tab">ライブラリ<span class="cnt" id="libCount">0</span></button>
   </div>
 
-  <div class="rail" id="results"></div>
-  <div class="empty" id="empty">条件に合うものが見つかりませんでした。キーワードやフィルタを変えてみてください。</div>
+  <!-- ======== 掘り出しビュー ======== -->
+  <div class="view on" id="viewExtract">
+    <details class="howto" open>
+      <summary>エクスポートデータの入手方法</summary>
+      <ol>
+        <li>claude.ai の <b>設定 → プライバシー → データをエクスポート</b> をクリック</li>
+        <li>届いたメールからデータ(zip)をダウンロード</li>
+        <li>その <b>zipファイルごと</b>、または中の <b>conversations.json</b> を下にドロップ</li>
+      </ol>
+    </details>
+
+    <label class="drop" id="drop">
+      <p class="big">ここに conversations.json または zip をドロップ</p>
+      <p>クリックしてファイルを選択もできます(データはブラウザ内だけで処理されます)</p>
+      <input type="file" id="file" accept=".json,.zip">
+    </label>
+    <p class="busy" id="busy">読み込み中…(大きいファイルは少し時間がかかります)</p>
+
+    <details class="howto">
+      <summary>ファイルの代わりにテキストを貼り付ける</summary>
+      <p class="note" style="margin-top:10px">JSONを含むテキストや、コードブロック入りのメッセージをそのまま貼り付けても抽出できます(上限 20MB)。</p>
+      <textarea id="pasteText" placeholder='ここに貼り付け(例: conversations.json の中身、``` 付きのコード)'></textarea>
+      <div class="pastebar">
+        <button class="primary" id="pasteBtn">貼り付けた内容から抽出</button>
+        <span class="note" id="pasteNote"></span>
+      </div>
+    </details>
+
+    <div class="err" id="err"></div>
+    <div class="info" id="info"></div>
+
+    <div class="toolbar" id="toolbar">
+      <input class="search" id="q" type="search" placeholder="アプリ名・トーク名・内容で検索(例: 家計簿)">
+      <span class="stat" id="stat"></span>
+      <button id="saveAll">表示中をすべて保存</button>
+    </div>
+    <div class="filters" id="filters">
+      <label><input type="checkbox" id="fTitleOnly">名前だけで絞り込む</label>
+      <label><input type="checkbox" id="fHtml" checked>HTML</label>
+      <label><input type="checkbox" id="fReact" checked>React (JSX)</label>
+      <label><input type="checkbox" id="fDup">重複も表示</label>
+    </div>
+
+    <div class="rail" id="results"></div>
+    <div class="empty" id="empty">条件に合うものが見つかりませんでした。キーワードやフィルタを変えてみてください。</div>
+  </div>
+
+  <!-- ======== ライブラリビュー ======== -->
+  <div class="view" id="viewLibrary">
+    <div class="syncrow">
+      <span class="line" id="syncLine">クラウド同期: オフ</span>
+      <button id="btnSyncNow">今すぐ同期</button>
+      <button id="btnSyncCfg">同期設定</button>
+    </div>
+    <div class="libops">
+      <button id="btnExport">書き出し</button>
+      <button id="btnRestore">復元</button>
+      <button id="btnCsv">一覧をCSV</button>
+      <button id="btnTags">タグ管理</button>
+      <button id="btnHistory">履歴</button>
+      <button class="danger" id="btnBatchDel">取込単位で一括削除</button>
+    </div>
+    <div class="toolbar always">
+      <input class="search" id="libQ" type="search" placeholder="ライブラリ内を検索(名前・トーク・メモ・タグ・内容)">
+      <select id="libSort" class="search" style="flex:0 0 auto;min-width:0;width:auto">
+        <option value="saved">保存が新しい順</option>
+        <option value="orig">元の作成が新しい順</option>
+        <option value="title">名前順</option>
+      </select>
+      <span class="stat" id="libStat"></span>
+    </div>
+    <div class="tagrow" id="tagChips"></div>
+    <div class="libgrid" id="libList"></div>
+    <div class="empty" id="libEmpty">ライブラリは空です。「掘り出す」タブでアプリを見つけて「ライブラリに保存」してください。</div>
+  </div>
 </div>
 
+<div id="modalRoot"></div>
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="toastAct"></button></div>
+
+<input type="file" id="restoreFile" accept=".json" style="display:none">
+
 <script>
+/* ============================================================
+ * Claude HTML サルベージ v3 - コアロジック(純関数層)
+ * DOM・ネットワーク非依存。Nodeの自動テストから直接読み込む。
+ * ============================================================ */
+'use strict';
+var Core = (function(){
+
+  const LIMITS = {
+    items: 2000,            // ライブラリ保存アイテム上限
+    content: 2*1024*1024,   // 1アイテムのコード上限 2MB
+    text: 200,              // タイトル・トーク名の文字数上限
+    note: 2000,             // メモ上限
+    tagsPerItem: 20,
+    tagName: 30,
+    tombs: 100,             // 墓標の保持上限(§1-2)
+    tags: 200,              // タグ登録上限
+    history: 20,            // 履歴退避の保持上限
+    jsonScan: 20*1024*1024, // 貼り付けJSON抽出の入力上限(§5-5)
+    jsonCandidates: 20,
+    historyItemBytes: 1024*1024,   // 履歴退避: 1件あたり上限(超過分は退避しない)
+    historyTotalBytes: 2*1024*1024 // 履歴退避: 合計バイト予算(保存層の容量保護 §6-2)
+  };
+
+  const ID_RE   = /^[A-Za-z0-9_-]{1,40}$/;                 // §1-9
+  const TOMB_RE = /^(?:group:batch:)?[A-Za-z0-9_-]{1,40}$/; // グループ墓標(§1-3)
+  const PBKDF2_ITERS = 150000;                              // §4-1
+
+  /* ---------- uid: ミリ秒 + 単調増加カウンタ + ランダム (§1-8) ---------- */
+  let _lastMs = 0, _ctr = 0;
+  function uid(){
+    const ms = Date.now();
+    if (ms === _lastMs) { _ctr++; } else { _lastMs = ms; _ctr = 0; }
+    return ms.toString(36) + '-' + _ctr.toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  }
+
+  /* ---------- 決定的シリアライズ・ハッシュ ---------- */
+  function stableStr(v){
+    if (v === null || typeof v !== 'object') return JSON.stringify(v) || 'null';
+    if (Array.isArray(v)) return '[' + v.map(stableStr).join(',') + ']';
+    const keys = Object.keys(v).sort();
+    return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStr(v[k])).join(',') + '}';
+  }
+  function fnv(str){
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++){
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16);
+  }
+
+  /* ---------- サニタイズ(外部から入るデータの単一入口 §1-10) ---------- */
+  function str(v, n){ return typeof v === 'string' ? v.slice(0, n) : ''; }
+  function sanTs(v){
+    const n = +v;
+    return (Number.isFinite(n) && n >= 0) ? Math.min(Math.floor(n), 9e15) : 0; // tsなし旧形式は0(§1-1)
+  }
+  function sanId(v){ return (typeof v === 'string' && ID_RE.test(v)) ? v : uid(); } // 不一致は再生成(§1-9)
+
+  function sanItem(raw){
+    if (!raw || typeof raw !== 'object') return null;
+    const content = str(raw.content, LIMITS.content);
+    if (!content) return null;
+    let tags = [];
+    if (Array.isArray(raw.tags)){
+      const seen = new Set();
+      for (const t of raw.tags){
+        if (typeof t !== 'string') continue;
+        const nm = t.trim().slice(0, LIMITS.tagName);
+        if (nm && !seen.has(nm)){ seen.add(nm); tags.push(nm); }
+        if (tags.length >= LIMITS.tagsPerItem) break;
+      }
+    }
+    return {
+      id: sanId(raw.id),
+      ts: sanTs(raw.ts),
+      title: str(raw.title, LIMITS.text).trim() || '(無題)',
+      conv: str(raw.conv, LIMITS.text),
+      origDate: str(raw.origDate, 40),
+      format: raw.format === 'react' ? 'react' : 'html',
+      kind: raw.kind === 'code' ? 'code' : 'artifact',
+      content: content,
+      note: str(raw.note, LIMITS.note),
+      tags: tags,
+      batch: (typeof raw.batch === 'string' && ID_RE.test(raw.batch)) ? raw.batch : '',
+      batchName: str(raw.batchName, 100)
+    };
+  }
+
+  function dedupeMaxTs(list, keyName){
+    const m = new Map();
+    for (const t of list){
+      const k = t[keyName];
+      const prev = m.get(k);
+      if (prev === undefined || t.ts > prev) m.set(k, t.ts);
+    }
+    return [...m.entries()].map(([k, ts]) => ({ [keyName]: k, ts }))
+      .sort((a, b) => b.ts - a.ts || (a[keyName] < b[keyName] ? -1 : 1));
+  }
+
+  function emptyState(){
+    return { v: 3, items: {}, tombs: [], tags: {}, tagTombs: [], settings: {}, history: [] };
+  }
+
+  function sanState(raw){
+    const s = emptyState();
+    if (!raw || typeof raw !== 'object') return s;
+    // items
+    const items = (raw.items && typeof raw.items === 'object') ? raw.items : {};
+    let count = 0;
+    for (const k of Object.keys(items)){
+      if (count >= LIMITS.items) break;
+      const it = sanItem(items[k]);
+      if (!it) continue;
+      s.items[it.id] = it;
+      count++;
+    }
+    // 墓標(個別+グループ) §1-2/§1-3
+    const tombs = Array.isArray(raw.tombs) ? raw.tombs : [];
+    const okT = [];
+    for (const t of tombs){
+      if (t && typeof t.id === 'string' && TOMB_RE.test(t.id)) okT.push({ id: t.id, ts: sanTs(t.ts) });
+    }
+    s.tombs = dedupeMaxTs(okT, 'id').slice(0, LIMITS.tombs); // 新しい順に上限(§8-8)
+    // タグ: 追加ts + 削除墓標(§1-6)
+    const tg = (raw.tags && typeof raw.tags === 'object') ? raw.tags : {};
+    let tc = 0;
+    for (const name of Object.keys(tg)){
+      if (tc >= LIMITS.tags) break;
+      const nm = String(name).trim().slice(0, LIMITS.tagName);
+      if (!nm) continue;
+      const e = tg[name];
+      s.tags[nm] = { ts: sanTs(e && e.ts) };
+      tc++;
+    }
+    const tt = Array.isArray(raw.tagTombs) ? raw.tagTombs : [];
+    const okTT = [];
+    for (const t of tt){
+      if (t && typeof t.name === 'string'){
+        const nm = t.name.trim().slice(0, LIMITS.tagName);
+        if (nm) okTT.push({ name: nm, ts: sanTs(t.ts) });
+      }
+    }
+    s.tagTombs = dedupeMaxTs(okTT, 'name').slice(0, LIMITS.tombs);
+    // 設定: フィールド別 {v, ts}(§1-5) 許可リスト方式
+    const st = (raw.settings && typeof raw.settings === 'object') ? raw.settings : {};
+    if (st.sortMode && typeof st.sortMode === 'object' &&
+        ['saved', 'orig', 'title'].includes(st.sortMode.v)){
+      s.settings.sortMode = { v: st.sortMode.v, ts: sanTs(st.sortMode.ts) };
+    }
+    // 履歴退避(端末ローカル: 送信ペイロードには含めない)
+    const h = Array.isArray(raw.history) ? raw.history : [];
+    let histBytes = 0;
+    for (const e of h){
+      if (s.history.length >= LIMITS.history) break;
+      const it = sanItem(e && e.item);
+      if (!it) continue;
+      if (it.content.length > LIMITS.historyItemBytes) continue;        // 巨大アイテムは退避しない
+      if (histBytes + it.content.length > LIMITS.historyTotalBytes) break; // 合計予算(新しい順に優先)
+      histBytes += it.content.length;
+      s.history.push({ at: sanTs(e && e.at), reason: str(e && e.reason, 40), item: it });
+    }
+    return s;
+  }
+
+  /* ---------- 墓標 ---------- */
+  function tombMap(tombs){
+    const m = new Map();
+    for (const t of tombs){
+      const prev = m.get(t.id);
+      if (prev === undefined || t.ts > prev) m.set(t.id, t.ts);
+    }
+    return m;
+  }
+  // 実効墓標 = max(個別, 所属グループ) (§1-3)
+  function effTomb(m, item){
+    let t = m.get(item.id) || 0;
+    if (item.batch) t = Math.max(t, m.get('group:batch:' + item.batch) || 0);
+    return t;
+  }
+
+  /* ---------- 内容比較(ts除外) ---------- */
+  function itemBody(it){
+    const o = Object.assign({}, it);
+    delete o.ts;
+    return o;
+  }
+  function sameBody(a, b){ return stableStr(itemBody(a)) === stableStr(itemBody(b)); }
+
+  /* ---------- LWWマージ(§2) 純関数 ---------- */
+  function mergeStates(rawA, rawB, now){
+    now = now || Date.now();
+    const A = sanState(rawA), B = sanState(rawB); // 両入力をサニタイズ(§2-5)
+    const out = emptyState();
+    out.history = A.history.slice(); // 履歴はローカル側を引き継ぐ
+
+    // 墓標: 和集合・同IDはmax ts・上限で新しい順(§1-2)
+    out.tombs = dedupeMaxTs(A.tombs.concat(B.tombs), 'id').slice(0, LIMITS.tombs);
+    const tm = tombMap(out.tombs);
+
+    // アイテム: 同IDはtsの新しい方(§2-1)。片側のみは追加(§2-2)。墓標に負けたら削除(§2-3)。
+    const ids = new Set([...Object.keys(A.items), ...Object.keys(B.items)]);
+    for (const id of ids){
+      const a = A.items[id], b = B.items[id];
+      let win, lose = null;
+      if (a && b){
+        if (b.ts > a.ts){ win = b; lose = a; } else { win = a; lose = b; }
+      } else {
+        win = a || b;
+      }
+      if (win.ts <= effTomb(tm, win)) continue; // 削除確定
+      out.items[id] = win;
+      if (lose && !sameBody(lose, win)){        // 負けた側は履歴へ退避(§2-1)
+        out.history.unshift({ at: now, reason: 'merge-overwritten', item: lose });
+      }
+    }
+
+    // タグ: 追加tsはmax、墓標もmax。追加ts > 墓標ts なら存在(§1-6)
+    const tagTs = new Map();
+    for (const src of [A.tags, B.tags]){
+      for (const nm of Object.keys(src)){
+        const prev = tagTs.get(nm);
+        if (prev === undefined || src[nm].ts > prev) tagTs.set(nm, src[nm].ts);
+      }
+    }
+    out.tagTombs = dedupeMaxTs(A.tagTombs.concat(B.tagTombs), 'name').slice(0, LIMITS.tombs);
+    const ttm = new Map(out.tagTombs.map(t => [t.name, t.ts]));
+    for (const [nm, ts] of tagTs){
+      if (ts > (ttm.get(nm) || 0)) out.tags[nm] = { ts };
+    }
+
+    // 設定: フィールドごとにtsの新しい方(§1-5)
+    const fields = new Set([...Object.keys(A.settings), ...Object.keys(B.settings)]);
+    for (const f of fields){
+      const a = A.settings[f], b = B.settings[f];
+      out.settings[f] = (a && b) ? (b.ts > a.ts ? b : a) : (a || b);
+    }
+    return sanState(out); // 上限を再適用
+  }
+
+  /* ---------- 送信ペイロード(端末ローカル値を除外 §1-7) ---------- */
+  function canonical(state){
+    const s = sanState(state);
+    return { v: 3, items: s.items, tombs: s.tombs, tags: s.tags, tagTombs: s.tagTombs, settings: s.settings };
+    // history / lastSyncAt / 同期設定 等は含めない
+  }
+  function payloadStr(state){ return stableStr(canonical(state)); }
+  function payloadHash(state){ return fnv(payloadStr(state)); }
+  function samePayload(a, b){ return payloadStr(a) === payloadStr(b); }
+
+  /* ---------- 復元(統合): 墓標があっても復活 (§3-3〜§3-5) ---------- */
+  function restoreMerge(rawCur, rawFile, now){
+    now = now || Date.now();
+    const cur = sanState(rawCur);
+    const file = sanState(rawFile);
+    const tm = tombMap(cur.tombs.concat(file.tombs));
+    // 復活ts = max(現在時刻, 実効墓標ts + 1)(§3-4: 未来の墓標対策)
+    for (const id of Object.keys(file.items)){
+      const it = file.items[id];
+      const et = effTomb(tm, it);
+      if (it.ts <= et) it.ts = Math.max(now, et + 1);
+    }
+    const before = snapshotBodies(cur);
+    const merged = mergeStates(cur, file, now);
+    const after = snapshotBodies(merged);
+    // 実測diff(§3-5): 推定値ではなく統合前後スナップショットの内容比較(ts除外)
+    let added = 0, updated = 0, kept = 0, removed = 0;
+    for (const id of Object.keys(file.items)){
+      if (!(id in before)){ if (id in after) added++; }
+      else if (before[id] !== after[id]) updated++;
+      else kept++;
+    }
+    // ファイル内墓標により現在側の項目が消えた数も実測して正直に報告し、履歴へ退避する
+    for (const id of Object.keys(before)){
+      if (!(id in after)){
+        removed++;
+        if (cur.items[id]) merged.history.unshift({ at: now, reason: 'restore-removed', item: cur.items[id] });
+      }
+    }
+    const finalState = sanState(merged); // 履歴予算を再適用
+    return { state: finalState, stats: { added, updated, kept, removed } };
+  }
+  function snapshotBodies(s){
+    const o = {};
+    for (const id of Object.keys(s.items)) o[id] = stableStr(itemBody(s.items[id]));
+    return o;
+  }
+
+  /* ---------- 削除・一括削除・元に戻す ---------- */
+  // 単発削除: 墓標追加 + 履歴退避(§3-6)。戻り値のundo情報でトースト復元。
+  function deleteItem(state, id, now){
+    now = now || Date.now();
+    const s = sanState(state);
+    const it = s.items[id];
+    if (!it) return { state: s, undo: null };
+    delete s.items[id];
+    s.tombs = dedupeMaxTs(s.tombs.concat([{ id, ts: now }]), 'id').slice(0, LIMITS.tombs);
+    s.history.unshift({ at: now, reason: 'deleted', item: it });
+    s.history = s.history.slice(0, LIMITS.history);
+    return { state: s, undo: { kind: 'item', tombId: id, tombTs: now, items: [it] } };
+  }
+  // グループ一括削除: グループ墓標1件(§1-3)
+  function deleteBatch(state, batchId, now){
+    now = now || Date.now();
+    const s = sanState(state);
+    const gid = 'group:batch:' + batchId;
+    const removed = [];
+    for (const id of Object.keys(s.items)){
+      if (s.items[id].batch === batchId){ removed.push(s.items[id]); delete s.items[id]; }
+    }
+    if (!removed.length) return { state: s, undo: null };
+    s.tombs = dedupeMaxTs(s.tombs.concat([{ id: gid, ts: now }]), 'id').slice(0, LIMITS.tombs);
+    return { state: s, undo: { kind: 'batch', tombId: gid, tombTs: now, items: removed } };
+  }
+  // 元に戻す: 自分が作った墓標を除去し、復元tsは max(現在時刻, 墓標ts+1)(§3-7)
+  function undoDelete(state, undo, now){
+    now = now || Date.now();
+    const s = sanState(state);
+    s.tombs = s.tombs.filter(t => !(t.id === undo.tombId && t.ts === undo.tombTs));
+    const ts = Math.max(now, undo.tombTs + 1);
+    for (const raw of undo.items){
+      const it = sanItem(raw);
+      if (!it) continue;
+      it.ts = ts;
+      s.items[it.id] = it;
+    }
+    return sanState(s);
+  }
+
+  /* ---------- 自由テキストからのJSON抽出(§5-5) ----------
+   * 文字列リテラルを考慮した括弧深度カウントの1回走査。
+   * 候補は互いに交わらない区間になるため全体でO(n)。
+   * 閉じ括弧が欠落した候補は入力末尾まで走査して打ち切る。 */
+  function extractJsonCandidates(text, maxLen){
+    maxLen = maxLen || LIMITS.jsonScan;
+    if (typeof text !== 'string') return [];
+    if (text.length > maxLen) throw new Error('入力が大きすぎます(上限 ' + Math.round(maxLen/1024/1024) + 'MB)');
+    const out = [];
+    const n = text.length;
+    let i = 0;
+    while (i < n && out.length < LIMITS.jsonCandidates){
+      const c = text[i];
+      if (c === '{' || c === '['){
+        let depth = 0, inStr = false, esc = false, j = i, closed = false;
+        for (; j < n; j++){
+          const ch = text[j];
+          if (inStr){
+            if (esc) esc = false;
+            else if (ch === '\\') esc = true;
+            else if (ch === '"') inStr = false;
+          } else {
+            if (ch === '"') inStr = true;
+            else if (ch === '{' || ch === '[') depth++;
+            else if (ch === '}' || ch === ']'){
+              depth--;
+              if (depth === 0){ j++; closed = true; break; }
+            }
+          }
+        }
+        if (closed){
+          const seg = text.slice(i, j);
+          try { out.push(JSON.parse(seg)); } catch (e) { /* 括弧は釣り合うがJSONでない → 読み飛ばす */ }
+          i = j;      // 候補区間の直後へ(再走査しない)
+          continue;
+        } else {
+          break;      // 閉じ括弧欠落 → 以降に完結する候補は無い
+        }
+      }
+      i++;
+    }
+    return out;
+  }
+  // 用途特化: conversations.json らしき候補を優先、無ければ最大の候補
+  function pickBestJson(cands){
+    if (!cands.length) return null;
+    const looksConv = v =>
+      (Array.isArray(v) && v.some(c => c && typeof c === 'object' && Array.isArray(c.chat_messages))) ||
+      (v && typeof v === 'object' && (Array.isArray(v.conversations) || Array.isArray(v.chat_messages)));
+    for (const c of cands) if (looksConv(c)) return c;
+    let best = cands[0], bestLen = stableStr(cands[0]).length;
+    for (const c of cands.slice(1)){
+      const l = stableStr(c).length;
+      if (l > bestLen){ best = c; bestLen = l; }
+    }
+    return best;
+  }
+
+  /* ---------- 暗号化(§4) ----------
+   * AES-GCM 256 / PBKDF2-SHA256 150,000回。
+   * 鍵は固定saltでセッション内キャッシュ、IVは毎回ランダム(§4-7)。
+   * 復号はメッセージ内のsaltから導出(互換性維持)。 */
+  function getCrypto(){
+    const c = (typeof globalThis !== 'undefined' && globalThis.crypto) ? globalThis.crypto : null;
+    if (!c || !c.subtle) throw new Error('crypto.subtle が利用できません(http://平文配信では動作しません)');
+    return c;
+  }
+  function bufToB64(buf){
+    const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+    let s = '';
+    for (let i = 0; i < u8.length; i += 0x8000){
+      s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    }
+    return (typeof btoa === 'function') ? btoa(s) : Buffer.from(u8).toString('base64');
+  }
+  function b64ToBuf(b64){
+    if (typeof atob === 'function'){
+      const bin = atob(b64);
+      const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      return u8;
+    }
+    return new Uint8Array(Buffer.from(b64, 'base64'));
+  }
+  function newSaltB64(){
+    return bufToB64(getCrypto().getRandomValues(new Uint8Array(16)));
+  }
+  async function deriveKey(pass, saltB64, iters){
+    const c = getCrypto();
+    const km = await c.subtle.importKey('raw', new TextEncoder().encode(String(pass)), 'PBKDF2', false, ['deriveKey']);
+    return c.subtle.deriveKey(
+      { name: 'PBKDF2', salt: b64ToBuf(saltB64), iterations: iters || PBKDF2_ITERS, hash: 'SHA-256' },
+      km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
+  async function encryptWithKey(key, saltB64, iters, obj){
+    const c = getCrypto();
+    const iv = c.getRandomValues(new Uint8Array(12)); // IVは毎回ランダム(§4-7)
+    const data = new TextEncoder().encode(JSON.stringify(obj));
+    const ct = await c.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+    return { v: 1, alg: 'AES-GCM', kdf: 'PBKDF2-SHA256', iters: iters || PBKDF2_ITERS,
+             salt: saltB64, iv: bufToB64(iv), data: bufToB64(ct) };
+  }
+  async function decryptMessage(msg, pass){
+    if (!msg || typeof msg !== 'object' ||
+        typeof msg.salt !== 'string' || typeof msg.iv !== 'string' || typeof msg.data !== 'string'){
+      throw new Error('メッセージ形式が不正です');
+    }
+    const iters = (Number.isFinite(+msg.iters) && +msg.iters >= PBKDF2_ITERS) ? +msg.iters : PBKDF2_ITERS;
+    const key = await deriveKey(pass, msg.salt, iters);
+    const c = getCrypto();
+    const pt = await c.subtle.decrypt({ name: 'AES-GCM', iv: b64ToBuf(msg.iv) }, key, b64ToBuf(msg.data));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+
+  /* ---------- 同期エンジン(依存注入・テスト可能) ----------
+   * pull → (ガード再チェック §2-6) → 復号 → マージ → 保存 → 差分があればpush。
+   * 復号失敗時はエラー停止し、リモートを絶対に上書きしない(§4-9)。 */
+  function makeSync(d){
+    let syncing = false, pending = false;
+    async function syncOnce(){
+      if (syncing){ pending = true; return { skipped: 'busy' }; }  // 二重実行防止(§4-6)
+      syncing = true;
+      try {
+        let remoteMsg;
+        try {
+          remoteMsg = await d.getRemote(); // 無ければ null を返す実装とする
+        } catch (e) {
+          return { error: 'network', detail: String(e && e.message || e) };
+        }
+        // ネットワーク待ち完了後にガードを再チェック(§2-6)
+        if (d.isBlocked && d.isBlocked()){
+          pending = true;
+          return { skipped: 'blocked' };
+        }
+        let remote = null;
+        if (remoteMsg != null){
+          try {
+            remote = await d.decrypt(remoteMsg);
+          } catch (e) {
+            return { error: 'decrypt' }; // ここで停止。pushは行わない(§4-9)
+          }
+        }
+        const local = d.loadLocal(); // 待ちの後に読み直す
+        const merged = (remote != null) ? mergeStates(local, remote, d.now ? d.now() : Date.now())
+                                        : sanState(local);
+        d.saveLocal(merged);
+        if (remote == null || payloadStr(merged) !== payloadStr(remote)){
+          try {
+            await d.putRemote(await d.encrypt(canonical(merged)));
+          } catch (e) {
+            return { error: 'push', detail: String(e && e.message || e), merged: true };
+          }
+          return { pushed: true };
+        }
+        return { pushed: false }; // 差分なし → 送信しない(ピンポン防止 §1-7)
+      } finally {
+        syncing = false;
+        if (pending){
+          pending = false;
+          if (d.onPending) d.onPending(); // ブロック解除後に再実行させる(§2-6)
+        }
+      }
+    }
+    return { syncOnce, isSyncing: () => syncing, hasPending: () => pending };
+  }
+
+  return {
+    LIMITS, PBKDF2_ITERS, ID_RE, TOMB_RE,
+    uid, stableStr, fnv,
+    sanTs, sanId, sanItem, sanState, emptyState,
+    tombMap, effTomb, itemBody, sameBody,
+    mergeStates, restoreMerge, snapshotBodies,
+    deleteItem, deleteBatch, undoDelete,
+    canonical, payloadStr, payloadHash, samePayload,
+    extractJsonCandidates, pickBestJson,
+    newSaltB64, deriveKey, encryptWithKey, decryptMessage, bufToB64, b64ToBuf,
+    makeSync
+  };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = Core;
+if (typeof window !== 'undefined') window.Core = Core;
+</script>
+
+<script>
+/* ============================================================
+ * Claude HTML サルベージ v3 - UI層
+ * ============================================================ */
 (function(){
   'use strict';
   const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const KEY = 'salvage3-state', METAKEY = 'salvage3-meta';
+  let initDone = false;
+
+  /* ================= バナー ================= */
+  const bannerEl = $('banner');
+  function showBanner(msg, kind){
+    bannerEl.textContent = msg;
+    bannerEl.className = 'banner show' + (kind === 'err' ? ' err' : '');
+  }
+
+  /* ================= 保存層(§6: 段階フォールバック+失敗を握り潰さない) ================= */
+  const store = (() => {
+    let mode = 'local';
+    const mem = new Map();
+    try {
+      const k = '__salv_probe__';
+      localStorage.setItem(k, '1');
+      localStorage.removeItem(k);
+    } catch (e){ mode = 'memory'; }
+    let writeWarned = false;
+    function get(key){
+      if (mode === 'local'){
+        try { return localStorage.getItem(key); } catch (e){ return mem.has(key) ? mem.get(key) : null; }
+      }
+      return mem.has(key) ? mem.get(key) : null;
+    }
+    function set(key, val){
+      mem.set(key, val);
+      if (mode === 'local'){
+        try { localStorage.setItem(key, val); return true; }
+        catch (e){
+          if (!writeWarned){
+            writeWarned = true;
+            showBanner('保存に失敗しました(容量不足の可能性)。この変更はリロードで失われる恐れがあります。「ライブラリ → 書き出し」でバックアップしてください。', 'err');
+          }
+          return false;
+        }
+      }
+      return true;
+    }
+    return { get, set, mode: () => mode };
+  })();
+
+  function safeParse(s){
+    if (typeof s !== 'string' || !s) return null;
+    try { return JSON.parse(s); } catch (e){ return null; }
+  }
+
+  /* ================= 状態 ================= */
+  let state = Core.sanState(safeParse(store.get(KEY)));
+  let meta = Object.assign(
+    { enabled: false, url: '', pass: '', salt: '', lastSyncAt: 0, lastPushHash: '' },
+    safeParse(store.get(METAKEY)) || {});
+  let capacityWarned = false;
+
+  function persistState(){
+    const json = JSON.stringify(state);
+    store.set(KEY, json);
+    if (!capacityWarned && json.length > 3.5 * 1024 * 1024){ // §6-2
+      capacityWarned = true;
+      showBanner('ライブラリが保存容量の上限(目安 5MB)に近づいています。不要なアプリの削除や「書き出し」での退避をおすすめします。');
+    }
+  }
+  function persistMeta(){ store.set(METAKEY, JSON.stringify(meta)); }
+  function commit(opts){
+    state = Core.sanState(state);
+    persistState();
+    renderLib();
+    renderExtract();
+    if (!opts || !opts.noSync) scheduleSync();
+  }
+
+  /* ================= モーダル(§5-1: ネイティブダイアログ全廃) ================= */
+  const modal = (() => {
+    const root = $('modalRoot');
+    let openCount = 0;
+    function isOpen(){ return openCount > 0; }
+    function show(opt){
+      return new Promise(resolve => {
+        openCount++;
+        const back = document.createElement('div');
+        back.className = 'modal-back';
+        const box = document.createElement('div');
+        box.className = 'modal';
+        const h = document.createElement('h2');
+        h.textContent = opt.title;
+        box.appendChild(h);
+        const body = document.createElement('div');
+        body.className = 'modal-body';
+        if (opt.bodyHTML) body.innerHTML = opt.bodyHTML;
+        box.appendChild(body);
+        if (opt.build) opt.build(body);
+        const row = document.createElement('div');
+        row.className = 'modal-btns' + (opt.stack ? ' stack' : '');
+        let primaryBtn = null;
+        for (const b of (opt.buttons || [])){
+          const btn = document.createElement('button');
+          btn.textContent = b.label;
+          if (b.kind) btn.className = b.kind;
+          if (b.kind === 'primary' && !primaryBtn) primaryBtn = btn;
+          btn.addEventListener('click', async () => {
+            let v = (typeof b.value === 'function') ? b.value(body) : b.value;
+            if (b.validate){
+              const errMsg = b.validate(body);
+              if (errMsg){ noteErr(errMsg); return; }
+            }
+            close(v);
+          });
+          row.appendChild(btn);
+        }
+        box.appendChild(row);
+        const noteEl = document.createElement('p');
+        noteEl.className = 'fine';
+        noteEl.style.color = 'var(--danger)';
+        box.appendChild(noteEl);
+        function noteErr(m){ noteEl.textContent = m; }
+        back.appendChild(box);
+        root.appendChild(back);
+        function close(v){
+          document.removeEventListener('keydown', onKey, true);
+          back.remove();
+          openCount--;
+          resolve(v);
+          maybeRunPendingSync(); // ガード解除時に保留分を実行(§2-6)
+        }
+        function onKey(e){
+          if (!root.contains(back) || root.lastElementChild !== back) return;
+          if (e.key === 'Escape'){ e.preventDefault(); close(undefined); return; }
+          // §5-3: Enter(IME確定isComposingを除く)で主ボタン。危険色ボタンはEnter対象外。
+          if (e.key === 'Enter' && !e.isComposing && primaryBtn &&
+              e.target && e.target.tagName === 'INPUT' && back.contains(e.target)){
+            e.preventDefault();
+            primaryBtn.click();
+          }
+        }
+        document.addEventListener('keydown', onKey, true);
+        const focusable = box.querySelector('input,textarea,select') || box.querySelector('button');
+        if (focusable) focusable.focus();
+      });
+    }
+    const info = (title, msg) => show({ title, bodyHTML: '<p>' + esc(msg) + '</p>',
+      buttons: [{ label: '閉じる', value: true, kind: 'primary' }] });
+    const ask = (title, msg, okLabel, danger) => show({ title, bodyHTML: '<p>' + esc(msg) + '</p>',
+      buttons: [
+        { label: okLabel, value: true, kind: danger ? 'danger' : 'primary' },
+        { label: 'キャンセル', value: false }
+      ] });
+    return { show, info, ask, isOpen };
+  })();
+
+  /* ================= トースト(元に戻す §3-6) ================= */
+  const toastEl = $('toast'), toastMsg = $('toastMsg'), toastAct = $('toastAct');
+  let toastTimer = null, toastAction = null;
+  function toast(msg, actionLabel, action){
+    clearTimeout(toastTimer);
+    toastMsg.textContent = msg;
+    toastAction = action || null;
+    toastAct.textContent = actionLabel || '';
+    toastAct.style.display = actionLabel ? '' : 'none';
+    toastEl.classList.add('show');
+    toastTimer = setTimeout(() => { toastEl.classList.remove('show'); toastAction = null; }, 8000);
+  }
+  toastAct.addEventListener('click', () => {
+    const fn = toastAction;
+    toastAction = null;
+    toastEl.classList.remove('show');
+    clearTimeout(toastTimer);
+    if (fn) fn();
+  });
+
+  /* ================= ガード(§2-6, §4-6) ================= */
+  function uiBlocked(){ return !initDone || modal.isOpen(); }
+  let pendingSyncFlag = false;
+  function maybeRunPendingSync(){
+    if (pendingSyncFlag && !uiBlocked()){
+      pendingSyncFlag = false;
+      doSync('保留分');
+    }
+  }
+
+  /* ================= クラウド同期(§4) ================= */
+  let cachedKey = null, keyPromise = null; // §4-7 セッション内キャッシュ
+  let syncHalted = false;                  // 復号失敗で停止(§4-9)
+  let flushing = false;                    // 即時送信の二重実行防止(§4-6)
+  let syncTimer = null;
+
+  function resetKeyCache(){ cachedKey = null; keyPromise = null; }
+  async function getKey(){
+    if (cachedKey) return cachedKey;
+    if (!keyPromise){
+      keyPromise = Core.deriveKey(meta.pass, meta.salt)
+        .then(k => { cachedKey = k; return k; })
+        .catch(e => { keyPromise = null; throw e; });
+    }
+    return keyPromise;
+  }
+  const syncLine = $('syncLine');
+  function setSyncLine(msg, isErr){
+    syncLine.textContent = msg;
+    syncLine.className = 'line' + (isErr ? ' err' : '');
+  }
+  function fmtTime(t){
+    return new Date(t).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+  function idleSyncLine(){
+    if (!meta.enabled){ setSyncLine('クラウド同期: オフ'); return; }
+    if (syncHalted) return;
+    setSyncLine('クラウド同期: オン' + (meta.lastSyncAt ? ' ・ 最終同期 ' + fmtTime(meta.lastSyncAt) + '(この端末での記録)' : ''));
+  }
+
+  const syncEngine = Core.makeSync({
+    getRemote: async () => {
+      const res = await fetch(meta.url, { method: 'GET', cache: 'no-store' });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const t = (await res.text()).trim();
+      if (!t) return null;
+      const msg = safeParse(t);
+      if (!msg) throw new Error('サーバー応答がJSONではありません');
+      return msg;
+    },
+    decrypt: (msg) => Core.decryptMessage(msg, meta.pass),
+    encrypt: async (obj) => Core.encryptWithKey(await getKey(), meta.salt, Core.PBKDF2_ITERS, obj),
+    loadLocal: () => state,
+    saveLocal: (s) => { state = s; persistState(); renderLib(); }, // 抽出ビューは触らない(開いているプレビューを壊さない)
+    isBlocked: uiBlocked,
+    onPending: () => { if (!uiBlocked()) doSync('保留分'); else pendingSyncFlag = true; },
+    now: () => Date.now()
+  });
+
+  async function doSync(reason){
+    if (!meta.enabled || syncHalted || !meta.url) return;
+    if (uiBlocked()){ pendingSyncFlag = true; return; }
+    setSyncLine('同期中… (' + reason + ')');
+    const r = await syncEngine.syncOnce();
+    if (r.error === 'decrypt'){
+      syncHalted = true; // §4-9: エラーで停止。リモートは上書きしない。
+      setSyncLine('同期停止: パスフレーズが違うか、クラウド上のデータが破損しています。クラウド側は上書きしていません。「同期設定」を確認してください。', true);
+      return;
+    }
+    if (r.error){
+      setSyncLine('同期エラー(' + (r.detail || r.error) + ')。次の機会に再試行します。', true);
+      return;
+    }
+    if (r.skipped) { idleSyncLine(); return; }
+    meta.lastSyncAt = Date.now();               // 端末ローカル値: 送信・差分比較には含めない(§1-7)
+    meta.lastPushHash = Core.payloadHash(state);
+    persistMeta();
+    idleSyncLine();
+  }
+  function scheduleSync(){ // 保存の数秒後(デバウンス §4-4)
+    if (!meta.enabled) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => doSync('保存後'), 3000);
+  }
+  // 閉じる瞬間の即時送信(§4-7: 鍵キャッシュ前提の高速経路+keepalive。ベストエフォート §4-10)
+  function flushNow(){
+    if (!meta.enabled || syncHalted || flushing || !cachedKey || !meta.url) return;
+    const h = Core.payloadHash(state);
+    if (h === meta.lastPushHash) return;
+    flushing = true;
+    Core.encryptWithKey(cachedKey, meta.salt, Core.PBKDF2_ITERS, Core.canonical(state))
+      .then(msg => fetch(meta.url, {
+        method: 'PUT', keepalive: true,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(msg)
+      }))
+      .then(() => { meta.lastPushHash = h; persistMeta(); })
+      .catch(() => {})
+      .finally(() => { setTimeout(() => { flushing = false; }, 3000); });
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible'){ doSync('画面復帰'); }
+    else { flushNow(); }
+  });
+  window.addEventListener('pagehide', flushNow);
+
+  /* ---- 同期設定ダイアログ(段階式 §4-2) ---- */
+  async function syncSettings(){
+    // ステップ1: 説明
+    const s1 = await modal.show({
+      title: 'クラウド同期の設定 (1/3)',
+      bodyHTML:
+        '<p>ライブラリを<b>端末間で同期</b>します。データは端末内で<b>暗号化(AES-GCM)</b>してから送信され、サーバーには暗号文だけが保存されます。</p>' +
+        '<ul><li>保存先URL: GETで現状取得(未作成なら404か空)、PUTで保存できる単純なエンドポイント(例: Cloudflare Workers + KV)</li>' +
+        '<li>両方の端末で<b>同じURLと同じパスフレーズ</b>を設定します</li></ul>' +
+        (meta.enabled ? '<p class="fine">現在: <b>オン</b>(' + esc(meta.url) + ')</p>' : ''),
+      buttons: meta.enabled
+        ? [{ label: 'つぎへ', value: 'next', kind: 'primary' }, { label: '同期を解除する', value: 'off', kind: 'danger' }, { label: 'キャンセル', value: null }]
+        : [{ label: 'つぎへ', value: 'next', kind: 'primary' }, { label: 'キャンセル', value: null }]
+    });
+    if (s1 === 'off'){ await disableSync(); return; }
+    if (s1 !== 'next') return;
+
+    // ステップ2: 入力
+    const s2 = await modal.show({
+      title: 'クラウド同期の設定 (2/3)',
+      bodyHTML:
+        '<label>保存先URL</label><input type="url" id="cfgUrl" value="' + esc(meta.url) + '" placeholder="https://example.workers.dev/salvage">' +
+        '<label>パスフレーズ</label><input type="password" id="cfgPass" value="' + esc(meta.pass) + '" autocomplete="off">' +
+        '<div class="warnbox">自動同期のため、パスフレーズは<b>この端末内(ブラウザの保存領域)に平文で保存</b>されます。' +
+        'この暗号化が守るのは<b>クラウド上のデータのみ</b>で、この端末を直接操作・閲覧できる相手からは守れません。' +
+        'また、アプリを閉じる瞬間の送信は<b>ベストエフォート</b>で、届かない場合は次回起動時の同期で反映されます。</div>',
+      buttons: [
+        { label: 'つぎへ', kind: 'primary',
+          value: body => ({ url: body.querySelector('#cfgUrl').value.trim(), pass: body.querySelector('#cfgPass').value }),
+          validate: body => {
+            const u = body.querySelector('#cfgUrl').value.trim();
+            const p = body.querySelector('#cfgPass').value;
+            if (!/^https?:\/\/.+/.test(u)) return 'URLを入力してください(https://…)';
+            if (!p) return 'パスフレーズは必須です(§4-1)';
+            return null;
+          } },
+        { label: 'キャンセル', value: null }
+      ]
+    });
+    if (!s2) return;
+
+    // ステップ3: 確認
+    const s3 = await modal.show({
+      title: 'クラウド同期の設定 (3/3)',
+      bodyHTML:
+        '<p>この内容で同期を開始します。</p>' +
+        '<ul><li>保存先: <b>' + esc(s2.url) + '</b></li>' +
+        '<li>暗号化: AES-GCM 256bit / PBKDF2-SHA256 ' + Core.PBKDF2_ITERS.toLocaleString() + '回</li>' +
+        '<li>タイミング: 起動時・画面復帰・保存の数秒後・閉じる瞬間(ベストエフォート)</li></ul>' +
+        '<p class="fine">取り込みは必ずマージ経由で行われ、クラウド側の復号に失敗した場合は同期を停止し、クラウド側を上書きしません。</p>',
+      buttons: [{ label: '同期を開始する', value: true, kind: 'primary' }, { label: 'キャンセル', value: null }]
+    });
+    if (!s3) return;
+
+    const changed = (s2.pass !== meta.pass) || (s2.url !== meta.url);
+    meta.url = s2.url;
+    meta.pass = s2.pass;
+    if (!meta.salt || changed) meta.salt = Core.newSaltB64(); // 固定salt(§4-7)
+    meta.enabled = true;
+    meta.lastPushHash = '';
+    syncHalted = false;
+    resetKeyCache();
+    persistMeta();
+    idleSyncLine();
+    doSync('設定変更');
+  }
+  async function disableSync(){
+    const ok = await modal.ask('同期の解除', 'クラウド同期をオフにします。この端末に保存済みのパスフレーズと鍵は破棄されます(クラウド上の暗号化データは残ります)。', '解除する', true);
+    if (!ok) return;
+    // §4-8: 鍵キャッシュ・認証情報・タイマーをすべて破棄
+    meta.enabled = false;
+    meta.pass = '';
+    meta.lastPushHash = '';
+    resetKeyCache();
+    clearTimeout(syncTimer);
+    syncHalted = false;
+    pendingSyncFlag = false;
+    persistMeta();
+    idleSyncLine();
+  }
+  $('btnSyncCfg').addEventListener('click', syncSettings);
+  $('btnSyncNow').addEventListener('click', async () => {
+    if (!meta.enabled){ await syncSettings(); return; }
+    syncHalted = false; // 手動実行は停止状態からの再試行を許す
+    doSync('手動');
+  });
+
+  /* ================= 書き出し・復元(§3) ================= */
+  function stamp(){
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
+  }
+  function plainDownload(text, name, mime){
+    const blob = new Blob([text], { type: mime || 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  function exportPayload(){
+    return JSON.stringify({ app: 'claude-html-salvage', v: 3, exportedAt: new Date().toISOString(), state: Core.canonical(state) });
+  }
+  function autoBackup(){ // 破壊的操作の直前は共有シートを出さず黙ってDL(§3-2)
+    plainDownload(exportPayload(), 'salvage-backup-' + stamp() + '.json');
+  }
+  async function exportFile(){ // share → picker → DL の順(§3-1)。AbortErrorは黙って正常終了。
+    const json = exportPayload();
+    const name = 'salvage-library-' + stamp() + '.json';
+    try {
+      const file = new File([json], name, { type: 'application/json' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })){
+        await navigator.share({ files: [file], title: name });
+        return;
+      }
+    } catch (e){
+      if (e && e.name === 'AbortError') return;
+    }
+    try {
+      if (window.showSaveFilePicker){
+        const h = await window.showSaveFilePicker({
+          suggestedName: name,
+          types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+        });
+        const w = await h.createWritable();
+        await w.write(json);
+        await w.close();
+        return;
+      }
+    } catch (e){
+      if (e && e.name === 'AbortError') return;
+    }
+    plainDownload(json, name);
+  }
+  $('btnExport').addEventListener('click', exportFile);
+
+  const restoreInput = $('restoreFile');
+  $('btnRestore').addEventListener('click', () => { restoreInput.value = ''; restoreInput.click(); });
+  restoreInput.addEventListener('change', async () => {
+    if (!restoreInput.files.length) return;
+    const file = restoreInput.files[0];
+    let raw;
+    try { raw = JSON.parse(await file.text()); }
+    catch (e){ await modal.info('復元できません', 'このファイルはJSONとして読み込めませんでした: ' + (e && e.message || e)); return; }
+    const fileState = Core.sanState(raw && raw.state ? raw.state : raw); // 単一サニタイズ入口(§1-10)
+    const n = Object.keys(fileState.items).length;
+    // §3-3: 統合(推奨・一番上)/ 置き換え(危険色・二段確認)
+    const choice = await modal.show({
+      title: 'ライブラリの復元',
+      stack: true,
+      bodyHTML: '<p><b>' + esc(file.name) + '</b>(アプリ ' + n + '件)をどう取り込みますか?</p>',
+      buttons: [
+        { label: '統合する(推奨)', value: 'merge', kind: 'primary' },
+        { label: '置き換える(現在のライブラリを破棄)', value: 'replace', kind: 'danger' },
+        { label: 'キャンセル', value: null }
+      ]
+    });
+    if (choice === 'merge'){
+      const r = Core.restoreMerge(state, fileState); // 墓標があっても復活(§3-4)
+      state = r.state;
+      commit();
+      // §3-5: 実測値のみ表示(ファイル内の削除記録により現在側が消えた場合も正直に報告)
+      await modal.info('統合しました', '追加 ' + r.stats.added + '件 ・ 更新 ' + r.stats.updated + '件 ・ 最新のまま ' + r.stats.kept + '件' +
+        (r.stats.removed ? ' ・ ファイル内の削除記録により削除 ' + r.stats.removed + '件(「履歴」から個別に復元できます)' : ''));
+    } else if (choice === 'replace'){
+      const sure = await modal.ask('本当に置き換えますか?',
+        '現在のライブラリ(' + Object.keys(state.items).length + '件)を破棄し、ファイルの内容(' + n + '件)だけにします。直前の状態は自動バックアップとしてダウンロードされます。',
+        '置き換える', true);
+      if (!sure) return;
+      autoBackup();
+      state = fileState;
+      commit();
+      await modal.info('置き換えました', 'ライブラリをファイルの内容(' + n + '件)に置き換えました。');
+    }
+  });
+
+  /* ================= CSV(§5-4: BOM+数式インジェクション対策) ================= */
+  function csvCell(v){
+    let s = String(v == null ? '' : v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    if (/[",\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  $('btnCsv').addEventListener('click', () => {
+    const rows = [['タイトル', 'トーク', '形式', '種別', 'タグ', 'メモ', '保存日時', '元の日時', 'サイズ(byte)']];
+    for (const it of sortedLib()){
+      rows.push([it.title, it.conv, it.format, it.kind, it.tags.join(' '), it.note,
+        it.ts ? new Date(it.ts).toISOString() : '', it.origDate, String(it.content.length)]);
+    }
+    const csv = '\uFEFF' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+    plainDownload(csv, 'salvage-list-' + stamp() + '.csv', 'text/csv');
+  });
+
+  /* ================= ライブラリ表示・操作 ================= */
+  const libQ = $('libQ'), libSort = $('libSort'), libList = $('libList');
+  let activeTags = new Set();
+  let libQTimer = null;
+  libQ.addEventListener('input', () => { clearTimeout(libQTimer); libQTimer = setTimeout(renderLib, 200); });
+  libSort.addEventListener('change', () => {
+    state.settings.sortMode = { v: libSort.value, ts: Date.now() }; // 同期される設定(§1-5)
+    commit();
+  });
+
+  function sortedLib(){
+    const mode = (state.settings.sortMode && state.settings.sortMode.v) || 'saved';
+    const arr = Object.values(state.items);
+    if (mode === 'title') arr.sort((a, b) => a.title.localeCompare(b.title, 'ja'));
+    else if (mode === 'orig'){
+      const t = d => { const x = new Date(d).getTime(); return isNaN(x) ? -1 : x; };
+      arr.sort((a, b) => t(b.origDate) - t(a.origDate));
+    } else arr.sort((a, b) => b.ts - a.ts);
+    return arr;
+  }
+  function fmtSize(n){ return n > 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B'; }
+  function fmtOrig(d){
+    const t = new Date(d).getTime();
+    return isNaN(t) ? '日時不明' : new Date(t).toLocaleString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function renderTagChips(){
+    const wrap = $('tagChips');
+    wrap.innerHTML = '';
+    const names = Object.keys(state.tags).sort((a, b) => a.localeCompare(b, 'ja'));
+    for (const nm of [...activeTags]) if (!state.tags[nm]) activeTags.delete(nm);
+    for (const nm of names){
+      const c = document.createElement('span');
+      c.className = 'chip filter' + (activeTags.has(nm) ? ' on' : '');
+      c.textContent = nm;
+      c.addEventListener('click', () => {
+        if (activeTags.has(nm)) activeTags.delete(nm); else activeTags.add(nm);
+        renderLib();
+      });
+      wrap.appendChild(c);
+    }
+  }
+
+  const searchCache = new WeakMap(); // 検索文字列の遅延キャッシュ(毎キー入力での全文連結を避ける)
+  function searchStr(it){
+    let s = searchCache.get(it);
+    if (s === undefined){
+      s = (it.title + '\n' + it.conv + '\n' + it.note + '\n' + it.tags.join(' ') + '\n' + it.content).toLowerCase();
+      searchCache.set(it, s);
+    }
+    return s;
+  }
+  function renderLib(){
+    $('libCount').textContent = String(Object.keys(state.items).length);
+    libSort.value = (state.settings.sortMode && state.settings.sortMode.v) || 'saved';
+    renderTagChips();
+    const q = libQ.value.trim().toLowerCase();
+    const all = sortedLib();
+    const hits = all.filter(it => {
+      if (activeTags.size && ![...activeTags].every(t => it.tags.includes(t))) return false;
+      if (!q) return true;
+      return searchStr(it).includes(q);
+    });
+    $('libStat').innerHTML = '<b>' + hits.length + '</b> / ' + all.length + ' 件';
+    $('libEmpty').classList.toggle('show', all.length === 0);
+    libList.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for (const it of hits){
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML =
+        '<div class="card-top">' +
+          '<h3>' + esc(it.title) + '</h3>' +
+          '<span class="size">' + fmtSize(it.content.length) + '</span>' +
+        '</div>' +
+        '<div class="meta">' +
+          (it.conv ? '<span class="conv">' + esc(it.conv) + '</span>' : '') +
+          '<span class="kind' + (it.format === 'react' ? ' react' : '') + '">' +
+            (it.kind === 'artifact' ? 'Artifact' : 'code block') + (it.format === 'react' ? ' / React' : '') + '</span>' +
+          ' ・ 保存 ' + (it.ts ? esc(fmtOrig(it.ts)) : '日時不明') + (it.origDate ? ' ・ 元 ' + esc(fmtOrig(it.origDate)) : '') +
+          (it.batchName ? ' ・ 取込: ' + esc(it.batchName) : '') +
+        '</div>' +
+        (it.note ? '<div class="notepv">' + esc(it.note) + '</div>' : '') +
+        (it.tags.length ? '<div class="tagrow">' + it.tags.map(t => '<span class="chip">' + esc(t) + '</span>').join('') + '</div>' : '') +
+        '<div class="actions">' +
+          '<button class="primary" data-act="dl">ダウンロード' + (it.format === 'react' ? ' (.jsx)' : '') + '</button>' +
+          (it.format === 'html' ? '<button data-act="pv">プレビュー</button>' : '') +
+          '<button data-act="cp">コードをコピー</button>' +
+          '<button data-act="ed">編集</button>' +
+          '<button class="danger" data-act="del">削除</button>' +
+        '</div>' +
+        (it.format === 'html' ? '<div class="preview"><iframe sandbox="allow-scripts" title="プレビュー"></iframe></div>' : '');
+      card.addEventListener('click', e => cardAction(e, it, card));
+      frag.appendChild(card);
+    }
+    libList.appendChild(frag);
+  }
+
+  function downloadItem(it){
+    const base = (it.title.replace(/[\\/:*?"<>|]/g, '_').trim() || 'app');
+    plainDownload(it.content, base + (it.format === 'html' ? '.html' : '.jsx'),
+      it.format === 'html' ? 'text/html' : 'text/plain');
+  }
+  function copyText(text, btn, doneLabel, normalLabel){
+    const done = () => { btn.textContent = doneLabel; setTimeout(() => { btn.textContent = normalLabel; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+    } else fallbackCopy(text, done);
+  }
+  function fallbackCopy(text, done){
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch (e){}
+    document.body.removeChild(ta);
+  }
+
+  async function cardAction(e, it, card){
+    const act = e.target.dataset && e.target.dataset.act;
+    if (!act) return;
+    if (act === 'dl'){ downloadItem(it); }
+    else if (act === 'pv'){
+      const pv = card.querySelector('.preview');
+      const open = pv.classList.toggle('show');
+      const fr = pv.querySelector('iframe');
+      if (open && !fr.srcdoc) fr.srcdoc = it.content;
+      e.target.textContent = open ? 'プレビューを閉じる' : 'プレビュー';
+    }
+    else if (act === 'cp'){ copyText(it.content, e.target, 'コピーしました ✓', 'コードをコピー'); }
+    else if (act === 'ed'){ await editItem(it.id); }
+    else if (act === 'del'){ await deleteOne(it.id); }
+  }
+
+  async function editItem(id){
+    const it = state.items[id];
+    if (!it) return;
+    const r = await modal.show({
+      title: 'アプリの編集',
+      bodyHTML:
+        '<label>名前</label><input type="text" id="edTitle" value="' + esc(it.title) + '" maxlength="200">' +
+        '<label>タグ(カンマ区切り)</label><input type="text" id="edTags" value="' + esc(it.tags.join(', ')) + '">' +
+        '<label>メモ</label><textarea id="edNote">' + esc(it.note) + '</textarea>',
+      buttons: [
+        { label: '保存する', kind: 'primary', value: body => ({
+            title: body.querySelector('#edTitle').value,
+            tags: body.querySelector('#edTags').value,
+            note: body.querySelector('#edNote').value }) },
+        { label: 'キャンセル', value: null }
+      ]
+    });
+    if (!r) return;
+    const cur = state.items[id]; // ダイアログ(非同期の待ち)後に再照合(§1-4)
+    if (!cur){ await modal.info('編集できません', 'このアプリは編集中に削除・変更されました。'); return; }
+    const now = Date.now();
+    cur.title = r.title;
+    cur.note = r.note;
+    cur.tags = r.tags.split(',').map(s => s.trim()).filter(Boolean);
+    cur.ts = now;
+    for (const t of cur.tags){ // 新タグを登録(§1-6)
+      const nm = t.slice(0, Core.LIMITS.tagName);
+      if (!state.tags[nm]) state.tags[nm] = { ts: now };
+    }
+    commit();
+  }
+
+  async function deleteOne(id){
+    const it = state.items[id];
+    if (!it) return;
+    const ok = await modal.ask('アプリの削除', '「' + it.title + '」をライブラリから削除しますか?', '削除する', true);
+    if (!ok) return;
+    if (!state.items[id]) return; // ダイアログ後に再照合(§1-4)
+    const r = Core.deleteItem(state, id);
+    state = r.state;
+    commit();
+    if (r.undo){
+      const undo = r.undo;
+      toast('削除しました', '元に戻す', () => { // §3-6/§3-7
+        state = Core.undoDelete(state, undo);
+        commit();
+      });
+    }
+  }
+
+  $('btnBatchDel').addEventListener('click', async () => {
+    const batches = new Map();
+    for (const it of Object.values(state.items)){
+      if (!it.batch) continue;
+      const b = batches.get(it.batch) || { name: it.batchName || '(名称不明の取込)', count: 0, latest: 0 };
+      b.count++;
+      b.latest = Math.max(b.latest, it.ts);
+      if (it.batchName) b.name = it.batchName;
+      batches.set(it.batch, b);
+    }
+    if (!batches.size){ await modal.info('一括削除', '取込単位が記録されたアプリがありません。'); return; }
+    const opts = [...batches.entries()].sort((a, b) => b[1].latest - a[1].latest);
+    const r = await modal.show({
+      title: '取込単位で一括削除',
+      bodyHTML:
+        '<p>選んだ取込に含まれるアプリを<b>すべて削除</b>します。実行前に現在のライブラリを自動バックアップとしてダウンロードします。</p>' +
+        '<label>取込を選択</label><select id="bdSel">' +
+        opts.map(([id, b]) => '<option value="' + esc(id) + '">' + esc(b.name) + '(' + b.count + '件 ・ ' + fmtOrig(b.latest) + ')</option>').join('') +
+        '</select>',
+      buttons: [
+        { label: '一括削除する', kind: 'danger', value: body => body.querySelector('#bdSel').value },
+        { label: 'キャンセル', value: null }
+      ]
+    });
+    if (!r) return;
+    autoBackup(); // §3-2
+    const res = Core.deleteBatch(state, r); // グループ墓標1件(§1-3)
+    state = res.state;
+    commit();
+    if (res.undo){
+      const undo = res.undo;
+      toast(undo.items.length + '件を削除しました', '元に戻す', () => {
+        state = Core.undoDelete(state, undo);
+        commit();
+      });
+    }
+  });
+
+  /* ---- タグ管理 ---- */
+  $('btnTags').addEventListener('click', async () => {
+    while (true){
+      const names = Object.keys(state.tags).sort((a, b) => a.localeCompare(b, 'ja'));
+      const r = await modal.show({
+        title: 'タグ管理',
+        bodyHTML:
+          (names.length
+            ? '<div class="rowlist">' + names.map(nm =>
+                '<div class="row"><span class="grow">' + esc(nm) + '</span>' +
+                '<button class="danger" data-tag="' + esc(nm) + '">削除</button></div>').join('') + '</div>'
+            : '<p>タグはまだありません。</p>') +
+          '<label>新しいタグ</label><input type="text" id="tagNew" maxlength="30" placeholder="例: 仕事">',
+        build: body => {
+          body.querySelectorAll('button[data-tag]').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const nm = btn.dataset.tag;
+              const now = Date.now();
+              delete state.tags[nm];
+              state.tagTombs = state.tagTombs.filter(t => t.name !== nm).concat([{ name: nm, ts: now }]);
+              commit();
+              btn.closest('.row').remove();
+            });
+          });
+        },
+        buttons: [
+          { label: '追加する', kind: 'primary', value: body => ({ add: body.querySelector('#tagNew').value.trim() }) },
+          { label: '閉じる', value: null }
+        ]
+      });
+      if (!r) break;
+      if (r.add){
+        state.tags[r.add.slice(0, Core.LIMITS.tagName)] = { ts: Date.now() };
+        commit();
+        continue; // 追加後にリストを開き直す
+      }
+      break;
+    }
+  });
+
+  /* ---- 履歴(マージ・削除で退避された内容) ---- */
+  $('btnHistory').addEventListener('click', async () => {
+    if (!state.history.length){ await modal.info('履歴', '退避された履歴はまだありません。マージで上書きされた内容や削除したアプリが、ここに直近' + Core.LIMITS.history + '件まで残ります。'); return; }
+    const r = await modal.show({
+      title: '履歴(直近' + Core.LIMITS.history + '件)',
+      bodyHTML: '<div class="rowlist">' + state.history.map((h, i) =>
+        '<div class="row"><span class="grow"><b>' + esc(h.item.title) + '</b><br>' +
+        '<span class="muted">' + (h.reason === 'deleted' ? '削除' : 'マージで上書き') + ' ・ ' + esc(fmtOrig(h.at)) + ' ・ ' + fmtSize(h.item.content.length) + '</span></span>' +
+        '<button class="primary" data-hi="' + i + '">復元</button></div>').join('') + '</div>',
+      build: body => {
+        body.querySelectorAll('button[data-hi]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const h = state.history[+btn.dataset.hi];
+            if (!h) return;
+            const it = Core.sanItem(h.item);
+            const tm = Core.tombMap(state.tombs);
+            it.ts = Math.max(Date.now(), Core.effTomb(tm, it) + 1); // 墓標に勝つts(§3-4)
+            state.items[it.id] = it;
+            commit();
+            btn.textContent = '復元済み ✓';
+            btn.disabled = true;
+          });
+        });
+      },
+      buttons: [{ label: '閉じる', value: null }]
+    });
+    void r;
+  });
+
+  /* ================= タブ ================= */
+  function switchTab(lib){
+    $('tabExtract').classList.toggle('on', !lib);
+    $('tabLibrary').classList.toggle('on', lib);
+    $('viewExtract').classList.toggle('on', !lib);
+    $('viewLibrary').classList.toggle('on', lib);
+  }
+  $('tabExtract').addEventListener('click', () => switchTab(false));
+  $('tabLibrary').addEventListener('click', () => switchTab(true));
+
+  /* ================= 掘り出し(抽出)ビュー ================= */
   const drop = $('drop'), fileInput = $('file'), results = $('results');
   let items = [];
+  let currentBatch = { id: '', name: '' };
 
   drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('over'));
@@ -206,64 +1662,100 @@
   });
   fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
 
-  // 検索はデバウンス(大きい履歴でも固まりにくく)
   let timer = null;
-  $('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(render, 200); });
-  ['fHtml','fReact','fDup','fTitleOnly'].forEach(id => $(id).addEventListener('change', render));
+  $('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(renderExtract, 200); });
+  ['fHtml', 'fReact', 'fDup', 'fTitleOnly'].forEach(id => $(id).addEventListener('change', renderExtract));
 
-  function showErr(msg){ const el=$('err'); el.textContent=msg; el.classList.add('show'); }
+  function showErr(msg){ const el = $('err'); el.textContent = msg; el.classList.add('show'); }
   function clearMsg(){ $('err').classList.remove('show'); $('info').classList.remove('show'); }
-  function showInfo(msg){ const el=$('info'); el.textContent=msg; el.classList.add('show'); }
+  function showInfo(msg){ const el = $('info'); el.textContent = msg; el.classList.add('show'); }
 
   async function handleFile(file){
     clearMsg();
+    if (file.size > 300 * 1024 * 1024){ // 入力サイズ上限(§1-10)
+      showErr('ファイルが大きすぎます(上限 300MB)。zipの場合は解凍して conversations.json を直接ドロップしてください。');
+      return;
+    }
     $('busy').classList.add('show');
-    // 描画を先に反映させてから重い処理へ
     await new Promise(r => setTimeout(r, 30));
-    try{
+    try {
       let text;
-      if (/\.zip$/i.test(file.name)) {
-        if (typeof JSZip === 'undefined') { showErr('zip読み込み用ライブラリが利用できません(オフラインの可能性)。zipを解凍して conversations.json を直接ドロップしてください。'); return; }
+      if (/\.zip$/i.test(file.name)){
+        if (typeof JSZip === 'undefined'){ showErr('zip読み込み用ライブラリが利用できません(オフラインの可能性)。zipを解凍して conversations.json を直接ドロップしてください。'); return; }
         const zip = await JSZip.loadAsync(file);
         const entry = Object.values(zip.files).find(f => /conversations\.json$/i.test(f.name));
-        if (!entry) { showErr('zip内に conversations.json が見つかりませんでした。'); return; }
+        if (!entry){ showErr('zip内に conversations.json が見つかりませんでした。'); return; }
         text = await entry.async('string');
       } else {
         text = await file.text();
       }
       const data = JSON.parse(text);
-      const convs = Array.isArray(data) ? data : (data.conversations || []);
-      items = extractAll(convs);
-
-      // フォールバック:想定形式で0件なら、JSON全体を深く走査して文字列から直接探す
-      if (!items.length) {
-        items = deepScanFallback(data);
-        if (items.length) showInfo('注意: エクスポート形式が想定と異なっていたため、簡易走査モードで抽出しました。トーク名や日時が「不明」になる場合があります。');
-      }
-
-      finalizeItems(items);
-      $('toolbar').classList.add('show');
-      $('filters').classList.add('show');
-      render();
-      if (!items.length) showErr('HTML/Reactアプリが1件も見つかりませんでした。Artifactを含むトークがエクスポートに含まれているかご確認ください。');
-    }catch(e){
+      startBatch(file.name);
+      loadExtracted(data);
+    } catch (e){
       console.error(e);
       showErr('ファイルを読み込めませんでした: ' + e.message);
-    }finally{
+    } finally {
       $('busy').classList.remove('show');
     }
   }
 
-  // ---- 抽出ロジック ----
+  // 貼り付け抽出(§5-5: 括弧深度カウントの1回走査・上限つき)
+  $('pasteBtn').addEventListener('click', () => {
+    clearMsg();
+    $('pasteNote').textContent = '';
+    const text = $('pasteText').value;
+    if (!text.trim()){ $('pasteNote').textContent = '貼り付け欄が空です。'; return; }
+    let best = null;
+    try {
+      best = Core.pickBestJson(Core.extractJsonCandidates(text));
+    } catch (e){
+      showErr(String(e && e.message || e));
+      return;
+    }
+    startBatch('貼り付け ' + stamp());
+    if (best != null){
+      loadExtracted(best);
+    } else {
+      // JSONが見つからない → テキストとしてコードブロックを抽出
+      const artifacts = new Map();
+      handleText(text, artifacts, null, 0);
+      items = [...artifacts.values()].map(a => (a.conv = '(貼り付け)', a));
+      finishExtract();
+      if (!items.length) showErr('貼り付けた内容からJSONもHTML/Reactコードも見つかりませんでした。');
+    }
+  });
+
+  function startBatch(name){
+    currentBatch = { id: Core.uid(), name: String(name).slice(0, 100) };
+  }
+
+  function loadExtracted(data){
+    const convs = Array.isArray(data) ? data : (data && data.conversations || []);
+    items = extractAll(convs);
+    if (!items.length){
+      items = deepScanFallback(data);
+      if (items.length) showInfo('注意: エクスポート形式が想定と異なっていたため、簡易走査モードで抽出しました。トーク名や日時が「不明」になる場合があります。');
+    }
+    finishExtract();
+    if (!items.length) showErr('HTML/Reactアプリが1件も見つかりませんでした。Artifactを含むトークがエクスポートに含まれているかご確認ください。');
+  }
+  function finishExtract(){
+    finalizeItems(items);
+    $('toolbar').classList.add('show');
+    $('filters').classList.add('show');
+    renderExtract();
+  }
+
+  /* ---- 抽出ロジック(v2踏襲) ---- */
   function extractAll(convs){
     const out = [];
     for (const conv of convs){
       if (!conv || typeof conv !== 'object') continue;
       const convName = conv.name || '(無題のトーク)';
-      const artifacts = new Map(); // id -> item
-
+      const artifacts = new Map();
       const msgs = Array.isArray(conv.chat_messages) ? conv.chat_messages.slice() : [];
-      msgs.sort((a,b)=> ts(a && a.created_at) - ts(b && b.created_at));
+      msgs.sort((a, b) => tsOf(a && a.created_at) - tsOf(b && b.created_at));
       for (const msg of msgs){
         if (!msg || (msg.sender && msg.sender !== 'assistant')) continue;
         const date = msg.created_at || conv.updated_at || conv.created_at || null;
@@ -296,7 +1788,6 @@
       }
     } else if (cmd === 'update' && artifacts.has(id) && typeof inp.old_str === 'string' && inp.old_str.length > 0 && typeof inp.new_str === 'string'){
       const a = artifacts.get(id);
-      // 最初の1箇所だけ置換(全置換による破損を防ぐ)
       const idx = a.content.indexOf(inp.old_str);
       if (idx >= 0){
         a.content = a.content.slice(0, idx) + inp.new_str + a.content.slice(idx + inp.old_str.length);
@@ -306,14 +1797,13 @@
   }
 
   function handleText(text, artifacts, date, seed){
-    // 1) <antArtifact> タグ
     const artRe = /<antArtifact([^>]*)>([\s\S]*?)<\/antArtifact>/gi;
     let m, found = false;
     while ((m = artRe.exec(text)) !== null){
       found = true;
       const attrs = m[1], body = m[2].trim();
-      const get = k => { const r = new RegExp(k + '="([^"]*)"','i').exec(attrs); return r ? r[1] : null; };
-      const typeStr = (get('type')||'') + ' ' + (get('language')||'');
+      const get = k => { const r = new RegExp(k + '="([^"]*)"', 'i').exec(attrs); return r ? r[1] : null; };
+      const typeStr = (get('type') || '') + ' ' + (get('language') || '');
       const id = get('identifier') || ('art-' + seed + '-' + m.index);
       const fmt = /react|jsx|tsx/i.test(typeStr) ? 'react' : (/html/i.test(typeStr) ? 'html' : detectFormat(body));
       if (fmt){
@@ -321,15 +1811,14 @@
       }
     }
     if (found) return;
-    // 2) コードブロック(言語指定なしも対象に)
     const fenceRe = /```([A-Za-z]*)[^\S\n]*\n([\s\S]*?)```/g;
     while ((m = fenceRe.exec(text)) !== null){
-      const lang = (m[1]||'').toLowerCase();
+      const lang = (m[1] || '').toLowerCase();
       const body = m[2].trim();
       let fmt = null;
       if (lang === 'html') fmt = looksLikeHtml(body) ? 'html' : null;
       else if (lang === 'jsx' || lang === 'tsx') fmt = 'react';
-      else if (lang === '' ) fmt = detectFormat(body);
+      else if (lang === '') fmt = detectFormat(body);
       if (fmt){
         const id = 'code-' + seed + '-' + m.index;
         artifacts.set(id, { id, title: guessTitle(body, fmt), content: body, date, kind: 'code', format: fmt });
@@ -337,11 +1826,9 @@
     }
   }
 
-  // 想定形式で0件だったとき:JSONを深く走査し、長めの文字列すべてを対象に探す
   function deepScanFallback(data){
     const artifacts = new Map();
     let seed = 0;
-    // 反復処理(再帰だと深いネストでスタックオーバーフローするため)
     const stack = [data];
     while (stack.length){
       const node = stack.pop();
@@ -385,23 +1872,20 @@
     return fmt === 'react' ? 'Reactコードブロック' : 'HTMLコードブロック';
   }
 
-  function ts(d){
+  function tsOf(d){
     if (!d) return null;
     const t = new Date(d).getTime();
     return isNaN(t) ? null : t;
   }
 
-  // 並べ替え・重複判定・検索インデックスの事前計算
   function finalizeItems(list){
-    // 日時があるもの優先で新しい順、日時不明は最後
-    list.sort((a,b)=>{
-      const ta = ts(a.date), tb = ts(b.date);
+    list.sort((a, b) => {
+      const ta = tsOf(a.date), tb = tsOf(b.date);
       if (ta === null && tb === null) return 0;
       if (ta === null) return 1;
       if (tb === null) return -1;
       return tb - ta;
     });
-    // 完全一致の内容は「重複」としてマーク(いちばん新しい1件だけ残す)
     const seen = new Set();
     for (const it of list){
       it.dup = seen.has(it.content);
@@ -411,34 +1895,42 @@
     }
   }
 
-  // ---- 表示 ----
   function fmtDate(d){
-    const t = ts(d);
-    return t === null ? '日時不明' : new Date(t).toLocaleString('ja-JP',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    const t = tsOf(d);
+    return t === null ? '日時不明' : new Date(t).toLocaleString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
-  function fmtSize(n){ return n>1024 ? (n/1024).toFixed(1)+' KB' : n+' B'; }
-  function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-  function render(){
+  function savedHashSet(){
+    const s = new Set();
+    for (const it of Object.values(state.items)) s.add(Core.fnv(it.content));
+    return s;
+  }
+  function extractHits(){
     const q = $('q').value.trim().toLowerCase();
     const showHtml = $('fHtml').checked, showReact = $('fReact').checked, showDup = $('fDup').checked, titleOnly = $('fTitleOnly').checked;
-    const hits = items.filter(it =>
+    return items.filter(it =>
       (it.format === 'html' ? showHtml : showReact) &&
       (showDup || !it.dup) &&
       (!q || (titleOnly ? it.titleSearch : it.search).includes(q))
     );
+  }
+
+  function renderExtract(){
+    if (!items.length && !$('toolbar').classList.contains('show')) return;
+    const hits = extractHits();
+    const saved = savedHashSet();
     $('stat').innerHTML = '<b>' + hits.length + '</b> / ' + items.length + ' 件';
-    $('empty').classList.toggle('show', items.length>0 && hits.length===0);
+    $('empty').classList.toggle('show', items.length > 0 && hits.length === 0);
     results.innerHTML = '';
     const frag = document.createDocumentFragment();
-    // 「最新」バッジは日時が分かっている先頭の1件だけに付ける
     let latestMarked = false;
     hits.forEach((it) => {
-      const isLatest = !latestMarked && ts(it.date) !== null;
+      const isLatest = !latestMarked && tsOf(it.date) !== null;
       if (isLatest) latestMarked = true;
+      const isSaved = saved.has(Core.fnv(it.content));
       const card = document.createElement('div');
       card.className = 'card' + (isLatest ? ' latest' : '');
-      const kindLabel = (it.kind==='artifact' ? 'Artifact' : 'code block') + (it.format==='react' ? ' / React' : '');
+      const kindLabel = (it.kind === 'artifact' ? 'Artifact' : 'code block') + (it.format === 'react' ? ' / React' : '');
       card.innerHTML =
         '<div class="card-top">' +
           (isLatest ? '<span class="badge">最新</span>' : '') +
@@ -446,26 +1938,25 @@
           '<span class="size">' + fmtSize(it.content.length) + (it.dup ? ' ・重複' : '') + '</span>' +
         '</div>' +
         '<div class="meta"><span class="conv">' + esc(it.conv) + '</span>' +
-          '<span class="kind' + (it.format==='react' ? ' react' : '') + '">' + kindLabel + '</span> ・ ' + fmtDate(it.date) +
+          '<span class="kind' + (it.format === 'react' ? ' react' : '') + '">' + kindLabel + '</span> ・ ' + fmtDate(it.date) +
         '</div>' +
         '<div class="actions">' +
-          '<button class="primary" data-act="dl">ダウンロード' + (it.format==='react' ? ' (.jsx)' : '') + '</button>' +
-          (it.format==='html' ? '<button data-act="pv">プレビュー</button>' : '') +
+          '<button class="primary" data-act="save"' + (isSaved ? ' disabled' : '') + '>' + (isSaved ? '保存済み ✓' : 'ライブラリに保存') + '</button>' +
+          '<button data-act="dl">ダウンロード' + (it.format === 'react' ? ' (.jsx)' : '') + '</button>' +
+          (it.format === 'html' ? '<button data-act="pv">プレビュー</button>' : '') +
           '<button data-act="cp">コードをコピー</button>' +
-          (it.format==='react' ? '<span class="note">Reactはこのツール上ではプレビューできません</span>' : '') +
+          (it.format === 'react' ? '<span class="note">Reactはこのツール上ではプレビューできません</span>' : '') +
         '</div>' +
-        (it.format==='html' ? '<div class="preview"><iframe sandbox="allow-scripts" title="プレビュー"></iframe></div>' : '');
+        (it.format === 'html' ? '<div class="preview"><iframe sandbox="allow-scripts" title="プレビュー"></iframe></div>' : '');
       card.addEventListener('click', e => {
         const act = e.target.dataset && e.target.dataset.act;
         if (!act) return;
-        if (act === 'dl'){
-          const blob = new Blob([it.content], {type: it.format==='html' ? 'text/html' : 'text/plain'});
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          const base = (it.title.replace(/[\\/:*?"<>|]/g,'_').trim() || 'app');
-          a.download = base + (it.format==='html' ? '.html' : '.jsx');
-          a.click();
-          setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+        if (act === 'save'){
+          saveToLibrary(it);
+          e.target.textContent = '保存済み ✓';
+          e.target.disabled = true;
+        } else if (act === 'dl'){
+          downloadItem({ title: it.title, content: it.content, format: it.format });
         } else if (act === 'pv'){
           const pv = card.querySelector('.preview');
           const open = pv.classList.toggle('show');
@@ -473,10 +1964,7 @@
           if (open && !fr.srcdoc) fr.srcdoc = it.content;
           e.target.textContent = open ? 'プレビューを閉じる' : 'プレビュー';
         } else if (act === 'cp'){
-          const done = () => { e.target.textContent = 'コピーしました ✓'; setTimeout(()=> e.target.textContent = 'コードをコピー', 1500); };
-          if (navigator.clipboard && navigator.clipboard.writeText){
-            navigator.clipboard.writeText(it.content).then(done, () => fallbackCopy(it.content, done));
-          } else fallbackCopy(it.content, done);
+          copyText(it.content, e.target, 'コピーしました ✓', 'コードをコピー');
         }
       });
       frag.appendChild(card);
@@ -484,13 +1972,44 @@
     results.appendChild(frag);
   }
 
-  function fallbackCopy(text, done){
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
-    document.body.appendChild(ta); ta.select();
-    try{ document.execCommand('copy'); done(); }catch(e){}
-    document.body.removeChild(ta);
+  function saveToLibrary(ex, opts){
+    const now = Date.now();
+    const it = Core.sanItem({
+      id: Core.uid(),
+      ts: now,
+      title: ex.title,
+      conv: ex.conv,
+      origDate: (typeof ex.date === 'string') ? ex.date : (ex.date ? String(ex.date) : ''),
+      format: ex.format,
+      kind: ex.kind,
+      content: ex.content,
+      batch: currentBatch.id,
+      batchName: currentBatch.name
+    });
+    if (!it) return;
+    state.items[it.id] = it;
+    if (!opts || !opts.silent) commit();
   }
+
+  $('saveAll').addEventListener('click', async () => {
+    const saved = savedHashSet();
+    const targets = extractHits().filter(it => !saved.has(Core.fnv(it.content)));
+    if (!targets.length){ await modal.info('すべて保存', '表示中のアプリはすべて保存済みです。'); return; }
+    const ok = await modal.ask('すべて保存', '表示中の未保存アプリ ' + targets.length + '件をライブラリに保存しますか?', '保存する');
+    if (!ok) return;
+    for (const it of targets) saveToLibrary(it, { silent: true });
+    commit();
+    toast(targets.length + '件を保存しました');
+  });
+
+  /* ================= 起動 ================= */
+  if (store.mode() === 'memory'){
+    showBanner('この環境ではブラウザの保存領域が使えないため、ライブラリはメモリ上にのみ保持されます。タブを閉じると消えます。「書き出し」でのバックアップを強くおすすめします。', 'err'); // §6-1
+  }
+  renderLib();
+  idleSyncLine();
+  initDone = true; // 起動完了フラグ(§4-6)
+  if (meta.enabled) doSync('起動');
 })();
 </script>
 </body>
