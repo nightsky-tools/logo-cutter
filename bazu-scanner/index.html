@@ -57,6 +57,15 @@ button.run{
   background:var(--gold);color:var(--bg);font-size:16px;font-weight:700;
   font-family:'Zen Kaku Gothic New',sans-serif;letter-spacing:.2em;cursor:pointer;
 }
+.fmt-row{display:flex;gap:8px;margin-top:12px}
+button.fmt{
+  flex:1;padding:11px;border-radius:10px;background:transparent;
+  border:1px solid var(--gold);color:var(--gold);font-size:14px;font-weight:700;
+  font-family:'Zen Kaku Gothic New',sans-serif;letter-spacing:.15em;cursor:pointer;
+}
+button.fmt:active{transform:translateY(1px)}
+button.fmt:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+button.fmt.ghost{border-color:var(--line);color:var(--muted);flex:0 0 auto;padding:11px 16px}
 button.run:active{transform:translateY(1px)}
 button.run:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 
@@ -172,6 +181,10 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
   <div class="card">
     <label class="small" for="src">投稿全文を貼り付け(掴み+本文)</label>
     <textarea id="src" placeholder="牡牛座の皆さん&#10;掴みフレーズ、、、&#10;&#10;本文…"></textarea>
+    <div class="fmt-row">
+      <button class="fmt" id="fmtBtn">改行を整形(読点→改行)</button>
+      <button class="fmt ghost" id="fmtUndo" style="display:none">元に戻す</button>
+    </div>
     <div class="versions" role="radiogroup" aria-label="版の選択">
       <input type="radio" name="ver" id="v-def" value="default" checked><label for="v-def">デフォルト 400〜450</label>
       <input type="radio" name="ver" id="v-std" value="std"><label for="v-std">標準版 600〜700</label>
@@ -274,6 +287,180 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
   const UKENAOSHI = ["そう思って","そんなふうに","そんな風に","と感じて","そう感じて"];
   const SHIME = "心と体をゆっくり休ませてあげてくださいね。";
 
+  /* ---------- 改行整形(読点→改行・実投稿準拠) ---------- */
+  const FMT_MAX = 26;  /* 目標行長 */
+  const FMT_TOL = 8;   /* この範囲までの超過は分割しない(再検査で結果が変わらないように) */
+  const FMT_MIN = 7;   /* 分割後の各行の最短長 */
+  /* 多字助詞を先に。は/が/を/も は弱い境界としてペナルティ */
+  const FMT_PARTICLE = /(ながら|ように|のに|ので|から|けど|たら|には|のは|とは|ても|て|に|で|と|は|が|を|も)/g;
+  const FMT_WEAK = { "は":4.5, "が":4.5, "を":4.5, "も":4.5 };
+  const FMT_BADNEXT = "。、!?！？」』）)てにでとはがをものたりらるれ";
+
+  function fmtCandidates(s){
+    const out = []; let m;
+    FMT_PARTICLE.lastIndex = 0;
+    while ((m = FMT_PARTICLE.exec(s)) !== null){
+      const end = m.index + m[0].length;
+      const next = s[end];
+      if (next === undefined) continue;
+      if (FMT_BADNEXT.indexOf(next) >= 0) continue;
+      out.push({ pos: end, pen: FMT_WEAK[m[0]] || 0 });
+    }
+    return out;
+  }
+
+  /* 文全体を行長が均等になる助詞位置で分割 */
+  function fmtBalanceSplit(s){
+    const len = s.length;
+    if (len <= FMT_MAX + FMT_TOL) return [s];
+    const n = Math.ceil(len / FMT_MAX);
+    const cands = fmtCandidates(s);
+    const breaks = [];
+    let prev = 0;
+    for (let k = 1; k < n; k++){
+      const target = len * k / n;
+      let best = null, bestScore = Infinity;
+      for (let i = 0; i < cands.length; i++){
+        const c = cands[i];
+        if (c.pos < prev + FMT_MIN) continue;
+        if (len - c.pos < FMT_MIN) continue;
+        const score = Math.abs(c.pos - target) + c.pen;
+        if (score < bestScore){ bestScore = score; best = c.pos; }
+      }
+      if (best === null) continue;
+      breaks.push(best); prev = best;
+    }
+    if (!breaks.length) return [s];
+    const out = []; let p = 0;
+    breaks.forEach(function(b){ out.push(s.slice(p, b)); p = b; });
+    out.push(s.slice(p));
+    return out;
+  }
+
+  /* 行を文に分割(。?!で切る。「」内・」等の直前では切らない) */
+  function fmtSentences(line){
+    const out = [];
+    let cur = "", depth = 0;
+    for (let i = 0; i < line.length; i++){
+      const ch = line[i];
+      cur += ch;
+      if (ch === "「" || ch === "『") depth++;
+      else if (ch === "」" || ch === "』") { if (depth > 0) depth--; }
+      else if (depth === 0 && "。？?！!".indexOf(ch) >= 0){
+        const next = line[i + 1];
+        if (next === "」" || next === "』" || next === "）" || next === ")") continue;
+        out.push(cur); cur = "";
+      }
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  /* 自動修正(固定文言化・既出フレーズ削除) */
+  const FMT_SUBS = [
+    { re: /今日お家に帰ったら/g, to: "今日帰ったら", label: "「今日お家に帰ったら」→「今日帰ったら」" },
+    { re: /肌触りのいいパジャマに着替えて、?/g, to: "", label: "「肌触りのいいパジャマに着替えて」を削除(既出)" },
+    { re: /肌触りのいいタオルで顔を包んで、?/g, to: "", label: "「肌触りのいいタオルで顔を包んで」を削除(既出)" },
+  ];
+  let fmtLastNotes = [];
+
+  function fmtIsProtected(l){ return /、、/.test(l) || /の皆さん\s*$/.test(l); }
+  function fmtApplySubs(line){
+    let changed = false;
+    FMT_SUBS.forEach(function(s){
+      const nl = line.replace(s.re, s.to);
+      if (nl !== line){ line = nl; changed = true; if (fmtLastNotes.indexOf(s.label) < 0) fmtLastNotes.push(s.label); }
+    });
+    return { line: line, changed: changed };
+  }
+
+  function formatBreaks(raw){
+    fmtLastNotes = [];
+    const out = [];
+    const lines = raw.replace(/\r\n/g, "\n").split("\n");
+    let firstContent = true;
+    let i = 0;
+    while (i < lines.length){
+      let line = lines[i].replace(/\s+$/, "");
+      if (line.trim() === "") { out.push(""); i++; continue; }
+      if (fmtIsProtected(line)) { out.push(line); i++; continue; }
+      const sub = fmtApplySubs(line);
+      line = sub.line;
+      /* 削除で行が空になったら行ごと落とす */
+      if (line.trim() === "") { i++; continue; }
+      /* 自動修正で変わった中途行は、文が完成するまで次行と結合して組み直す */
+      if (sub.changed){
+        while (!/[。？?！!」』]$/.test(line) &&
+               line.indexOf("「") < 0 && line.indexOf("」") < 0 &&
+               i + 1 < lines.length && lines[i+1].trim() !== "" && !fmtIsProtected(lines[i+1])){
+          i++;
+          const nxt = fmtApplySubs(lines[i].replace(/\s+$/, "")).line;
+          line += nxt;
+          if (nxt.indexOf("「") >= 0 || nxt.indexOf("」") >= 0) break;
+        }
+      }
+      fmtSentences(line).forEach(function(sent){
+        sent = sent.replace(/^\s+/, "");
+        if (!sent) return;
+        /* 本文冒頭が「と+漢字」で始まる場合(掴みからの継続)は「と」を独立行に */
+        if (firstContent && /^と[\u4E00-\u9FFF]/.test(sent)){
+          out.push("と");
+          sent = sent.slice(1);
+          if (fmtLastNotes.indexOf("冒頭の「と」を独立行に") < 0) fmtLastNotes.push("冒頭の「と」を独立行に");
+        }
+        /* 文末記号も単独読点もない断片は整形済みとみなして再処理しない */
+        if (!/[。？?！!」』]$/.test(sent) && !/(?<!、)、(?!、)/.test(sent)) {
+          out.push(sent);
+          return;
+        }
+        if (sent.indexOf(SHIME) >= 0) {
+          /* 締め文の文は改行しないが読点は削除する */
+          out.push(sent.replace(/(?<!、)、(?!、)/g, ""));
+          return;
+        }
+        /* 開き括弧直前の単独読点は削除 */
+        sent = sent.replace(/(?<!、)、(?=[「『（(“])/g, "");
+        if (sent.indexOf("「") >= 0 || sent.indexOf("」") >= 0){
+          /* 「」を含む文: 読点位置で改行 */
+          sent.split(/(?<!、)、(?!、)/).forEach(function(l){ if (l) out.push(l); });
+        } else {
+          /* 「」なしの文: 読点を削除し、均等な助詞位置で改行 */
+          sent = sent.replace(/(?<!、)、(?!、)/g, "");
+          fmtBalanceSplit(sent).forEach(function(l){ out.push(l); });
+        }
+      });
+      firstContent = false;
+      i++;
+    }
+    return out.join("\n");
+  }
+
+  let fmtPrev = null;
+  const fmtBtn = document.getElementById("fmtBtn");
+  const fmtUndo = document.getElementById("fmtUndo");
+  fmtBtn.addEventListener("click", function(){
+    const ta = document.getElementById("src");
+    if (!ta.value.trim()) { alert("投稿全文を貼り付けてください。"); return; }
+    const result = formatBreaks(ta.value);
+    if (result === ta.value) {
+      fmtBtn.textContent = "変更なし";
+      setTimeout(function(){ fmtBtn.textContent = "改行を整形(読点→改行)"; }, 1200);
+      return;
+    }
+    fmtPrev = ta.value;
+    ta.value = result;
+    fmtUndo.style.display = "";
+    fmtBtn.textContent = "整形済";
+    setTimeout(function(){ fmtBtn.textContent = "改行を整形(読点→改行)"; }, 1200);
+  });
+  fmtUndo.addEventListener("click", function(){
+    if (fmtPrev === null) return;
+    document.getElementById("src").value = fmtPrev;
+    fmtPrev = null;
+    fmtUndo.style.display = "none";
+  });
+
+
   /* ---------- カスタム禁止ワード ---------- */
   const NG_KEY = "sora_buzz_custom_ng";
   function loadCustomNG(){
@@ -374,6 +561,10 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
   function saveHist(list){
     try { localStorage.setItem(HIST_KEY, JSON.stringify(list.slice(-HIST_MAX))); } catch(e){}
   }
+  function localDate(){
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
   function normPhrase(s){
     return s.replace(/[、。\s]/g, "");
   }
@@ -393,24 +584,32 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
     const ls = hook.split("\n").map(l => l.trim()).filter(Boolean);
     return ls.length >= 2 ? ls[ls.length - 1].replace(/、+\s*$/, "") : "";
   }
-  function checkHistory(phrase){
+  function checkHistory(phrase, sign){
     const hist = loadHist();
     const np = normPhrase(phrase);
-    let exact = null;
-    const similar = [];
+    const today = localDate();
+    const exacts = [], similar = [];
+    let self = null;
     hist.forEach(h => {
-      if (normPhrase(h.phrase) === np) { exact = h; return; }
+      /* 同じ星座・同じ日付 = 同一投稿の再検査とみなし照合から除外 */
+      const isSelf = h.sign === sign && h.date === today;
+      if (normPhrase(h.phrase) === np) {
+        if (isSelf) { self = h; return; }
+        exacts.push(h);
+        return;
+      }
+      if (isSelf) return;
       const sim = similarity(h.phrase, phrase);
       if (sim >= 0.4) similar.push({ h, sim });
     });
     similar.sort((a,b) => b.sim - a.sim);
-    return { exact, similar };
+    return { exacts, similar, self };
   }
   function addHistory(sign, phrase){
     const hist = loadHist();
     const np = normPhrase(phrase);
     if (hist.some(h => h.sign === sign && normPhrase(h.phrase) === np)) return;
-    hist.push({ sign: sign || "?", phrase, date: new Date().toISOString().slice(0,10) });
+    hist.push({ sign: sign || "?", phrase, date: localDate() });
     saveHist(hist);
     renderHist();
   }
@@ -644,26 +843,39 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
   runBtn.addEventListener("click", function(){
     const raw = document.getElementById("src").value;
     if (!raw.trim()) { alert("投稿全文を貼り付けてください。"); return; }
+    /* 検査前に自動で改行整形(読点→改行)を適用 */
+    const formatted = formatBreaks(raw);
+    if (formatted !== raw) {
+      fmtPrev = raw;
+      document.getElementById("src").value = formatted;
+      fmtUndo.style.display = "";
+    }
     const version = document.querySelector("input[name=ver]:checked").value;
-    const { hook, body } = splitPost(raw);
+    const { hook, body } = splitPost(formatted);
     const { results, len } = runChecks(hook, body, version);
+    if (fmtLastNotes.length) results.unshift({ level:"ok", name:"自動修正", detail: fmtLastNotes.join(" / ") });
 
     /* 掴みの重複検知(履歴照合)と自動保存 */
     const phrase = hookPhrase(hook);
     if (phrase) {
-      const { exact, similar } = checkHistory(phrase);
-      if (exact) {
+      const sm = hook.split("\n")[0].trim().match(/^(.+?)の皆さん$/);
+      const sign = sm ? sm[1] : "?";
+      const { exacts, similar, self } = checkHistory(phrase, sign);
+      if (exacts.length) {
         results.push({ level:"err", name:"掴みの重複",
-          detail:"過去に使用済みの掴みです: 「" + exact.phrase + "」(" + exact.sign + " " + exact.date + ")" });
+          detail:"過去に使用済みの掴みです: " + exacts.slice(0,3).map(e =>
+            "「" + e.phrase + "」(" + e.sign + " " + e.date + ")").join(" ") });
       } else if (similar.length) {
         results.push({ level:"warn", name:"掴みの類似",
           detail:"過去の掴みと似ています: " + similar.slice(0,3).map(s =>
             "「" + s.h.phrase + "」(" + s.h.sign + " " + s.h.date + "・類似度" + Math.round(s.sim*100) + "%)").join(" ") });
+      } else if (self) {
+        results.push({ level:"ok", name:"掴みの重複",
+          detail:"本日検査済みの同一投稿(再検査)。過去の掴みとの重複・類似なし。" });
       } else {
         results.push({ level:"ok", name:"掴みの重複", detail:"過去の掴みとの重複・類似なし。" });
       }
-      const sm = hook.split("\n")[0].trim().match(/^(.+?)の皆さん$/);
-      addHistory(sm ? sm[1] : "?", phrase);
+      addHistory(sign, phrase);
     }
 
     const errs = results.filter(r => r.level === "err").length;
