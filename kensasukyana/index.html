@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>星野ソラ 検品前スキャナ v2.2</title>
+<title>星野ソラ 検品前スキャナ v2.5</title>
 <style>
   :root{
     --bg:#0c111f;
@@ -84,7 +84,7 @@
 </head>
 <body>
 <header>
-  <h1>星野ソラ 検品前スキャナ<span class="v">v2.2</span></h1>
+  <h1>星野ソラ 検品前スキャナ<span class="v">v2.5</span></h1>
   <p>機械的走査(列挙・件数)を全部このツールが行い、意味判定(主語・主根拠など)だけを検品チャットに残す前段ツール。レポートを本文と一緒に検品へ渡す。</p>
 </header>
 <main>
@@ -125,12 +125,49 @@
     <p id="fixinfo" class="note" style="margin:10px 0 0;"></p></div>
   <div id="report"></div>
 </main>
-<footer>検品前スキャナ v2.2(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
+<footer>検品前スキャナ v2.5(貼るだけ自動走査) ｜ 走査はこのツール、意味判定は検品チャット。辞書はHTMLソース冒頭の DICT を編集。</footer>
 <div id="toast"></div>
 
 <script>
 /* =====================================================================
    ★ 辞書・設定(編集エリア)ここから
+
+   【v2.5 変更履歴】(生成命令書v10.12・検品命令書v10.10・修正命令書v10.8対応)
+   ・[21]固定文言③スロット整合を新設。導入の③「断言します。その〇〇は
+     決して気のせいではありません。」からスロット名詞〇〇を取り出し、
+     ③より前の導入本文にその語が立っているかを機械照合する。
+     一致=◯/見つからない=▲要判定(同義語で立てている可能性があるため
+     ✕は出さない。最終判定は人間/検品)。修正工程で導入の書き出しを
+     差し替えた際に③のスロットが宙に浮く「修正起因の矛盾」対策で、
+     修正後の記事を🔍回収→再走査すると自動で照合される。
+   ・[1]〜[20]・DICT.FIXED_1〜6・TENSE_BANDS・自動修正テーブルは無変更。
+
+   【v2.4 変更履歴】(生成命令書v10.11・検品命令書v10.9対応)
+   ・[20]時制定型チェックを新設(DICT.TENSE_BANDS/TENSE_PHRASES)。
+     天体データから太陽のイングレス移動日を読み、帯(3日以内=先月/
+     4〜21日=半ばにかけて/22日以降=下旬にかけて)を判定し、導入の
+     「先月から今月の〜にかけて」定型が帯と一致するかを機械照合する。
+     一致=◯/不一致=✕/読み取り不能・定型なし=▲要判定。書き換えは
+     しない(直し方の併記は検品A-5(b)、修正は修正命令書A-5の仕事)。
+     双子座9月号の「移動日23日なのに半ばにかけて」がどの網にも
+     掛からなかった実績への対策。帯の数字を変える場合は生成命令書
+     Step 0分岐2・検品A-5(b)・DICT.TENSE_BANDSの3か所を同時に改訂。
+   ・[1]〜[19]・DICT.FIXED_1〜6・自動修正テーブルは無変更。
+
+   【v2.3 変更履歴】(生成命令書v10.10・検品命令書v10.8対応)
+   ・[18]数量・期間語レポートを新設(DICT.QUANTITY_WORDS/PERIOD_WORDS)。
+     「半分」「三分の一」「1ヶ月かけて」「月初」等を列挙する。列挙のみで
+     ✕は出さない(同一章内の数量の食い違い・月相期間の整合は検品A-14が判定)。
+     双子座9月号の「半分/三分の一」不一致・蟹座9月号の「1ヶ月かけて/月初」が
+     どの網にも掛からなかった実績への対策。
+   ・[19]天体主語の使役文レポートを新設(DICT.SKY_WORDS/SKY_CAUSATIVE)。
+     天体語を含む文のうち「せようとし」型の使役だけを列挙し▲要判定を付す。
+     列挙のみで✕は出さない(作用の向きがテーマと逆行していないかは検品
+     A-11(b)が判定。向きが正しい使役は◯であり、判定済みの文が再走査で
+     再掲されるのは正常・違反表示ではない)。双子座9月号第4章の
+     「空は〜使わせようとします」型がどの網にも掛からなかった実績への対策。
+     ※意図的に狭いパターン(「せようとし」)にしてある。「選ばせる光」等の
+     通常の使役は拾わない(誤検出で毎回▲が出続けるのを防ぐため)。
 
    【v2.2 変更履歴】
    ・結果表示後に貼り付けエリア(入力カード)を自動で隠す。「貼り付けに戻る」ボタンで再表示。
@@ -303,6 +340,17 @@ const DICT = {
   // v1.9: [15]頻出形容・副詞の監視語(号のテーマ語は多くても◯。編集可)と目安回数
   STYLE_WATCH: ["静かに","静けさ","丁寧に","穏やかに","落ち着いて","そっと","やさしく","合図","切り替わ"],
   STYLE_LIMIT: 8,
+
+  // v2.3: [18]数量・期間語(検品A-14の下書き。列挙のみ・✕は出さない)
+  QUANTITY_WORDS: ["半分","三分の一","三分の二","四分の一","3分の1","2分の1"],
+  PERIOD_WORDS: ["1ヶ月かけて","一ヶ月かけて","1か月かけて","一か月かけて","月初"],
+  // v2.3: [19]天体主語の使役文(検品A-11(b)の材料。「せようとし」型のみ・列挙のみ・✕は出さない)
+  SKY_WORDS: ["空","太陽","水星","金星","火星","木星","土星","天王星","海王星","冥王星","新月","満月"],
+  SKY_CAUSATIVE: ["せようとし","せようとする"],
+
+  // v2.4: [20]時制定型チェック(検品A-5(b)パターン1の転記元。帯は生成命令書Step 0分岐2・検品A-5(b)と同期)
+  TENSE_BANDS: { SENGETSU_MAX: 3, NAKABA_MAX: 21 },   // 移動日<=3=先月 / 4〜21=半ばにかけて / 22以降=下旬にかけて
+  TENSE_PHRASES: ["先月から今月の半ばにかけて","先月から今月の下旬にかけて","先月から今月の前半にかけて","先月から今月の中旬にかけて"],
 
   // 見出しコロンの方針: "report"=件数報告のみ / "zenkaku"=半角を違反 / "hankaku"=全角を違反
   COLON_POLICY: "report",
@@ -569,7 +617,7 @@ function runScan(opts){
   const now = new Date();
   const stamp = now.getFullYear()+"/"+(now.getMonth()+1)+"/"+now.getDate()+" "+String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
 
-  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v2.2"});
+  L.push({cls:"sec", s:"■ 検品前スキャナ レポート v2.5"});
   L.push({cls:"dim", s:"走査日時:"+stamp+" ／ 本文:"+raw.length+"文字 ／ 対象星座:"+(sign||"未指定")});
   L.push({cls:"dim", s:"※このレポートの【要判定】項目は、検品チャットが主語・文脈を判定する(列挙はスキャナが保証)。"});
   L.push({s:""});
@@ -1094,6 +1142,95 @@ function runScan(opts){
       L.push({s:"  ◇「テーマは/ルールは」型="+decl.length+"本(上限"+DICT.THEME_DECL_LIMIT+")"});
       if(decl.length<=DICT.THEME_DECL_LIMIT){ L.push({cls:"ok", s:"  ◯ 上限内"}); chips.push({cls:"ok", label:"結論宣言型 "+decl.length+"本"}); }
       else{ L.push({cls:"bad", s:"  ✕ "+decl.length+"本(上限"+DICT.THEME_DECL_LIMIT+")→超過分の【結論】一文目を断定の宣言・問いかけ・場面型など別の書き出しへ(生成v10.9第II部5)"}); chips.push({cls:"bad", label:"結論宣言型 "+decl.length+"本"}); }
+    }
+  }
+  L.push({s:""});
+
+  // ---------- [18] 数量・期間語レポート(v2.3新設・列挙のみ) ----------
+  L.push({cls:"sec", s:"[18] 数量・期間語レポート(検品A-14用・列挙のみ・✕は出さない)"});
+  {
+    const qHits = dictScan(raw, DICT.QUANTITY_WORDS.concat(DICT.PERIOD_WORDS));
+    if(!qHits.length){ L.push({cls:"ok", s:"  ◯ 0件"}); }
+    else{
+      qHits.forEach(h=> L.push({s:"  ・["+locate(hIdx,h.pos)+"]「"+h.word+"」 "+sentenceAt(raw,h.pos,h.len)}));
+      L.push({cls:"dim", s:"  ※列挙のみ(この項目は✕を出さない)。同一章内で同じ対象の数量が食い違っていないか、月相の期間・時期の表現(新月→満月は約2週間)が実日付と合うかは、検品A-14が判定する。"});
+    }
+  }
+  L.push({s:""});
+
+  // ---------- [19] 天体主語の使役文(v2.3新設・列挙のみ) ----------
+  L.push({cls:"sec", s:"[19] 天体主語の使役文(検品A-11(b)用・「せようとし」型のみ・列挙のみ・✕は出さない)"});
+  {
+    const cHits = dictScan(raw, DICT.SKY_CAUSATIVE);
+    const rows = [];
+    cHits.forEach(h=>{
+      const sent = sentenceAt(raw, h.pos, h.len);
+      if(DICT.SKY_WORDS.some(w=> sent.includes(w))) rows.push({pos:h.pos, sent});
+    });
+    if(!rows.length){ L.push({cls:"ok", s:"  ◯ 0件"}); }
+    else{
+      rows.forEach(r=> L.push({cls:"warn", s:"  ▲["+locate(hIdx,r.pos)+"] "+r.sent+"【要判定】"}));
+      L.push({cls:"dim", s:"  ※列挙のみ(この項目は✕を出さない)。天体・空がその号のテーマに逆行する行動へ読者を誘う向きになっていないかは、検品A-11(b)が判定する。向きが正しい使役は◯であり、判定済みの文が再走査で再掲されるのは正常(違反表示ではない)。"});
+    }
+  }
+  L.push({s:""});
+
+  // ---------- [20] 時制定型チェック(v2.4新設・検品A-5(b)パターン1用) ----------
+  L.push({cls:"sec", s:"[20] 時制定型チェック(検品A-5(b)パターン1用・太陽の移動日×導入の定型)"});
+  {
+    if(!sky){ L.push({cls:"dim", s:"  スキップ(天体データなし。固定スロットに星データを格納するか、本文と一緒に貼り付ける)"}); }
+    else{
+      let sunM=null, sunD=null, sunLine=null;
+      sky.split("\n").forEach(line=>{
+        if(sunD!=null) return;
+        if(!/太陽/.test(line)) return;
+        if(!/(へ入|に入|移動|イングレス)/.test(line)) return;
+        if(/^[■※]/.test(line.trim())) return;
+        if(/(逆行|順行)/.test(line)) return;
+        const r = line.match(/([0-9]{1,2})月([0-9]{1,2})日/) || line.match(/\b[0-9]{4}-([0-9]{2})-([0-9]{2})/) || line.match(/([0-9]{1,2})\/([0-9]{1,2})/);
+        if(r){ sunM=+r[1]; sunD=+r[2]; sunLine=line.trim(); }
+      });
+      const intro20 = section(raw, /【はじめに/, /【第[1１]章】/);
+      const it20 = intro20 ? intro20.text : "";
+      const found20 = DICT.TENSE_PHRASES.filter(p=> it20.includes(p));
+      if(sunD==null){
+        L.push({cls:"warn", s:"  ▲ 天体データ内に太陽のイングレス行を検出できず【要判定】(当月移動なし=分岐3の月か、データ表記の違い。移動の有無を目視確認)"});
+        if(found20.length){ L.push({cls:"warn", s:"  ▲ 移動を検出できないのに「"+found20.join("」「")+"」の定型あり【要判定】(移動日を目視で確認し、帯〈3日以内=先月/4〜21日=半ば/22日以降=下旬〉と照合)"}); }
+        else{ L.push({cls:"dim", s:"  導入に「〜にかけて」定型なし(移動なし月なら分岐3「今月、空では太陽が○座にあり」型が正。目視確認)"}); }
+      } else {
+        const band20 = sunD<=DICT.TENSE_BANDS.SENGETSU_MAX ? "先月" : (sunD<=DICT.TENSE_BANDS.NAKABA_MAX ? "半ば" : "下旬");
+        const expect20 = band20==="先月" ? "「先月、太陽は○座にあり」(分岐1)" : "「先月から今月の"+band20+"にかけて」(分岐2)";
+        L.push({s:"  太陽の移動:"+sunM+"月"+sunD+"日「"+sunLine+"」 → 帯:"+band20+"(3日以内=先月/4〜21日=半ば/22日以降=下旬) → 期待定型:"+expect20});
+        if(!intro20){ L.push({cls:"warn", s:"  ▲ 導入部(【はじめに】〜【第1章】)を検出できず【要判定】"}); }
+        else if(band20==="先月"){
+          if(found20.length){ L.push({cls:"bad", s:"  ✕ 月初移動(分岐1)なのに「"+found20.join("」「")+"」を使用 → 「先月、太陽は○座にあり」型へ(直し方の併記は検品A-5(b))"}); }
+          else{ L.push({cls:"ok", s:"  ◯ 「〜にかけて」定型なし(分岐1の月として整合)"}); }
+        } else {
+          const want20 = "先月から今月の"+band20+"にかけて";
+          if(it20.includes(want20)){ L.push({cls:"ok", s:"  ◯ 導入の定型「"+want20+"」が帯と一致"}); }
+          else if(found20.length){ L.push({cls:"bad", s:"  ✕ 帯と不一致:導入は「"+found20.join("」「")+"」/ 移動日"+sunD+"日の正は「"+want20+"」(直し方の併記は検品A-5(b))"}); }
+          else{ L.push({cls:"warn", s:"  ▲ 導入に「〜にかけて」定型が見つからない【要判定】(書き出しの型により意図的な可能性。A-5(b)が意味で判定)"}); }
+        }
+        L.push({cls:"dim", s:"  ※本項は照合と報告のみで書き換えはしない(検品A-5(b)の転記元)。帯の数字はDICT.TENSE_BANDS(生成命令書Step 0分岐2・検品A-5(b)と同期)。"});
+      }
+    }
+  }
+  L.push({s:""});
+
+  // ---------- [21] 固定文言③スロット整合(v2.5新設・修正起因の矛盾対策) ----------
+  L.push({cls:"sec", s:"[21] 固定文言③スロット整合(導入の書き出しと「その〇〇」の照合)"});
+  {
+    const intro21 = section(raw, /【はじめに/, /【第[1１]章】/);
+    if(!intro21){ L.push({cls:"dim", s:"  スキップ(導入部を検出できず)"}); }
+    else{
+      const m21 = intro21.text.match(/断言します。その(.{1,8})は決して気のせいではありません。/);
+      if(!m21){ L.push({cls:"dim", s:"  固定文言③が導入に見つからない(存在チェック自体は[5]のFIXED_3_REが担当)"}); }
+      else{
+        const slot21 = m21[1];
+        const before21 = intro21.text.slice(0, intro21.text.indexOf(m21[0]));
+        if(before21.includes(slot21)){ L.push({cls:"ok", s:"  ◯ スロット名詞「"+slot21+"」が③より前の導入本文に立っている(書き出しと③の呼応が成立)"}); }
+        else{ L.push({cls:"warn", s:"  ▲ スロット名詞「"+slot21+"」が③より前の導入本文に見当たらない【要判定】(同義語で立てている可能性あり。修正で書き出しを差し替えた場合は、書き出しに語を立て直すか③のスロットを合わせる〈修正命令書の記事内整合〉)"}); }
+      }
     }
   }
   L.push({s:""});
