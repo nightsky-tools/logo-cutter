@@ -3,397 +3,954 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>バズ投稿整形ツール | 星野ソラ</title>
-<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
+<title>バズ投稿スキャナ | 星野ソラ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-  :root{
-    --bg:#0b1026; --bg2:#141a38; --panel:#171d3f; --panel2:#1e2550;
-    --line:#2c3566; --text:#e9ecf5; --sub:#a9b4e0; --gold:#e8c872;
-    --ok:#7fd8a4; --warn:#f0a35e; --mono:'SF Mono','Menlo','Consolas',monospace;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{
-    font-family:'Zen Maru Gothic',sans-serif; color:var(--text);
-    background:radial-gradient(ellipse at 50% -20%, #1d2650 0%, var(--bg) 55%);
-    min-height:100vh; padding:20px 14px 60px;
-  }
-  .stars{position:fixed;inset:0;pointer-events:none;z-index:0}
-  .stars i{position:absolute;background:#fff;border-radius:50%;opacity:.5;animation:tw 3s infinite alternate}
-  @keyframes tw{from{opacity:.15}to{opacity:.6}}
-  @media (prefers-reduced-motion: reduce){.stars i{animation:none}}
-  .wrap{max-width:680px;margin:0 auto;position:relative;z-index:1}
-  header{text-align:center;margin-bottom:22px}
-  h1{font-size:1.25rem;font-weight:700;letter-spacing:.08em}
-  h1 span{color:var(--gold)}
-  .tag{font-size:.72rem;color:var(--sub);margin-top:4px;letter-spacing:.15em}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
-  label{display:block;font-size:.8rem;color:var(--sub);margin-bottom:8px;letter-spacing:.08em}
-  textarea{
-    width:100%;min-height:220px;background:var(--bg2);color:var(--text);
-    border:1px solid var(--line);border-radius:10px;padding:12px;
-    font-family:'Zen Maru Gothic',sans-serif;font-size:.92rem;line-height:1.8;resize:vertical;
-  }
-  textarea:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:transparent}
-  .btnrow{display:flex;gap:10px;margin-top:12px}
-  button{
-    font-family:'Zen Maru Gothic',sans-serif;font-weight:700;font-size:.9rem;
-    border:none;border-radius:10px;padding:12px 18px;cursor:pointer;letter-spacing:.06em;
-  }
-  button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
-  .primary{flex:1;background:var(--gold);color:#20232e}
-  .primary:active{transform:translateY(1px)}
-  .ghost{background:transparent;color:var(--sub);border:1px solid var(--line)}
-  .block{display:none}
-  .block.show{display:block}
-  .blockhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-  .blockhead .t{font-size:.8rem;color:var(--gold);letter-spacing:.1em;font-weight:700}
-  .blockhead .c{font-size:.72rem;color:var(--sub)}
-  .copybtn{background:var(--panel2);color:var(--text);border:1px solid var(--line);font-size:.78rem;padding:7px 14px}
-  .copybtn.copied{background:var(--ok);color:#15241c;border-color:transparent}
-  pre{
-    background:var(--bg2);border:1px solid var(--line);border-radius:10px;
-    padding:14px;font-family:'Zen Maru Gothic',sans-serif;font-size:.9rem;
-    line-height:1.9;white-space:pre-wrap;word-break:break-word;
-  }
-  .log{font-size:.78rem;color:var(--sub);line-height:1.9;margin-top:4px}
-  .log .hit{color:var(--ok)}
-  .log .none{color:var(--sub);opacity:.7}
-  .log .inv{color:var(--warn)}
-  .err{color:var(--warn);font-size:.82rem;margin-top:10px;display:none}
-  .modes{display:flex;gap:6px;margin-bottom:12px}
-  .modebtn{
-    flex:1;background:var(--bg2);color:var(--sub);border:1px solid var(--line);
-    font-size:.82rem;padding:9px 0;letter-spacing:.08em;font-weight:500;
-  }
-  .modebtn.on{background:var(--panel2);color:var(--gold);border-color:var(--gold);font-weight:700}
-  .c.over{color:var(--warn);font-weight:700}
-  details{margin-bottom:16px}
-  details summary{
-    cursor:pointer;font-size:.82rem;color:var(--sub);letter-spacing:.08em;
-    padding:10px 4px;list-style:none;
-  }
-  details summary::before{content:'▸ ';color:var(--gold)}
-  details[open] summary::before{content:'▾ '}
-  .rulerow{display:flex;gap:8px;margin-bottom:10px}
-  .rulerow input{
-    flex:1;background:var(--bg2);color:var(--text);border:1px solid var(--line);
-    border-radius:10px;padding:10px 12px;font-family:'Zen Maru Gothic',sans-serif;font-size:.88rem;
-  }
-  .rulerow input:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:transparent}
-  .addbtn{background:var(--panel2);color:var(--gold);border:1px solid var(--line);font-size:.85rem;padding:10px 16px}
-  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
-  .chip{
-    display:inline-flex;align-items:center;gap:6px;background:var(--bg2);
-    border:1px solid var(--line);border-radius:999px;padding:6px 8px 6px 14px;font-size:.82rem;
-  }
-  .chip b{color:var(--gold);font-weight:500}
-  .chip button{background:transparent;border:none;color:var(--sub);font-size:.9rem;padding:2px 6px;line-height:1}
-  .chip button:active{color:var(--warn)}
-  .hint{font-size:.7rem;color:var(--sub);opacity:.7;line-height:1.7}
-  .iorow{display:flex;gap:8px;margin-top:10px}
-  .iorow button{font-size:.75rem;padding:8px 12px;background:transparent;color:var(--sub);border:1px solid var(--line)}
-  #ioArea{display:none;width:100%;min-height:70px;margin-top:8px;font-size:.75rem}
-  footer{text-align:center;font-size:.68rem;color:var(--sub);opacity:.55;margin-top:30px;letter-spacing:.1em}
+:root{
+  --bg:#10162B; --panel:#1A2340; --panel2:#151D36; --line:#2A3556;
+  --ink:#E9ECF5; --muted:#8A93AD;
+  --gold:#E3C173; --err:#E07A6E; --warn:#E0B35C; --ok:#7FC79B;
+  --hanko:#C4453A;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:'Zen Kaku Gothic New',sans-serif;
+  min-height:100vh; padding:20px 16px 60px;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgba(233,236,245,.55) 50%, transparent 51%),
+    radial-gradient(1px 1px at 78% 9%, rgba(233,236,245,.4) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 60% 26%, rgba(227,193,115,.5) 50%, transparent 51%),
+    radial-gradient(1px 1px at 33% 6%, rgba(233,236,245,.35) 50%, transparent 51%),
+    radial-gradient(1px 1px at 90% 30%, rgba(233,236,245,.3) 50%, transparent 51%);
+  background-repeat:no-repeat;
+}
+.wrap{max-width:680px;margin:0 auto}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:6px}
+h1{font-family:'Shippori Mincho',serif;font-weight:700;font-size:22px;letter-spacing:.06em}
+h1 small{display:block;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:.2em;margin-top:2px}
+.season{
+  font-size:12px;color:var(--gold);border:1px solid var(--gold);
+  border-radius:999px;padding:4px 12px;white-space:nowrap;letter-spacing:.1em;
+}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:14px}
+label.small, .sec-title{font-size:12px;color:var(--muted);letter-spacing:.15em;display:block;margin-bottom:8px}
+textarea{
+  width:100%;min-height:220px;background:var(--panel2);color:var(--ink);
+  border:1px solid var(--line);border-radius:10px;padding:12px;
+  font-size:15px;line-height:1.9;resize:vertical;
+  font-family:'Zen Kaku Gothic New',sans-serif;
+}
+textarea:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:transparent}
+.versions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.versions input{position:absolute;opacity:0;pointer-events:none}
+.versions label{
+  font-size:13px;padding:7px 14px;border:1px solid var(--line);border-radius:999px;
+  cursor:pointer;color:var(--muted);user-select:none;
+}
+.versions input:checked + label{color:var(--bg);background:var(--gold);border-color:var(--gold);font-weight:700}
+.versions input:focus-visible + label{outline:2px solid var(--gold);outline-offset:2px}
+button.run{
+  width:100%;margin-top:14px;padding:14px;border:none;border-radius:10px;
+  background:var(--gold);color:var(--bg);font-size:16px;font-weight:700;
+  font-family:'Zen Kaku Gothic New',sans-serif;letter-spacing:.2em;cursor:pointer;
+}
+.fmt-row{display:flex;gap:8px;margin-top:12px}
+button.fmt{
+  flex:1;padding:11px;border-radius:10px;background:transparent;
+  border:1px solid var(--gold);color:var(--gold);font-size:14px;font-weight:700;
+  font-family:'Zen Kaku Gothic New',sans-serif;letter-spacing:.15em;cursor:pointer;
+}
+button.fmt:active{transform:translateY(1px)}
+button.fmt:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+button.fmt.ghost{border-color:var(--line);color:var(--muted);flex:0 0 auto;padding:11px 16px}
+button.run:active{transform:translateY(1px)}
+button.run:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+/* verdict */
+.verdict{display:none;align-items:center;gap:18px}
+.verdict.show{display:flex}
+.stamp{
+  width:92px;height:92px;flex:none;border-radius:50%;
+  border:3px solid var(--hanko);color:var(--hanko);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Shippori Mincho',serif;font-weight:700;font-size:26px;
+  letter-spacing:.05em;transform:rotate(-8deg);
+  box-shadow:inset 0 0 0 2px rgba(196,69,58,.25);
+}
+.stamp.pass{border-color:var(--ok);color:var(--ok);box-shadow:inset 0 0 0 2px rgba(127,199,155,.25)}
+.verdict-text{font-size:14px;line-height:1.8;color:var(--muted)}
+.verdict-text b{color:var(--ink);font-size:16px;display:block;margin-bottom:2px}
+.counts{font-size:13px;color:var(--muted);margin-top:4px}
+.counts b{color:var(--gold);font-weight:700}
+
+/* results */
+ul.results{list-style:none}
+ul.results li{
+  display:flex;gap:10px;align-items:flex-start;
+  padding:10px 2px;border-bottom:1px dashed var(--line);
+  font-size:14px;line-height:1.7;
+}
+ul.results li:last-child{border-bottom:none}
+.badge{
+  flex:none;font-size:11px;font-weight:700;letter-spacing:.1em;
+  border-radius:5px;padding:2px 8px;margin-top:3px;
+}
+.badge.err{background:rgba(224,122,110,.15);color:var(--err);border:1px solid var(--err)}
+.badge.warn{background:rgba(224,179,92,.12);color:var(--warn);border:1px solid var(--warn)}
+.badge.ok{background:rgba(127,199,155,.12);color:var(--ok);border:1px solid var(--ok)}
+.res-name{font-weight:700}
+.res-detail{color:var(--muted);font-size:13px;margin-top:2px}
+.res-detail em{font-style:normal;color:var(--err)}
+
+/* copy blocks */
+.copyblock{position:relative;margin-top:10px}
+.copyblock pre{
+  background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+  padding:14px;padding-top:38px;white-space:pre-wrap;word-break:break-all;
+  font-family:'Zen Kaku Gothic New',sans-serif;font-size:14px;line-height:1.9;
+}
+.copyblock .cb-head{
+  position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
+  align-items:center;padding:6px 8px 6px 14px;border-bottom:1px dashed var(--line);
+}
+.cb-head span{font-size:11px;color:var(--muted);letter-spacing:.2em}
+.cb-head button{
+  background:transparent;border:1px solid var(--line);color:var(--gold);
+  border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;
+  font-family:'Zen Kaku Gothic New',sans-serif;
+}
+.cb-head button:active{transform:translateY(1px)}
+#resultArea{display:none}
+#resultArea.show{display:block}
+
+/* custom NG words */
+details.ngbox summary{
+  font-size:12px;color:var(--muted);letter-spacing:.15em;cursor:pointer;
+  list-style:none;display:flex;align-items:center;gap:8px;
+}
+details.ngbox summary::before{content:"▸";color:var(--gold);transition:transform .15s}
+details.ngbox[open] summary::before{transform:rotate(90deg)}
+.ngform{display:flex;gap:8px;margin-top:12px}
+.ngform input[type=text]{
+  flex:1;min-width:0;background:var(--panel2);color:var(--ink);
+  border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:14px;
+  font-family:'Zen Kaku Gothic New',sans-serif;
+}
+.ngform input[type=text]:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:transparent}
+.ngform select{
+  background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+  border-radius:8px;padding:9px 8px;font-size:13px;
+  font-family:'Zen Kaku Gothic New',sans-serif;
+}
+.ngform button{
+  background:transparent;border:1px solid var(--gold);color:var(--gold);
+  border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer;
+  font-family:'Zen Kaku Gothic New',sans-serif;white-space:nowrap;
+}
+.ngform button:active{transform:translateY(1px)}
+ul.ngwords{list-style:none;margin-top:12px;display:flex;flex-wrap:wrap;gap:8px}
+ul.ngwords li{
+  display:flex;align-items:center;gap:6px;font-size:13px;
+  background:var(--panel2);border:1px solid var(--line);border-radius:999px;
+  padding:5px 6px 5px 12px;
+}
+ul.ngwords li .cat{font-size:10px;color:var(--gold);letter-spacing:.05em}
+ul.ngwords li button{
+  background:transparent;border:none;color:var(--muted);cursor:pointer;
+  font-size:14px;line-height:1;padding:2px 6px;border-radius:50%;
+}
+ul.ngwords li button:hover{color:var(--err)}
+.ngempty{font-size:12px;color:var(--muted);margin-top:12px}
+footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);letter-spacing:.15em}
+@media (prefers-reduced-motion:no-preference){
+  .card{animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+}
 </style>
 </head>
 <body>
-<div class="stars" id="stars"></div>
 <div class="wrap">
   <header>
-    <h1>✦ バズ投稿<span>整形ツール</span></h1>
-    <div class="tag">分割 × 語句置換 | HOSHINO SORA</div>
+    <h1>バズ投稿スキャナ<small>HOSHINO SORA / BUZZ POST SCANNER</small></h1>
+    <div class="season" id="seasonBadge"></div>
   </header>
 
-  <div class="panel">
-    <div class="modes">
-      <button class="modebtn on" id="modeThreads">Threads(400〜450字)</button>
-      <button class="modebtn" id="modeX">X(本文135字以内)</button>
+  <div class="card">
+    <label class="small" for="src">投稿全文を貼り付け(掴み+本文)</label>
+    <textarea id="src" placeholder="牡牛座の皆さん&#10;掴みフレーズ、、、&#10;&#10;本文…"></textarea>
+    <div class="fmt-row">
+      <button class="fmt" id="fmtBtn">改行を整形(読点→改行)</button>
+      <button class="fmt ghost" id="fmtUndo" style="display:none">元に戻す</button>
     </div>
-    <label for="src">完成した投稿をそのまま貼り付け(掴み2行+本文)</label>
-    <textarea id="src" placeholder="乙女座の皆さん&#10;手が止まる、、、&#10;&#10;と、あと少しなのに……"></textarea>
-    <div class="btnrow">
-      <button class="primary" id="run">整形する</button>
-      <button class="ghost" id="clear">クリア</button>
+    <div class="versions" role="radiogroup" aria-label="版の選択">
+      <input type="radio" name="ver" id="v-def" value="default" checked><label for="v-def">デフォルト 400〜450</label>
+      <input type="radio" name="ver" id="v-std" value="std"><label for="v-std">標準版 600〜700</label>
+      <input type="radio" name="ver" id="v-x" value="x"><label for="v-x">X版 135以内</label>
     </div>
-    <div class="err" id="err"></div>
+    <button class="run" id="runBtn">検 査 す る</button>
   </div>
 
-  <details class="panel" style="padding:8px 16px">
-    <summary>⚙ カスタム「、」除去ルール</summary>
-    <div style="padding:8px 0 6px">
-      <div class="rulerow">
-        <input type="text" id="ruleInput" placeholder="例: 完全にやめて(この語句の直後の「、」を消す)">
-        <button class="addbtn" id="ruleAdd">追加</button>
+  <div class="card">
+    <details class="ngbox" id="ngbox">
+      <summary>カスタム禁止ワード(この端末に保存)</summary>
+      <div class="ngform">
+        <input type="text" id="ngInput" placeholder="禁止ワードを入力" maxlength="30">
+        <select id="ngCat">
+          <option value="always">常時禁止</option>
+          <option value="夏">夏のみ</option>
+          <option value="冬">冬のみ</option>
+        </select>
+        <button id="ngAdd">追加</button>
       </div>
-      <div class="chips" id="chips"></div>
-      <div class="hint">
-        登録した語句の直後にある「、」を本文から自動除去します。掴み2行には適用されません。<br>
-        ※ この設定はブラウザ保存(Safariは7日間未使用で消える場合あり)。定期的に書き出し推奨。
+      <ul class="ngwords" id="ngList"></ul>
+      <div class="ngempty" id="ngEmpty">登録なし。運用中に見つけたNGワードをここに追加すると、以降の検査に自動反映されます。</div>
+      <div class="ngform" style="margin-top:14px">
+        <button id="ngExport">書き出し</button>
+        <button id="ngImport">取り込み</button>
       </div>
-      <div class="iorow">
-        <button id="ioExport">書き出し</button>
-        <button id="ioImport">読み込み</button>
-      </div>
-      <textarea id="ioArea" placeholder='["完全にやめて"] の形式で貼り付けて「読み込み」'></textarea>
-    </div>
-  </details>
-
-  <div class="panel block" id="hookBlock">
-    <div class="blockhead">
-      <span class="t">① 掴み(2行)</span>
-      <span class="c" id="hookCount"></span>
-      <button class="copybtn" data-target="hookPre">コピー</button>
-    </div>
-    <pre id="hookPre"></pre>
+      <textarea id="ngIO" style="min-height:70px;margin-top:8px;display:none;font-size:12px" placeholder="書き出したJSONを保管、または貼り付けて「取り込み」"></textarea>
+      <div class="ngempty">※iPhoneのSafariは7日間未使用のサイトの保存データを消すことがあります。登録後は「書き出し」でJSONをメモ等に控えておくと安全です。</div>
+    </details>
   </div>
 
-  <div class="panel block" id="bodyBlock">
-    <div class="blockhead">
-      <span class="t">② 本文(置換済み)</span>
-      <span class="c" id="bodyCount"></span>
-      <button class="copybtn" data-target="bodyPre">コピー</button>
-    </div>
-    <pre id="bodyPre"></pre>
-    <div class="log" id="log"></div>
+  <div class="card">
+    <details class="ngbox" id="histbox">
+      <summary>過去の掴み履歴(<span id="histCount">0</span>件・自動保存)</summary>
+      <ul class="ngwords" id="histList" style="flex-direction:column;align-items:stretch"></ul>
+      <div class="ngempty" id="histEmpty">検査するたびに掴み2行目をここへ自動保存し、次回以降、同じ・似ている掴みを検知します。</div>
+      <div class="ngform" style="margin-top:14px">
+        <button id="histExport">書き出し</button>
+        <button id="histImport">取り込み</button>
+        <button id="histClear">全削除</button>
+      </div>
+      <textarea id="histIO" style="min-height:70px;margin-top:8px;display:none;font-size:12px" placeholder="書き出したJSONを保管、または貼り付けて「取り込み」"></textarea>
+    </details>
   </div>
 
-  <footer>nightsky-tools</footer>
+  <div id="resultArea">
+    <div class="card verdict" id="verdictCard">
+      <div class="stamp" id="stamp">要修正</div>
+      <div class="verdict-text">
+        <b id="verdictTitle"></b>
+        <span id="verdictSub"></span>
+        <div class="counts" id="countsLine"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="sec-title">検査結果</span>
+      <ul class="results" id="resultsList"></ul>
+    </div>
+
+    <div class="card">
+      <span class="sec-title">投稿用コピー(2ブロック)</span>
+      <div class="copyblock">
+        <div class="cb-head"><span>ブロック1 掴み</span><button data-copy="hookPre">コピー</button></div>
+        <pre id="hookPre"></pre>
+      </div>
+      <div class="copyblock">
+        <div class="cb-head"><span>ブロック2 本文</span><button data-copy="bodyPre">コピー</button></div>
+        <pre id="bodyPre"></pre>
+      </div>
+    </div>
+  </div>
+
+  <footer>NIGHTSKY TOOLS ・ すべての検査はブラウザ内で完結します</footer>
 </div>
 
 <script>
-// 星空背景
 (function(){
-  const s = document.getElementById('stars');
-  for(let i=0;i<40;i++){
-    const d=document.createElement('i');
-    const sz=Math.random()*2+1;
-    d.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}%;top:${Math.random()*100}%;animation-delay:${Math.random()*3}s`;
-    s.appendChild(d);
+  "use strict";
+
+  /* ---------- 季節判定 ---------- */
+  const month = new Date().getMonth() + 1;
+  const season =
+    (month >= 3 && month <= 5) ? "春" :
+    (month >= 6 && month <= 8) ? "夏" :
+    (month >= 9 && month <= 11) ? "秋" : "冬";
+  document.getElementById("seasonBadge").textContent = "現在 " + month + "月 = " + season;
+
+  const SEASON_NG = {
+    "夏": ["あたたか","あったか","温か","暖か","湯気","湯船","お湯に浸か","お湯にゆっくり","お風呂に浸か","お風呂にゆっくり","風呂で温ま","熱いお茶","熱燗","おでん","シチュー","お鍋","鍋料理","ホットミルク","ホットドリンク","ホットティー","ホットココア","ホットコーヒー","白湯","湯たんぽ","こたつ","マフラー","ブランケットに包ま","ブランケットにくるま","毛布","ぬくもりに包ま","温もりに包ま","ぽかぽか","ストーブ","暖房"],
+    "冬": ["冷たい飲み物","冷たいお茶","冷たい麦茶","冷たいおしぼり","アイスクリーム","アイスコーヒー","アイスティー","かき氷","冷たいシャワー","風鈴","冷たいタオル","そうめん","冷やし"],
+    "春": [],
+    "秋": []
+  };
+
+  /* ---------- 定義 ---------- */
+  const SIGNS = ["牡羊座","牡牛座","双子座","蟹座","獅子座","乙女座","天秤座","蠍座","射手座","山羊座","水瓶座","魚座"];
+  const PSYCH = ["境界線","自己肯定感","自己肯定","承認欲求","アダルトチルドレン","インナーチャイルド","HSP","メンタルヘルス","トラウマ","バウンダリー","認知の歪み","自己開示","セルフケア","マインドフルネス"];
+  const HARD_KANJI = ["芻","鬱","躊","躇","朧","儚","瞞","縋","憔","悴","慟","杞","咽","逡","忸","怩","靄","靭","賽","篩","燻","翳"];
+  const UKENAOSHI = ["そう思って","そんなふうに","そんな風に","と感じて","そう感じて"];
+  const SHIME = "心と体をゆっくり休ませてあげてくださいね。";
+
+  /* ---------- 改行整形(読点→改行・実投稿準拠) ---------- */
+  const FMT_MAX = 26;  /* 目標行長 */
+  const FMT_TOL = 8;   /* この範囲までの超過は分割しない(再検査で結果が変わらないように) */
+  const FMT_MIN = 7;   /* 分割後の各行の最短長 */
+  /* 多字助詞を先に。は/が/を/も は弱い境界としてペナルティ */
+  const FMT_PARTICLE = /(ながら|ように|のに|ので|から|けど|たら|には|のは|とは|ても|て|に|で|と|は|が|を|も)/g;
+  const FMT_WEAK = { "は":4.5, "が":4.5, "を":4.5, "も":4.5 };
+  const FMT_BADNEXT = "。、!?！？」』）)てにでとはがをものたりらるれ";
+
+  function fmtCandidates(s){
+    const out = []; let m;
+    FMT_PARTICLE.lastIndex = 0;
+    while ((m = FMT_PARTICLE.exec(s)) !== null){
+      const end = m.index + m[0].length;
+      const next = s[end];
+      if (next === undefined) continue;
+      if (FMT_BADNEXT.indexOf(next) >= 0) continue;
+      out.push({ pos: end, pen: FMT_WEAK[m[0]] || 0 });
+    }
+    return out;
+  }
+
+  /* 文全体を行長が均等になる助詞位置で分割 */
+  function fmtBalanceSplit(s){
+    const len = s.length;
+    if (len <= FMT_MAX + FMT_TOL) return [s];
+    const n = Math.ceil(len / FMT_MAX);
+    const cands = fmtCandidates(s);
+    const breaks = [];
+    let prev = 0;
+    for (let k = 1; k < n; k++){
+      const target = len * k / n;
+      let best = null, bestScore = Infinity;
+      for (let i = 0; i < cands.length; i++){
+        const c = cands[i];
+        if (c.pos < prev + FMT_MIN) continue;
+        if (len - c.pos < FMT_MIN) continue;
+        const score = Math.abs(c.pos - target) + c.pen;
+        if (score < bestScore){ bestScore = score; best = c.pos; }
+      }
+      if (best === null) continue;
+      breaks.push(best); prev = best;
+    }
+    if (!breaks.length) return [s];
+    const out = []; let p = 0;
+    breaks.forEach(function(b){ out.push(s.slice(p, b)); p = b; });
+    out.push(s.slice(p));
+    return out;
+  }
+
+  /* 行を文に分割(。?!で切る。「」内・」等の直前では切らない) */
+  function fmtSentences(line){
+    const out = [];
+    let cur = "", depth = 0;
+    for (let i = 0; i < line.length; i++){
+      const ch = line[i];
+      cur += ch;
+      if (ch === "「" || ch === "『") depth++;
+      else if (ch === "」" || ch === "』") { if (depth > 0) depth--; }
+      else if (depth === 0 && "。？?！!".indexOf(ch) >= 0){
+        const next = line[i + 1];
+        if (next === "」" || next === "』" || next === "）" || next === ")") continue;
+        out.push(cur); cur = "";
+      }
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  /* 自動修正(固定文言化・既出フレーズ削除) */
+  const FMT_SUBS = [
+    { re: /今日お家に帰ったら/g, to: "今日帰ったら", label: "「今日お家に帰ったら」→「今日帰ったら」" },
+    { re: /肌触りのいいパジャマに着替えて、?/g, to: "", label: "「肌触りのいいパジャマに着替えて」を削除(既出)" },
+    { re: /肌触りのいいタオルで顔を包んで、?/g, to: "", label: "「肌触りのいいタオルで顔を包んで」を削除(既出)" },
+  ];
+  let fmtLastNotes = [];
+
+  function fmtIsProtected(l){ return /、、/.test(l) || /の皆さん\s*$/.test(l); }
+  function fmtApplySubs(line){
+    let changed = false;
+    FMT_SUBS.forEach(function(s){
+      const nl = line.replace(s.re, s.to);
+      if (nl !== line){ line = nl; changed = true; if (fmtLastNotes.indexOf(s.label) < 0) fmtLastNotes.push(s.label); }
+    });
+    return { line: line, changed: changed };
+  }
+
+  function formatBreaks(raw){
+    fmtLastNotes = [];
+    const out = [];
+    const lines = raw.replace(/\r\n/g, "\n").split("\n");
+    let firstContent = true;
+    let i = 0;
+    while (i < lines.length){
+      let line = lines[i].replace(/\s+$/, "");
+      if (line.trim() === "") { out.push(""); i++; continue; }
+      if (fmtIsProtected(line)) { out.push(line); i++; continue; }
+      const sub = fmtApplySubs(line);
+      line = sub.line;
+      /* 削除で行が空になったら行ごと落とす */
+      if (line.trim() === "") { i++; continue; }
+      /* 自動修正で変わった中途行は、文が完成するまで次行と結合して組み直す */
+      if (sub.changed){
+        while (!/[。？?！!」』]$/.test(line) &&
+               line.indexOf("「") < 0 && line.indexOf("」") < 0 &&
+               i + 1 < lines.length && lines[i+1].trim() !== "" && !fmtIsProtected(lines[i+1])){
+          i++;
+          const nxt = fmtApplySubs(lines[i].replace(/\s+$/, "")).line;
+          line += nxt;
+          if (nxt.indexOf("「") >= 0 || nxt.indexOf("」") >= 0) break;
+        }
+      }
+      fmtSentences(line).forEach(function(sent){
+        sent = sent.replace(/^\s+/, "");
+        if (!sent) return;
+        /* 本文冒頭が「と+漢字」で始まる場合(掴みからの継続)は「と」を独立行に */
+        if (firstContent && /^と[\u4E00-\u9FFF]/.test(sent)){
+          out.push("と");
+          sent = sent.slice(1);
+          if (fmtLastNotes.indexOf("冒頭の「と」を独立行に") < 0) fmtLastNotes.push("冒頭の「と」を独立行に");
+        }
+        /* 文末記号も単独読点もない断片は整形済みとみなして再処理しない */
+        if (!/[。？?！!」』]$/.test(sent) && !/(?<!、)、(?!、)/.test(sent)) {
+          out.push(sent);
+          return;
+        }
+        if (sent.indexOf(SHIME) >= 0) {
+          /* 締め文の文は改行しないが読点は削除する */
+          out.push(sent.replace(/(?<!、)、(?!、)/g, ""));
+          return;
+        }
+        /* 開き括弧直前の単独読点は削除 */
+        sent = sent.replace(/(?<!、)、(?=[「『（(“])/g, "");
+        if (sent.indexOf("「") >= 0 || sent.indexOf("」") >= 0){
+          /* 「」を含む文: 読点位置で改行 */
+          sent.split(/(?<!、)、(?!、)/).forEach(function(l){ if (l) out.push(l); });
+        } else {
+          /* 「」なしの文: 読点を削除し、均等な助詞位置で改行 */
+          sent = sent.replace(/(?<!、)、(?!、)/g, "");
+          fmtBalanceSplit(sent).forEach(function(l){ out.push(l); });
+        }
+      });
+      firstContent = false;
+      i++;
+    }
+    return out.join("\n");
+  }
+
+  let fmtPrev = null;
+  const fmtBtn = document.getElementById("fmtBtn");
+  const fmtUndo = document.getElementById("fmtUndo");
+  fmtBtn.addEventListener("click", function(){
+    const ta = document.getElementById("src");
+    if (!ta.value.trim()) { alert("投稿全文を貼り付けてください。"); return; }
+    const result = formatBreaks(ta.value);
+    if (result === ta.value) {
+      fmtBtn.textContent = "変更なし";
+      setTimeout(function(){ fmtBtn.textContent = "改行を整形(読点→改行)"; }, 1200);
+      return;
+    }
+    fmtPrev = ta.value;
+    ta.value = result;
+    fmtUndo.style.display = "";
+    fmtBtn.textContent = "整形済";
+    setTimeout(function(){ fmtBtn.textContent = "改行を整形(読点→改行)"; }, 1200);
+  });
+  fmtUndo.addEventListener("click", function(){
+    if (fmtPrev === null) return;
+    document.getElementById("src").value = fmtPrev;
+    fmtPrev = null;
+    fmtUndo.style.display = "none";
+  });
+
+
+  /* ---------- カスタム禁止ワード ---------- */
+  const NG_KEY = "sora_buzz_custom_ng";
+  function loadCustomNG(){
+    try { return JSON.parse(localStorage.getItem(NG_KEY)) || []; }
+    catch(e){ return []; }
+  }
+  function saveCustomNG(list){
+    try { localStorage.setItem(NG_KEY, JSON.stringify(list)); } catch(e){}
+  }
+  function renderNG(){
+    const list = loadCustomNG();
+    const ul = document.getElementById("ngList");
+    const empty = document.getElementById("ngEmpty");
+    ul.innerHTML = "";
+    empty.style.display = list.length ? "none" : "block";
+    list.forEach((item, i) => {
+      const li = document.createElement("li");
+      const w = document.createElement("span");
+      w.textContent = item.word;
+      const c = document.createElement("span");
+      c.className = "cat";
+      c.textContent = item.cat === "always" ? "常時" : item.cat;
+      const del = document.createElement("button");
+      del.textContent = "×";
+      del.setAttribute("aria-label", item.word + " を削除");
+      del.addEventListener("click", function(){
+        const l = loadCustomNG();
+        l.splice(i, 1);
+        saveCustomNG(l);
+        renderNG();
+      });
+      li.appendChild(w); li.appendChild(c); li.appendChild(del);
+      ul.appendChild(li);
+    });
+  }
+  document.getElementById("ngAdd").addEventListener("click", function(){
+    const input = document.getElementById("ngInput");
+    const word = input.value.trim();
+    if (!word) return;
+    const cat = document.getElementById("ngCat").value;
+    const list = loadCustomNG();
+    if (list.some(x => x.word === word && x.cat === cat)) { input.value = ""; return; }
+    list.push({ word, cat });
+    saveCustomNG(list);
+    input.value = "";
+    renderNG();
+  });
+  document.getElementById("ngInput").addEventListener("keydown", function(e){
+    if (e.key === "Enter") { e.preventDefault(); document.getElementById("ngAdd").click(); }
+  });
+
+  /* 書き出し・取り込み(Safariの7日削除対策) */
+  const ngIO = document.getElementById("ngIO");
+  document.getElementById("ngExport").addEventListener("click", function(){
+    const json = JSON.stringify(loadCustomNG());
+    ngIO.style.display = "block";
+    ngIO.value = json;
+    ngIO.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(json).then(() => {
+        this.textContent = "コピー済";
+        setTimeout(() => { this.textContent = "書き出し"; }, 1200);
+      }).catch(() => {});
+    }
+  });
+  document.getElementById("ngImport").addEventListener("click", function(){
+    if (ngIO.style.display === "none") {
+      ngIO.style.display = "block";
+      ngIO.value = "";
+      ngIO.focus();
+      return;
+    }
+    let data;
+    try { data = JSON.parse(ngIO.value); } catch(e){ alert("JSONを読み取れません。書き出した内容をそのまま貼り付けてください。"); return; }
+    if (!Array.isArray(data)) { alert("形式が不正です。"); return; }
+    const valid = data.filter(x => x && typeof x.word === "string" && x.word.trim() &&
+      (x.cat === "always" || x.cat === "夏" || x.cat === "冬"));
+    const list = loadCustomNG();
+    let added = 0;
+    valid.forEach(x => {
+      if (!list.some(y => y.word === x.word && y.cat === x.cat)) { list.push({word:x.word.trim(),cat:x.cat}); added++; }
+    });
+    saveCustomNG(list);
+    renderNG();
+    ngIO.style.display = "none";
+    alert(added + "語を取り込みました。");
+  });
+
+  renderNG();
+
+  /* ---------- 掴み履歴(自動保存・重複検知) ---------- */
+  const HIST_KEY = "sora_buzz_hook_history";
+  const HIST_MAX = 500;
+  function loadHist(){
+    try { return JSON.parse(localStorage.getItem(HIST_KEY)) || []; }
+    catch(e){ return []; }
+  }
+  function saveHist(list){
+    try { localStorage.setItem(HIST_KEY, JSON.stringify(list.slice(-HIST_MAX))); } catch(e){}
+  }
+  function localDate(){
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function normPhrase(s){
+    return s.replace(/[、。\s]/g, "");
+  }
+  function bigrams(s){
+    const set = new Set();
+    for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
+    return set;
+  }
+  function similarity(a, b){
+    const A = bigrams(normPhrase(a)), B = bigrams(normPhrase(b));
+    if (!A.size || !B.size) return 0;
+    let inter = 0;
+    A.forEach(x => { if (B.has(x)) inter++; });
+    return inter / (A.size + B.size - inter);
+  }
+  function hookPhrase(hook){
+    const ls = hook.split("\n").map(l => l.trim()).filter(Boolean);
+    return ls.length >= 2 ? ls[ls.length - 1].replace(/、+\s*$/, "") : "";
+  }
+  function checkHistory(phrase, sign){
+    const hist = loadHist();
+    const np = normPhrase(phrase);
+    const today = localDate();
+    const exacts = [], similar = [];
+    let self = null;
+    hist.forEach(h => {
+      /* 同じ星座・同じ日付 = 同一投稿の再検査とみなし照合から除外 */
+      const isSelf = h.sign === sign && h.date === today;
+      if (normPhrase(h.phrase) === np) {
+        if (isSelf) { self = h; return; }
+        exacts.push(h);
+        return;
+      }
+      if (isSelf) return;
+      const sim = similarity(h.phrase, phrase);
+      if (sim >= 0.4) similar.push({ h, sim });
+    });
+    similar.sort((a,b) => b.sim - a.sim);
+    return { exacts, similar, self };
+  }
+  function addHistory(sign, phrase){
+    const hist = loadHist();
+    const np = normPhrase(phrase);
+    if (hist.some(h => h.sign === sign && normPhrase(h.phrase) === np)) return;
+    hist.push({ sign: sign || "?", phrase, date: localDate() });
+    saveHist(hist);
+    renderHist();
+  }
+  function renderHist(){
+    const hist = loadHist();
+    document.getElementById("histCount").textContent = hist.length;
+    const ul = document.getElementById("histList");
+    const empty = document.getElementById("histEmpty");
+    ul.innerHTML = "";
+    empty.style.display = hist.length ? "none" : "block";
+    for (let i = hist.length - 1; i >= 0; i--){
+      const h = hist[i];
+      const li = document.createElement("li");
+      const w = document.createElement("span");
+      w.textContent = h.phrase;
+      w.style.flex = "1";
+      const c = document.createElement("span");
+      c.className = "cat";
+      c.textContent = h.sign + " " + h.date;
+      const del = document.createElement("button");
+      del.textContent = "×";
+      del.setAttribute("aria-label", h.phrase + " を削除");
+      (function(idx){
+        del.addEventListener("click", function(){
+          const l = loadHist();
+          l.splice(idx, 1);
+          saveHist(l);
+          renderHist();
+        });
+      })(i);
+      li.appendChild(w); li.appendChild(c); li.appendChild(del);
+      ul.appendChild(li);
+    }
+  }
+  const histIO = document.getElementById("histIO");
+  document.getElementById("histExport").addEventListener("click", function(){
+    const json = JSON.stringify(loadHist());
+    histIO.style.display = "block";
+    histIO.value = json;
+    histIO.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(json).then(() => {
+        this.textContent = "コピー済";
+        setTimeout(() => { this.textContent = "書き出し"; }, 1200);
+      }).catch(() => {});
+    }
+  });
+  document.getElementById("histImport").addEventListener("click", function(){
+    if (histIO.style.display === "none") {
+      histIO.style.display = "block";
+      histIO.value = "";
+      histIO.focus();
+      return;
+    }
+    let data;
+    try { data = JSON.parse(histIO.value); } catch(e){ alert("JSONを読み取れません。書き出した内容をそのまま貼り付けてください。"); return; }
+    if (!Array.isArray(data)) { alert("形式が不正です。"); return; }
+    const valid = data.filter(x => x && typeof x.phrase === "string" && x.phrase.trim());
+    const list = loadHist();
+    let added = 0;
+    valid.forEach(x => {
+      const np = normPhrase(x.phrase);
+      const sg = x.sign || "?";
+      if (!list.some(y => normPhrase(y.phrase) === np && y.sign === sg)) {
+        list.push({ sign: sg, phrase: x.phrase.trim(), date: (typeof x.date === "string" && x.date ? x.date : "----").slice(0,10) });
+        added++;
+      }
+    });
+    saveHist(list);
+    renderHist();
+    histIO.style.display = "none";
+    alert(added + "件を取り込みました。");
+  });
+  document.getElementById("histClear").addEventListener("click", function(){
+    if (!confirm("掴み履歴をすべて削除します。よろしいですか?")) return;
+    saveHist([]);
+    renderHist();
+  });
+  renderHist();
+
+  /* ---------- 分割 ---------- */
+  function splitPost(raw){
+    const text = raw.replace(/\r\n/g,"\n").replace(/\u3000/g," ").trim();
+    const lines = text.split("\n");
+    let hookEnd = -1;
+    for (let i = 0; i < Math.min(lines.length, 4); i++){
+      if (/の皆さん/.test(lines[i])) continue; /* 1行目(星座行)は掴み末尾と誤認しない */
+      if (/、{2,}\s*$/.test(lines[i])) { hookEnd = i; break; }
+    }
+    if (hookEnd < 0) {
+      /* 、、、行がない場合は最初の空行を境界にする */
+      const blank = lines.findIndex(l => l.trim() === "");
+      hookEnd = (blank > 0 && blank <= 4) ? blank - 1 : Math.min(1, lines.length - 1);
+    }
+    const hook = lines.slice(0, hookEnd + 1).join("\n").trim();
+    const body = lines.slice(hookEnd + 1).join("\n").trim();
+    return { hook, body };
+  }
+
+  /* ---------- 各検査 ---------- */
+  function runChecks(hook, body, version){
+    const R = [];
+    const push = (level, name, detail) => R.push({level, name, detail});
+    const all = hook + "\n" + body;
+
+    /* 1. 星座名 */
+    const firstLine = hook.split("\n")[0].trim();
+    const m = firstLine.match(/^(.+?)の皆さん$/);
+    if (!m) {
+      push("err","星座名","1行目が「〇〇座の皆さん」の形式と完全一致しません(余字・欠落の疑い): 「" + firstLine + "」");
+    } else if (!SIGNS.includes(m[1])) {
+      push("err","星座名","「" + m[1] + "」は正式な星座名ではありません(欠字・誤字の疑い)。");
+    } else {
+      push("ok","星座名","「" + m[1] + "」表記OK。");
+    }
+
+    /* 2. 読点、、、 */
+    const tail = hook.match(/、+\s*$/);
+    if (!tail) {
+      push("err","掴みの読点","掴みの末尾に「、、、」がありません。");
+    } else {
+      const n = (tail[0].match(/、/g) || []).length;
+      if (n === 3) push("ok","掴みの読点","「、、、」3つで固定OK。");
+      else push("err","掴みの読点","読点が" + n + "つです。3つに修正してください。");
+    }
+    if (/、、/.test(body)) {
+      push("err","本文の読点","本文中に「、、」の連続があります。誤入力の疑い。");
+    }
+
+    /* 3. 季節NGワード(カスタム含む) */
+    const custom = loadCustomNG();
+    const customSeason = custom.filter(x => x.cat === season).map(x => x.word);
+    const ngList = (SEASON_NG[season] || []).concat(customSeason);
+    const seasonHits = ngList.filter(w => all.includes(w));
+    if (seasonHits.length) {
+      push("err","季節描写(" + season + ")","季節外れの語を検出: " + seasonHits.map(w=>"「"+w+"」").join(" "));
+    } else {
+      push("ok","季節描写(" + season + ")","季節NGワードなし。");
+    }
+
+    /* 3b. カスタム禁止ワード(常時) */
+    const customAlways = custom.filter(x => x.cat === "always").map(x => x.word);
+    if (customAlways.length) {
+      const chits = customAlways.filter(w => all.includes(w));
+      if (chits.length) push("err","カスタム禁止ワード","検出: " + chits.map(w=>"「"+w+"」").join(" "));
+      else push("ok","カスタム禁止ワード","検出なし(" + customAlways.length + "語を照合)。");
+    }
+
+    /* 4. 締め文 */
+    if (body.endsWith(SHIME)) {
+      push("ok","締め文","「" + SHIME + "」一字一句一致。");
+    } else {
+      push("err","締め文","本文の末尾が固定文と一致しません。「" + SHIME + "」で終えてください。");
+    }
+    if (!/今日だけは/.test(body) || !/完全にやめて/.test(body)) {
+      push("err","締めの型","最終段落に「今日だけは〜を完全にやめて」の型が見つかりません。");
+    }
+
+    /* 5. 受け直し禁止 */
+    const bodyHead = body.slice(0, 30);
+    const uk = UKENAOSHI.filter(w => bodyHead.includes(w));
+    if (uk.length) {
+      push("err","接続(受け直し)","本文冒頭に受け直し表現: " + uk.map(w=>"「"+w+"」").join(" ") + "。掴みの続きから再開してください。");
+    } else {
+      push("ok","接続","冒頭に受け直し表現なし。");
+    }
+
+    /* 6. 心理学用語 */
+    const ps = PSYCH.filter(w => all.includes(w));
+    if (ps.length) push("err","心理学用語","禁止用語を検出: " + ps.map(w=>"「"+w+"」").join(" "));
+    else push("ok","心理学用語","検出なし。");
+
+    /* 7. 難読漢字 */
+    const hk = HARD_KANJI.filter(c => all.includes(c));
+    if (hk.length) push("warn","難読漢字","表示できない環境がある字: " + hk.map(c=>"「"+c+"」").join(" ") + "。平易な語への言い換えを推奨。");
+    else push("ok","難読漢字","検出なし。");
+
+    /* 8. 「無理に」回数 */
+    const muri = (all.match(/無理に/g) || []).length;
+    if (muri > 1) push("err","「無理に」の回数",muri + "回使用。全体で1回までです。");
+    else push("ok","「無理に」の回数",muri + "回。基準内。");
+
+    /* 9. 同語反復(漢字2字以上・カタカナ3字以上 3回以上) */
+    const words = (body.match(/[\u4E00-\u9FFF]{2,}/g) || [])
+      .concat(body.match(/[\u30A0-\u30FF]{3,}/g) || []);
+    const counts = {};
+    words.forEach(w => { counts[w] = (counts[w] || 0) + 1; });
+    const signName = m ? m[1] : "";
+    let rep = Object.keys(counts).filter(w => counts[w] >= 3 && w !== signName);
+    /* 長い語に含まれる部分語の重複報告を除外(「気持ち」があれば「持ち」を落とす) */
+    rep = rep.filter(w => !rep.some(o => o !== w && o.includes(w) && counts[o] >= counts[w]));
+    if (rep.length) {
+      push("warn","同語反復","3回以上使用: " + rep.map(w=>"「"+w+"」×"+counts[w]).join(" ") + "(テーマ語なら可。目視確認)");
+    } else {
+      push("ok","同語反復","3回以上の反復なし。");
+    }
+
+    /* 10. マークダウン・絵文字 */
+    const emojiRe = /\p{Extended_Pictographic}/u;
+    const mdHit = /(\*\*|^#|^- |^・{2,})/m.test(all);
+    if (emojiRe.test(all) || mdHit) push("err","記法・絵文字","マークダウン記法または絵文字を検出。プレーンテキストのみ。");
+    else push("ok","記法・絵文字","プレーンテキストOK。");
+
+    /* 10b. 不可視文字(コピペ混入対策) */
+    const invisRe = /[\u200B\u200C\u200E\u200F\u2060\uFEFF\u202A-\u202E\u2066-\u2069\u00AD]/g;
+    const invisHits = all.match(invisRe) || [];
+    const loneSurr = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(all);
+    if (invisHits.length || loneSurr) {
+      push("err","不可視文字",
+        (invisHits.length ? "ゼロ幅スペース・方向制御などの見えない文字を" + invisHits.length + "個検出。" : "") +
+        (loneSurr ? "壊れた文字データを検出。" : "") +
+        "コピペで混入した可能性。掴み/本文ブロックからコピーし直すと除去されます。");
+    } else {
+      push("ok","不可視文字","混入なし。");
+    }
+
+    /* 11. 文字数 */
+    const len = body.replace(/\s/g,"").length;
+    let range, okLen;
+    if (version === "std") { range = "600〜700"; okLen = len >= 600 && len <= 700; }
+    else if (version === "x") { range = "135以内"; okLen = len <= 135; }
+    else { range = "400〜450"; okLen = len >= 400 && len <= 450; }
+    if (okLen) push("ok","文字数(本文)",len + "字 / 基準 " + range + "字。");
+    else push("err","文字数(本文)",len + "字。基準 " + range + "字から外れています。");
+
+    return { results: R, len };
+  }
+
+  /* ---------- 描画 ---------- */
+  const runBtn = document.getElementById("runBtn");
+  runBtn.addEventListener("click", function(){
+    const raw = document.getElementById("src").value;
+    if (!raw.trim()) { alert("投稿全文を貼り付けてください。"); return; }
+    /* 検査前に自動で改行整形(読点→改行)を適用 */
+    const formatted = formatBreaks(raw);
+    if (formatted !== raw) {
+      fmtPrev = raw;
+      document.getElementById("src").value = formatted;
+      fmtUndo.style.display = "";
+    }
+    const version = document.querySelector("input[name=ver]:checked").value;
+    const { hook, body } = splitPost(formatted);
+    const { results, len } = runChecks(hook, body, version);
+    if (fmtLastNotes.length) results.unshift({ level:"ok", name:"自動修正", detail: fmtLastNotes.join(" / ") });
+
+    /* 掴みの重複検知(履歴照合)と自動保存 */
+    const phrase = hookPhrase(hook);
+    if (phrase) {
+      const sm = hook.split("\n")[0].trim().match(/^(.+?)の皆さん$/);
+      const sign = sm ? sm[1] : "?";
+      const { exacts, similar, self } = checkHistory(phrase, sign);
+      if (exacts.length) {
+        results.push({ level:"err", name:"掴みの重複",
+          detail:"過去に使用済みの掴みです: " + exacts.slice(0,3).map(e =>
+            "「" + e.phrase + "」(" + e.sign + " " + e.date + ")").join(" ") });
+      } else if (similar.length) {
+        results.push({ level:"warn", name:"掴みの類似",
+          detail:"過去の掴みと似ています: " + similar.slice(0,3).map(s =>
+            "「" + s.h.phrase + "」(" + s.h.sign + " " + s.h.date + "・類似度" + Math.round(s.sim*100) + "%)").join(" ") });
+      } else if (self) {
+        results.push({ level:"ok", name:"掴みの重複",
+          detail:"本日検査済みの同一投稿(再検査)。過去の掴みとの重複・類似なし。" });
+      } else {
+        results.push({ level:"ok", name:"掴みの重複", detail:"過去の掴みとの重複・類似なし。" });
+      }
+      addHistory(sign, phrase);
+    }
+
+    const errs = results.filter(r => r.level === "err").length;
+    const warns = results.filter(r => r.level === "warn").length;
+
+    const stamp = document.getElementById("stamp");
+    const title = document.getElementById("verdictTitle");
+    const sub = document.getElementById("verdictSub");
+    if (errs === 0) {
+      stamp.textContent = "合格";
+      stamp.classList.add("pass");
+      title.textContent = "検査合格";
+      sub.textContent = warns ? "警告" + warns + "件のみ。目視確認のうえ投稿できます。" : "すべての項目をクリアしました。";
+    } else {
+      stamp.textContent = "要修正";
+      stamp.classList.remove("pass");
+      title.textContent = "エラー " + errs + "件";
+      sub.textContent = "修正してから再検査してください。" + (warns ? "(警告" + warns + "件)" : "");
+    }
+    document.getElementById("countsLine").innerHTML =
+      "本文 <b>" + len + "</b>字 ・ 掴み " + hook.replace(/\s/g,"").length + "字 ・ " + season + "モードで検査";
+
+    const ul = document.getElementById("resultsList");
+    ul.innerHTML = "";
+    const order = { err: 0, warn: 1, ok: 2 };
+    results.sort((a,b) => order[a.level] - order[b.level]);
+    results.forEach(r => {
+      const li = document.createElement("li");
+      const badge = document.createElement("span");
+      badge.className = "badge " + r.level;
+      badge.textContent = r.level === "err" ? "エラー" : r.level === "warn" ? "警告" : "OK";
+      const div = document.createElement("div");
+      const nm = document.createElement("div");
+      nm.className = "res-name"; nm.textContent = r.name;
+      const dt = document.createElement("div");
+      dt.className = "res-detail"; dt.textContent = r.detail;
+      div.appendChild(nm); div.appendChild(dt);
+      li.appendChild(badge); li.appendChild(div);
+      ul.appendChild(li);
+    });
+
+    const cleanRe = /[\u200B\u200C\u200E\u200F\u2060\uFEFF\u202A-\u202E\u2066-\u2069\u00AD]/g;
+    document.getElementById("hookPre").textContent = hook.replace(cleanRe, "");
+    document.getElementById("bodyPre").textContent = body.replace(cleanRe, "");
+    document.getElementById("verdictCard").classList.add("show");
+    document.getElementById("resultArea").classList.add("show");
+    document.getElementById("resultArea").scrollIntoView({behavior:"smooth", block:"start"});
+  });
+
+  /* ---------- コピー ---------- */
+  document.querySelectorAll("[data-copy]").forEach(btn => {
+    btn.addEventListener("click", function(){
+      const text = document.getElementById(btn.dataset.copy).textContent;
+      const done = () => {
+        const old = btn.textContent;
+        btn.textContent = "コピー済";
+        setTimeout(() => { btn.textContent = old; }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    });
+  });
+  function fallbackCopy(text, done){
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); done(); } catch(e){}
+    document.body.removeChild(ta);
   }
 })();
-
-// 不可視文字の除去(ゼロ幅・制御文字。改行タブは残す)
-function stripInvisible(t){
-  const re=/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD]|[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
-  const count=(t.match(re)||[]).length;
-  return {text:t.replace(re,''), count};
-}
-
-// 置換ルール(全星座対応)
-const SIGNS='(牡羊|牡牛|双子|蟹|獅子|乙女|天秤|蠍|射手|山羊|水瓶|魚)';
-const RULES=[
-  {name:'「今の星の動きは、」→「今の星の動きは」',
-   re:/今の星の動きは、/g, to:'今の星の動きは'},
-  {name:'「今日お家に帰ったら、」→「今日帰ったら」',
-   re:/今日お家に帰ったら、?/g, to:'今日帰ったら'},
-  {name:'「今日帰ったら、」→「今日帰ったら」',
-   re:/今日帰ったら、/g, to:'今日帰ったら'},
-  {name:'「〇〇座さんは、」→「〇〇座さんは」',
-   re:new RegExp(SIGNS+'座さんは、','g'), to:'$1座さんは'},
-];
-
-// カスタム「、」除去ルール(localStorage保存・初回は既定1件)
-const LS_KEY='buzzFmt_rules';
-function loadRules(){
-  try{
-    const v=localStorage.getItem(LS_KEY);
-    if(v===null){ const d=['完全にやめて']; localStorage.setItem(LS_KEY,JSON.stringify(d)); return d; }
-    const arr=JSON.parse(v);
-    return Array.isArray(arr)?arr.filter(x=>typeof x==='string'&&x.trim()):[];
-  }catch(e){ return []; }
-}
-function saveRules(arr){
-  try{ localStorage.setItem(LS_KEY,JSON.stringify(arr)); }catch(e){}
-}
-function escapeReg(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
-let customRules=loadRules();
-
-function renderChips(){
-  const el=document.getElementById('chips');
-  el.innerHTML='';
-  if(customRules.length===0){
-    el.innerHTML='<span class="hint">登録なし</span>';
-    return;
-  }
-  customRules.forEach((r,i)=>{
-    const chip=document.createElement('span');
-    chip.className='chip';
-    const b=document.createElement('b'); b.textContent=r+'、';
-    const arrow=document.createElement('span'); arrow.textContent='→ 、なし';
-    const del=document.createElement('button'); del.textContent='✕';
-    del.setAttribute('aria-label',r+' を削除');
-    del.addEventListener('click',()=>{
-      customRules.splice(i,1); saveRules(customRules); renderChips();
-    });
-    chip.append(b,arrow,del);
-    el.appendChild(chip);
-  });
-}
-renderChips();
-
-document.getElementById('ruleAdd').addEventListener('click',()=>{
-  const input=document.getElementById('ruleInput');
-  const v=input.value.trim().replace(/、+$/,''); // 末尾の「、」は自動で落とす
-  if(!v) return;
-  if(customRules.includes(v)){ input.value=''; return; }
-  customRules.push(v); saveRules(customRules); renderChips();
-  input.value='';
-});
-
-document.getElementById('ioExport').addEventListener('click',()=>{
-  const area=document.getElementById('ioArea');
-  area.style.display='block';
-  area.value=JSON.stringify(customRules);
-  area.select();
-});
-document.getElementById('ioImport').addEventListener('click',()=>{
-  const area=document.getElementById('ioArea');
-  if(area.style.display!=='block'){ area.style.display='block'; area.value=''; area.focus(); return; }
-  try{
-    const arr=JSON.parse(area.value);
-    if(!Array.isArray(arr)) throw 0;
-    customRules=arr.filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim().replace(/、+$/,''));
-    customRules=[...new Set(customRules)];
-    saveRules(customRules); renderChips();
-    area.value=''; area.style.display='none';
-  }catch(e){
-    area.value='読み込み失敗: ["語句1","語句2"] の形式で貼り付けてください';
-  }
-});
-
-// モード切替(Threads / X)
-let mode='threads';
-const MODES={threads:{min:400,max:450,label:'字(目安400〜450)'}, x:{max:135,label:'字 / 135字'}};
-function setMode(m){
-  mode=m;
-  document.getElementById('modeThreads').classList.toggle('on',m==='threads');
-  document.getElementById('modeX').classList.toggle('on',m==='x');
-}
-document.getElementById('modeThreads').addEventListener('click',()=>setMode('threads'));
-document.getElementById('modeX').addEventListener('click',()=>setMode('x'));
-
-function format(){
-  const err=document.getElementById('err');
-  err.style.display='none';
-
-  let raw=document.getElementById('src').value.replace(/\r\n/g,'\n');
-  const inv=stripInvisible(raw);
-  raw=inv.text;
-
-  // 行に分解し、空行を飛ばして最初の2つの非空行を掴みとする
-  const allLines=raw.replace(/^\n+/,'').replace(/\s+$/,'').split('\n');
-  const hookIdx=[];
-  for(let i=0;i<allLines.length && hookIdx.length<2;i++){
-    if(allLines[i].trim()) hookIdx.push(i);
-  }
-  const bodyLines=hookIdx.length===2 ? allLines.slice(hookIdx[1]+1) : [];
-  let body=bodyLines.join('\n').replace(/^\n+/,'').replace(/\n{3,}/g,'\n\n').trim();
-  if(hookIdx.length<2 || !body){
-    err.textContent='掴み2行+本文の形式で貼り付けてください(3行以上必要です)。';
-    err.style.display='block';
-    document.getElementById('hookBlock').classList.remove('show');
-    document.getElementById('bodyBlock').classList.remove('show');
-    return;
-  }
-
-  const line2=allLines[hookIdx[1]].trim();
-  const hook=allLines[hookIdx[0]].trim()+'\n'+line2;
-
-  // 置換を本文のみに適用
-  const log=[];
-  RULES.forEach(r=>{
-    const hits=(body.match(r.re)||[]).length;
-    if(hits>0){ body=body.replace(r.re,r.to); }
-    log.push({name:r.name,hits});
-  });
-
-  // カスタム「、」除去ルールを適用(「、、」の一部は食わない)
-  customRules.forEach(word=>{
-    if(!word || !word.trim()) return; // 空ルールは全読点除去になるため二重ガード
-    const re=new RegExp(escapeReg(word)+'、(?!、)','g');
-    const hits=(body.match(re)||[]).length;
-    if(hits>0){ body=body.replace(re,word); }
-    log.push({name:'「'+word+'、」→「'+word+'」(カスタム)',hits});
-  });
-
-  // 「。」の後で改行(『』の内側・閉じカッコ直前・既に改行済みは除く)
-  body=body.split(/(『[^』]*』)/).map((part,i)=>{
-    if(i%2===1) return part; // 『』の内側はそのまま
-    return part.replace(/。(?![\n」』])/g,'。\n');
-  }).join('').replace(/\n{3,}/g,'\n\n').trim();
-  const brHits=(body.match(/。\n/g)||[]).length;
-  log.push({name:'「。」の後で改行',hits:brHits});
-
-  // 表示
-  document.getElementById('hookPre').textContent=hook;
-  document.getElementById('bodyPre').textContent=body;
-  document.getElementById('hookCount').textContent=line2.length+'字(2行目)';
-  const bodyLen=body.replace(/\n/g,'').length;
-  const bc=document.getElementById('bodyCount');
-  bc.classList.remove('over');
-  let lenLog=null;
-  if(mode==='x'){
-    bc.textContent=bodyLen+'字 / 135字';
-    if(bodyLen>135){
-      bc.classList.add('over');
-      lenLog={name:'X字数超過: 本文'+bodyLen+'字(135字以内に'+(bodyLen-135)+'字削減が必要)',hits:-1,noCount:true};
-    }else{
-      lenLog={name:'X字数OK: 本文'+bodyLen+'字(残り'+(135-bodyLen)+'字)',hits:1,noCount:true};
-    }
-  }else{
-    bc.textContent=bodyLen+'字';
-    if(bodyLen<400||bodyLen>450){
-      lenLog={name:'Threads目安外: 本文'+bodyLen+'字(目安400〜450字)',hits:0,noCount:true};
-    }else{
-      lenLog={name:'Threads字数OK: 本文'+bodyLen+'字',hits:1,noCount:true};
-    }
-  }
-  log.push(lenLog);
-
-  const logEl=document.getElementById('log');
-  let html='';
-  if(inv.count>0) html+=`<div class="inv">⚠ 不可視文字を ${inv.count} 個除去しました</div>`;
-  log.forEach(l=>{
-    const cnt = l.noCount ? '' : (l.hits>0 ? '('+l.hits+'件)' : '(該当なし)');
-    html+= l.hits===-1
-      ? `<div class="inv">⚠ ${l.name}</div>`
-      : l.hits>0
-        ? `<div class="hit">✔ ${l.name}${cnt}</div>`
-        : `<div class="none">— ${l.name}${cnt}</div>`;
-  });
-  logEl.innerHTML=html;
-
-  document.getElementById('hookBlock').classList.add('show');
-  document.getElementById('bodyBlock').classList.add('show');
-
-  // 次の投稿をすぐ貼れるよう入力欄を空にする
-  document.getElementById('src').value='';
-}
-
-document.getElementById('run').addEventListener('click',format);
-document.getElementById('clear').addEventListener('click',()=>{
-  document.getElementById('src').value='';
-  document.getElementById('hookBlock').classList.remove('show');
-  document.getElementById('bodyBlock').classList.remove('show');
-  document.getElementById('err').style.display='none';
-});
-
-// コピー(clipboard API + フォールバック)
-document.querySelectorAll('.copybtn').forEach(btn=>{
-  btn.addEventListener('click',async()=>{
-    const text=document.getElementById(btn.dataset.target).textContent;
-    try{
-      await navigator.clipboard.writeText(text);
-    }catch(e){
-      const ta=document.createElement('textarea');
-      ta.value=text; document.body.appendChild(ta);
-      ta.select(); document.execCommand('copy'); ta.remove();
-    }
-    btn.textContent='コピー済み';
-    btn.classList.add('copied');
-    setTimeout(()=>{btn.textContent='コピー';btn.classList.remove('copied');},1500);
-  });
-});
 </script>
 </body>
 </html>
