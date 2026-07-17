@@ -164,6 +164,23 @@ ul.ngwords li button{
 }
 ul.ngwords li button:hover{color:var(--err)}
 .ngempty{font-size:12px;color:var(--muted);margin-top:12px}
+/* modal / toast / banner / sync */
+.modal-ov{position:fixed;inset:0;background:rgba(6,10,24,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.modal-ov.show{display:flex}
+.modal-box{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:440px;width:100%;padding:18px}
+.modal-box h3{font-size:15px;letter-spacing:.05em;margin-bottom:10px}
+.modal-box .m-text{font-size:13px;color:var(--muted);line-height:1.8;white-space:pre-wrap;word-break:break-word}
+.modal-box input{width:100%;margin-top:12px;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:14px;font-family:'Zen Kaku Gothic New',sans-serif}
+.modal-box input:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:transparent}
+.m-btns{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;justify-content:flex-end}
+.m-btns button{border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;font-family:'Zen Kaku Gothic New',sans-serif;border:1px solid var(--line);background:transparent;color:var(--muted)}
+.m-btns button:active{transform:translateY(1px)}
+.m-btns button.primary{background:var(--gold);border-color:var(--gold);color:var(--bg);font-weight:700}
+.m-btns button.danger{background:transparent;border-color:var(--err);color:var(--err);font-weight:700}
+#toasts{position:fixed;left:0;right:0;bottom:14px;display:flex;flex-direction:column;align-items:center;gap:8px;z-index:60;pointer-events:none}
+.toast{pointer-events:auto;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 14px;font-size:13px;display:flex;gap:12px;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.4);max-width:92vw}
+.toast button{background:transparent;border:none;color:var(--gold);font-weight:700;cursor:pointer;font-size:13px;font-family:'Zen Kaku Gothic New',sans-serif;white-space:nowrap}
+#banner{background:rgba(224,179,92,.12);border:1px solid var(--warn);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.7;margin-bottom:10px}
 footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);letter-spacing:.15em}
 @media (prefers-reduced-motion:no-preference){
   .card{animation:fade .25s ease}
@@ -177,6 +194,8 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
     <h1>バズ投稿スキャナ<small>HOSHINO SORA / BUZZ POST SCANNER</small></h1>
     <div class="season" id="seasonBadge"></div>
   </header>
+
+  <div id="banner" style="display:none"></div>
 
   <div class="card">
     <label class="small" for="src">投稿全文を貼り付け(掴み+本文)</label>
@@ -230,6 +249,20 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
     </details>
   </div>
 
+  <div class="card">
+    <details class="ngbox" id="syncbox">
+      <summary>同期・バックアップ(2台目の端末とデータを揃える)</summary>
+      <div class="ngform" style="margin-top:12px;flex-wrap:wrap">
+        <button id="bakExport">バックアップ書き出し</button>
+        <button id="bakRestore">バックアップから復元</button>
+        <button id="cloudBtn">クラウド同期設定</button>
+      </div>
+      <div class="ngempty" id="syncStatus">クラウド同期: 未設定</div>
+      <div class="ngempty">書き出しは禁止ワード・掴み履歴・削除記録をまとめた1ファイルです。復元は「統合」を推奨します。クラウド同期は送信前に端末内でAES-GCM暗号化します。閉じる瞬間の自動送信はベストエフォートで、届かなくても次回同期で収束します。</div>
+      <input type="file" id="bakFile" accept=".json,application/json,text/plain" style="display:none">
+    </details>
+  </div>
+
   <div id="resultArea">
     <div class="card verdict" id="verdictCard">
       <div class="stamp" id="stamp">要修正</div>
@@ -261,7 +294,391 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
   <footer>NIGHTSKY TOOLS ・ すべての検査はブラウザ内で完結します</footer>
 </div>
 
+<div class="modal-ov" id="modalOv"><div class="modal-box" id="modalBox"></div></div>
+<div id="toasts"></div>
+
 <script>
+/* ===== SYNC-LOGIC-BEGIN =====
+   純ロジック層(DOM・ネットワーク非依存)。Node自動テストの対象(命令書 §2-5/§9-3)。 */
+const SB = (function(){
+  "use strict";
+  const NG_MAX = 300, HIST_MAX = 500, TOMB_MAX = 100, SALV_MAX = 30;
+  const PBKDF2_ITER = 200000; /* §4-1: 15万回以上 */
+  const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+  /* 制御・不可視文字。タブ(\u0009)は墓標キーの区切りに使うためキー用だけ許可 */
+  const CTRL_RE = /[\u0000-\u001F\u007F\u200B-\u200F\u2060\uFEFF\u202A-\u202E\u2066-\u2069\u00AD]/g;
+  const KEYCTRL_RE = /[\u0000-\u0008\u000A-\u001F\u007F\u200B-\u200F\u2060\uFEFF\u202A-\u202E\u2066-\u2069\u00AD]/g;
+
+  /* §1-8: ミリ秒 + 単調増加カウンタ + ランダム(同一ミリ秒1万件で衝突ゼロをテストで証明) */
+  let uidCnt = 0;
+  function uid(){
+    uidCnt = (uidCnt + 1) % 1679616; /* 36^4 */
+    return Date.now().toString(36) + "-" + uidCnt.toString(36).padStart(4, "0") + "-" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function cleanStr(s, max){
+    if (typeof s !== "string") return "";
+    return s.replace(CTRL_RE, "").trim().slice(0, max);
+  }
+  function cleanKey(s){
+    if (typeof s !== "string") return "";
+    return s.replace(KEYCTRL_RE, "").slice(0, 200);
+  }
+  const TS_MAX = 1e13; /* 悪意ある巨大ts(例:1e308)は +1 が効かなくなるため上限で丸める */
+  function num0(v){
+    v = Number(v);
+    if (!Number.isFinite(v) || v < 0) return 0;
+    return Math.min(Math.floor(v), TS_MAX);
+  }
+  function sanId(id){
+    return (typeof id === "string" && ID_RE.test(id)) ? id : uid(); /* §1-9: 不一致なら再生成 */
+  }
+  function normPhrase(s){ return String(s).replace(/[、。\s]/g, ""); }
+  function ngKey(it){ return it.cat + "\t" + it.word; }
+  function histKey(it){ return it.sign + "\t" + normPhrase(it.phrase); }
+  function emptyState(){ return { v: 2, ng: [], ngT: [], hist: [], histT: [], gT: [], salv: [] }; }
+
+  function capItems(arr, max, keyFn){
+    return arr.slice().sort(function(a, b){
+      if (a.ts !== b.ts) return b.ts - a.ts;
+      const ka = keyFn(a), kb = keyFn(b);
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    }).slice(0, max);
+  }
+  function dedupeTombs(arr){
+    const m = new Map();
+    arr.forEach(function(t){
+      const p = m.get(t.k);
+      if (p === undefined || t.ts > p) m.set(t.k, t.ts);
+    });
+    return m;
+  }
+  function capTombs(map){
+    const out = [];
+    map.forEach(function(ts, k){ out.push({ k: k, ts: ts }); });
+    /* 上限超過は古い順に破棄(§8-8)。一括削除は個別墓標でなくグループ墓標で表す(§1-3) */
+    out.sort(function(a, b){ return b.ts - a.ts || (a.k < b.k ? -1 : a.k > b.k ? 1 : 0); });
+    return out.slice(0, TOMB_MAX);
+  }
+  function sanTombsMap(raw){
+    const m = new Map();
+    if (!Array.isArray(raw)) return m;
+    raw.slice(0, TOMB_MAX * 5).forEach(function(t){
+      if (!t || typeof t !== "object") return;
+      const k = cleanKey(t.k);
+      if (!k) return;
+      const ts = num0(t.ts);
+      const p = m.get(k);
+      if (p === undefined || ts > p) m.set(k, ts);
+    });
+    return m;
+  }
+  function sanGT(raw){
+    if (!Array.isArray(raw)) return [];
+    const m = new Map();
+    raw.forEach(function(t){
+      if (!t || typeof t !== "object") return;
+      if (t.k !== "ng" && t.k !== "hist") return;
+      const ts = num0(t.ts);
+      const p = m.get(t.k);
+      if (p === undefined || ts > p) m.set(t.k, ts);
+    });
+    const out = [];
+    m.forEach(function(ts, k){ out.push({ k: k, ts: ts }); });
+    out.sort(function(a, b){ return a.k < b.k ? -1 : 1; });
+    return out;
+  }
+  function sanSalv(raw){
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set();
+    const out = [];
+    raw.slice(0, SALV_MAX * 4).forEach(function(s){
+      if (!s || typeof s !== "object") return;
+      const k = cleanKey(s.k);
+      const j = (typeof s.j === "string") ? s.j.slice(0, 400) : "";
+      if (!k || !j) return;
+      const ts = num0(s.ts);
+      const sig = k + "\u0002" + ts + "\u0002" + j;
+      if (seen.has(sig)) return;
+      seen.add(sig);
+      out.push({ k: k, ts: ts, j: j });
+    });
+    out.sort(function(a, b){ return b.ts - a.ts || (a.k < b.k ? -1 : a.k > b.k ? 1 : 0) || (a.j < b.j ? -1 : a.j > b.j ? 1 : 0); });
+    return out.slice(0, SALV_MAX);
+  }
+
+  /* 外部から入るデータ(同期・復元・貼り付け)の単一サニタイズ関数(§1-10)。
+     旧形式(tsなし)は ts=0 として受け入れる = どんな変更にも負ける安全側(§1-1)。 */
+  function sanitizeState(raw){
+    const st = emptyState();
+    if (!raw || typeof raw !== "object") return st;
+    const ngm = new Map();
+    if (Array.isArray(raw.ng)) raw.ng.slice(0, NG_MAX * 4).forEach(function(x){
+      if (!x || typeof x !== "object") return;
+      const word = cleanStr(x.word, 30);
+      const cat = (x.cat === "always" || x.cat === "夏" || x.cat === "冬") ? x.cat : "";
+      if (!word || !cat) return;
+      const it = { id: sanId(x.id), word: word, cat: cat, ts: num0(x.ts) };
+      const k = ngKey(it), p = ngm.get(k);
+      if (!p || it.ts > p.ts || (it.ts === p.ts && it.id < p.id)) ngm.set(k, it);
+    });
+    st.ng = capItems(Array.from(ngm.values()), NG_MAX, ngKey);
+    const hm = new Map();
+    if (Array.isArray(raw.hist)) raw.hist.slice(0, HIST_MAX * 4).forEach(function(x){
+      if (!x || typeof x !== "object") return;
+      const phrase = cleanStr(x.phrase, 120);
+      if (!phrase) return;
+      const sign = cleanStr(x.sign, 10) || "?";
+      const date = (typeof x.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.date)) ? x.date : "----";
+      const it = { id: sanId(x.id), sign: sign, phrase: phrase, date: date, ts: num0(x.ts) };
+      const k = histKey(it), p = hm.get(k);
+      if (!p || it.ts > p.ts || (it.ts === p.ts && it.id < p.id)) hm.set(k, it);
+    });
+    st.hist = capItems(Array.from(hm.values()), HIST_MAX, histKey);
+    /* 死んだ項目は「上限適用前」の完全な墓標マップで除去する。
+       上限適用後のマップで判定すると、破棄された墓標の項目が復活してしまう */
+    const ngTm = sanTombsMap(raw.ngT), hiTm = sanTombsMap(raw.histT);
+    st.gT = sanGT(raw.gT);
+    const gNg = gtTs(st.gT, "ng"), gHi = gtTs(st.gT, "hist");
+    st.ng = st.ng.filter(function(it){
+      const k = ngKey(it), tv = ngTm.has(k) ? ngTm.get(k) : -1;
+      return it.ts > Math.max(tv, gNg);
+    });
+    st.hist = st.hist.filter(function(it){
+      const k = histKey(it), tv = hiTm.has(k) ? hiTm.get(k) : -1;
+      return it.ts > Math.max(tv, gHi);
+    });
+    st.ngT = capTombs(ngTm);
+    st.histT = capTombs(hiTm);
+    st.salv = sanSalv(raw.salv);
+    return st;
+  }
+
+  function tombTs(tombArr, k){
+    let v = -1;
+    tombArr.forEach(function(t){ if (t.k === k && t.ts > v) v = t.ts; });
+    return v;
+  }
+  function gtTs(gtArr, list){
+    let v = -1;
+    gtArr.forEach(function(g){ if (g.k === list && g.ts > v) v = g.ts; });
+    return v;
+  }
+  /* 実効墓標 = max(個別墓標, 所属グループ墓標)(§1-3) */
+  function effTombOf(st, list, k){
+    return Math.max(tombTs(list === "ng" ? st.ngT : st.histT, k), gtTs(st.gT, list));
+  }
+  function aliveList(st, list){
+    const keyFn = list === "ng" ? ngKey : histKey;
+    const items = (list === "ng" ? st.ng : st.hist).filter(function(it){
+      return it.ts > effTombOf(st, list, keyFn(it)); /* 追加ts > 墓標ts で存在(§1-6) */
+    });
+    return items.slice().sort(function(a, b){
+      return a.ts - b.ts || (keyFn(a) < keyFn(b) ? -1 : 1);
+    });
+  }
+
+  function contentOf(list, it){
+    return list === "ng" ? JSON.stringify([it.word, it.cat]) : JSON.stringify([it.sign, it.phrase, it.date]);
+  }
+  function mergeList(list, aItems, bItems, tombMapM, gts, salvOut, now){
+    const keyFn = list === "ng" ? ngKey : histKey;
+    const m = new Map();
+    function take(it){
+      const k = keyFn(it);
+      const p = m.get(k);
+      if (!p){ m.set(k, it); return; }
+      /* LWW。ts同点は内容→idの順で対称・決定的に解決(両端末で同じ勝者になりピンポンしない) */
+      let win = p, lose = it;
+      if (it.ts > p.ts){ win = it; lose = p; }
+      else if (it.ts === p.ts){
+        const ci = contentOf(list, it), cp = contentOf(list, p);
+        if (ci !== cp){ if (ci > cp){ win = it; lose = p; } }
+        else if (it.id < p.id){ win = it; lose = p; }
+      }
+      if (contentOf(list, win) !== contentOf(list, lose)){
+        salvOut.push({ k: k, ts: now, j: JSON.stringify(lose).slice(0, 400) }); /* 負けた側は退避(§2-1) */
+      }
+      m.set(k, win);
+    }
+    aItems.forEach(take);
+    bItems.forEach(take);
+    const out = [];
+    m.forEach(function(it, k){
+      const e = Math.max(tombMapM.has(k) ? tombMapM.get(k) : -1, gts);
+      if (it.ts > e) out.push(it); /* 実効墓標との勝敗(§2-3)。片側のみの項目は墓標に負けない限り追加(§2-2) */
+    });
+    return capItems(out, list === "ng" ? NG_MAX : HIST_MAX, keyFn);
+  }
+  /* 純関数マージ: 両入力をサニタイズ→統合→出力(§2-5) */
+  function mergeState(aRaw, bRaw, now){
+    now = num0(now) || Date.now();
+    const a = sanitizeState(aRaw), b = sanitizeState(bRaw);
+    const st = emptyState();
+    st.gT = sanGT(a.gT.concat(b.gT));
+    const ngTomb = dedupeTombs(a.ngT.concat(b.ngT));
+    const histTomb = dedupeTombs(a.histT.concat(b.histT));
+    st.ngT = capTombs(ngTomb);
+    st.histT = capTombs(histTomb);
+    const salv = [];
+    st.ng = mergeList("ng", a.ng, b.ng, ngTomb, gtTs(st.gT, "ng"), salv, now);
+    st.hist = mergeList("hist", a.hist, b.hist, histTomb, gtTs(st.gT, "hist"), salv, now);
+    st.salv = sanSalv(a.salv.concat(b.salv, salv));
+    return st;
+  }
+
+  /* 決定的直列化(保存・送信・差分比較用)。最終同期時刻など端末ローカル値は一切含めない(§1-7) */
+  function canonical(stRaw){
+    const st = sanitizeState(stRaw);
+    function byKey(keyFn){
+      return function(a, b){ const ka = keyFn(a), kb = keyFn(b); return ka < kb ? -1 : ka > kb ? 1 : 0; };
+    }
+    return JSON.stringify({
+      v: 2,
+      ng: st.ng.slice().sort(byKey(ngKey)).map(function(x){ return { id: x.id, word: x.word, cat: x.cat, ts: x.ts }; }),
+      ngT: st.ngT,
+      hist: st.hist.slice().sort(byKey(histKey)).map(function(x){ return { id: x.id, sign: x.sign, phrase: x.phrase, date: x.date, ts: x.ts }; }),
+      histT: st.histT,
+      gT: st.gT,
+      salv: st.salv
+    });
+  }
+  function sameState(a, b){ return canonical(a) === canonical(b); }
+
+  /* 実測diff: スナップショット比較(内容ベース・ts/id除外)(§3-5) */
+  function diffList(list, beforeRaw, afterRaw){
+    const before = sanitizeState(beforeRaw), after = sanitizeState(afterRaw);
+    const keyFn = list === "ng" ? ngKey : histKey;
+    const bm = new Map();
+    aliveList(before, list).forEach(function(it){ bm.set(keyFn(it), it); });
+    let added = 0, updated = 0, same = 0;
+    aliveList(after, list).forEach(function(it){
+      const p = bm.get(keyFn(it));
+      if (!p) added++;
+      else if (contentOf(list, p) !== contentOf(list, it)) updated++;
+      else same++;
+    });
+    return { added: added, updated: updated, same: same };
+  }
+
+  /* 復元(統合): ファイル内の項目は墓標があっても復活。復活tsは max(現在時刻, 実効墓標ts+1)(§3-4)。
+     ファイル側の墓標は取り込まない(復元操作でデータを消さないため)。 */
+  function restoreMerge(curRaw, fileRaw, now){
+    now = num0(now) || Date.now();
+    const cur = sanitizeState(curRaw);
+    const file = sanitizeState(fileRaw);
+    const bumped = emptyState();
+    bumped.ng = file.ng.map(function(it){
+      const e = effTombOf(cur, "ng", ngKey(it));
+      return (it.ts <= e) ? { id: it.id, word: it.word, cat: it.cat, ts: Math.max(now, e + 1) } : it;
+    });
+    bumped.hist = file.hist.map(function(it){
+      const e = effTombOf(cur, "hist", histKey(it));
+      return (it.ts <= e) ? { id: it.id, sign: it.sign, phrase: it.phrase, date: it.date, ts: Math.max(now, e + 1) } : it;
+    });
+    const merged = mergeState(cur, bumped, now);
+    return { state: merged, diff: { ng: diffList("ng", cur, merged), hist: diffList("hist", cur, merged) } };
+  }
+
+  /* 自由テキストからのJSON抽出: 文字列リテラルを考慮した括弧深度カウントの1回走査 O(n)(§5-5)。
+     候補のparse失敗時は候補の終端から再開する(先頭+1からの再走査はしない = O(n)維持)。 */
+  function extractJSON(text, maxLen){
+    maxLen = maxLen || 2000000;
+    if (typeof text !== "string") return { ok: false, error: "empty" };
+    if (text.length > maxLen) return { ok: false, error: "too_large" };
+    const t = text.trim();
+    if (!t) return { ok: false, error: "empty" };
+    try { return { ok: true, value: JSON.parse(t) }; } catch(e){ /* 前後にゴミがある場合へ続く */ }
+    let i = 0, tries = 0;
+    const n = t.length;
+    while (i < n){
+      while (i < n && t[i] !== "{" && t[i] !== "[") i++;
+      if (i >= n) break;
+      const start = i;
+      let depth = 0, inStr = false, esc = false, end = -1;
+      for (; i < n; i++){
+        const ch = t[i];
+        if (inStr){
+          if (esc) esc = false;
+          else if (ch === "\\") esc = true;
+          else if (ch === '"') inStr = false;
+          continue;
+        }
+        if (ch === '"') inStr = true;
+        else if (ch === "{" || ch === "[") depth++;
+        else if (ch === "}" || ch === "]"){
+          depth--;
+          if (depth === 0){ end = i + 1; break; }
+        }
+      }
+      if (end < 0) return { ok: false, error: "unclosed" };
+      try { return { ok: true, value: JSON.parse(t.slice(start, end)) }; }
+      catch(e){
+        i = end;
+        if (++tries >= 2000) return { ok: false, error: "not_found" }; /* parse例外の大量発生による低速化を防ぐ */
+      }
+    }
+    return { ok: false, error: "not_found" };
+  }
+
+  /* ---- E2E暗号(AES-GCM + PBKDF2)(§4) ---- */
+  const keyCache = new Map(); /* セッション内鍵キャッシュ。導出は初回のみ(§4-7) */
+  const cryptoObj = (typeof crypto !== "undefined") ? crypto : null;
+  function b64enc(buf){
+    const u = new Uint8Array(buf);
+    let s = "";
+    for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]);
+    return btoa(s);
+  }
+  function b64dec(s){
+    const bin = atob(String(s));
+    const u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u;
+  }
+  function cacheKeyOf(pass, saltB64, iter){ return saltB64 + "|" + iter + "|" + pass; }
+  function hasCachedKey(pass, saltB64, iter){ return keyCache.has(cacheKeyOf(pass, saltB64, iter)); }
+  function clearKeyCache(){ keyCache.clear(); } /* 解除時に破棄(§4-8) */
+  async function deriveKey(pass, saltB64, iter){
+    const ck = cacheKeyOf(pass, saltB64, iter);
+    if (keyCache.has(ck)) return keyCache.get(ck);
+    const km = await cryptoObj.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+    const key = await cryptoObj.subtle.deriveKey(
+      { name: "PBKDF2", salt: b64dec(saltB64), iterations: iter, hash: "SHA-256" },
+      km, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    keyCache.set(ck, key);
+    return key;
+  }
+  /* 固定salt(設定内)で鍵をキャッシュし、IVは毎回ランダム(GCMの要件はIV一意性 §4-7) */
+  async function encryptPayload(pass, saltB64, iter, plain){
+    const key = await deriveKey(pass, saltB64, iter);
+    const iv = cryptoObj.getRandomValues(new Uint8Array(12));
+    const ct = await cryptoObj.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, new TextEncoder().encode(plain));
+    return { v: 1, alg: "AES-GCM", kdf: "PBKDF2-SHA256", iter: iter, salt: saltB64, iv: b64enc(iv), ct: b64enc(ct) };
+  }
+  /* 復号はメッセージ内のsaltから導出(互換性維持 §4-7)。失敗は例外 = 呼び出し側で同期停止(§4-9) */
+  async function decryptPayload(pass, msg){
+    if (!msg || typeof msg !== "object") throw new Error("bad_msg");
+    const iter = num0(msg.iter);
+    if (iter < 150000 || iter > 5000000) throw new Error("bad_iter");
+    const key = await deriveKey(pass, String(msg.salt), iter);
+    const pt = await cryptoObj.subtle.decrypt({ name: "AES-GCM", iv: b64dec(msg.iv) }, key, b64dec(msg.ct));
+    return new TextDecoder().decode(pt);
+  }
+  function randomSaltB64(){ return b64enc(cryptoObj.getRandomValues(new Uint8Array(16))); }
+
+  return {
+    NG_MAX: NG_MAX, HIST_MAX: HIST_MAX, TOMB_MAX: TOMB_MAX, PBKDF2_ITER: PBKDF2_ITER,
+    uid: uid, normPhrase: normPhrase, ngKey: ngKey, histKey: histKey,
+    emptyState: emptyState, sanitizeState: sanitizeState,
+    tombTs: tombTs, effTombOf: effTombOf, aliveList: aliveList,
+    mergeState: mergeState, canonical: canonical, sameState: sameState,
+    diffList: diffList, restoreMerge: restoreMerge, extractJSON: extractJSON,
+    hasCachedKey: hasCachedKey, clearKeyCache: clearKeyCache,
+    encryptPayload: encryptPayload, decryptPayload: decryptPayload, randomSaltB64: randomSaltB64
+  };
+})();
+/* ===== SYNC-LOGIC-END ===== */
 (function(){
   "use strict";
 
@@ -377,6 +794,10 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
   function formatBreaks(raw){
     fmtLastNotes = [];
     const out = [];
+    /* 「」が連続する箇所(」「)は間で改行して出力 */
+    function pushLines(s){
+      s.replace(/」「/g, "」\n「").split("\n").forEach(function(x){ if (x) out.push(x); });
+    }
     const lines = raw.replace(/\r\n/g, "\n").split("\n");
     let firstContent = true;
     let i = 0;
@@ -403,26 +824,29 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
         sent = sent.replace(/^\s+/, "");
         if (!sent) return;
         /* 本文冒頭が「と+漢字」で始まる場合(掴みからの継続)は「と」を独立行に */
-        if (firstContent && /^と[\u4E00-\u9FFF]/.test(sent)){
+        if (firstContent && /^と(?!ても|ころ|にかく|りあえず|もかく|うとう|はいえ|うぜん|んでも).+/.test(sent)){
           out.push("と");
           sent = sent.slice(1);
           if (fmtLastNotes.indexOf("冒頭の「と」を独立行に") < 0) fmtLastNotes.push("冒頭の「と」を独立行に");
         }
         /* 文末記号も単独読点もない断片は整形済みとみなして再処理しない */
         if (!/[。？?！!」』]$/.test(sent) && !/(?<!、)、(?!、)/.test(sent)) {
-          out.push(sent);
+          pushLines(sent);
           return;
         }
         if (sent.indexOf(SHIME) >= 0) {
-          /* 締め文の文は改行しないが読点は削除する */
-          out.push(sent.replace(/(?<!、)、(?!、)/g, ""));
+          /* 締め文: 読点を削除し「心と体を」の前で2行に分ける */
+          sent = sent.replace(/(?<!、)、(?!、)/g, "");
+          const si = sent.indexOf("心と体を");
+          if (si > 0) { out.push(sent.slice(0, si)); out.push(sent.slice(si)); }
+          else out.push(sent);
           return;
         }
         /* 開き括弧直前の単独読点は削除 */
         sent = sent.replace(/(?<!、)、(?=[「『（(“])/g, "");
         if (sent.indexOf("「") >= 0 || sent.indexOf("」") >= 0){
           /* 「」を含む文: 読点位置で改行 */
-          sent.split(/(?<!、)、(?!、)/).forEach(function(l){ if (l) out.push(l); });
+          sent.split(/(?<!、)、(?!、)/).forEach(function(l){ if (l) pushLines(l); });
         } else {
           /* 「」なしの文: 読点を削除し、均等な助詞位置で改行 */
           sent = sent.replace(/(?<!、)、(?!、)/g, "");
@@ -440,7 +864,7 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
   const fmtUndo = document.getElementById("fmtUndo");
   fmtBtn.addEventListener("click", function(){
     const ta = document.getElementById("src");
-    if (!ta.value.trim()) { alert("投稿全文を貼り付けてください。"); return; }
+    if (!ta.value.trim()) { showToast("投稿全文を貼り付けてください"); return; }
     const result = formatBreaks(ta.value);
     if (result === ta.value) {
       fmtBtn.textContent = "変更なし";
@@ -461,22 +885,193 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
   });
 
 
-  /* ---------- カスタム禁止ワード ---------- */
-  const NG_KEY = "sora_buzz_custom_ng";
+  /* ---------- UI基盤: バナー・トースト・モーダル(confirm/prompt/alert 不使用 §5-1) ---------- */
+  function showBanner(msg){
+    const b = document.getElementById("banner");
+    b.textContent = msg;
+    b.style.display = "block";
+  }
+  function showToast(msg, actionLabel, action){
+    const wrap = document.getElementById("toasts");
+    const t = document.createElement("div");
+    t.className = "toast";
+    const s = document.createElement("span");
+    s.textContent = msg;
+    t.appendChild(s);
+    let done = false;
+    function remove(){ if (t.parentNode) t.parentNode.removeChild(t); }
+    const timer = setTimeout(remove, 6500);
+    if (actionLabel && action){
+      const btn = document.createElement("button");
+      btn.textContent = actionLabel;
+      btn.addEventListener("click", function(){
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        remove();
+        action();
+      });
+      t.appendChild(btn);
+    }
+    wrap.appendChild(t);
+  }
+  let modalOpen = false;
+  let onModalClosed = null; /* 保留した同期の再開フック(§2-6) */
+  function showModal(opt){
+    return new Promise(function(resolve){
+      modalOpen = true;
+      const ov = document.getElementById("modalOv");
+      const box = document.getElementById("modalBox");
+      box.innerHTML = "";
+      const h = document.createElement("h3");
+      h.textContent = opt.title || "";
+      box.appendChild(h);
+      if (opt.text){
+        const p = document.createElement("div");
+        p.className = "m-text";
+        p.textContent = opt.text;
+        box.appendChild(p);
+      }
+      let input = null;
+      if (opt.input){
+        input = document.createElement("input");
+        input.type = opt.input.type || "text";
+        input.placeholder = opt.input.placeholder || "";
+        input.value = opt.input.value || "";
+        box.appendChild(input);
+      }
+      const bar = document.createElement("div");
+      bar.className = "m-btns";
+      let primaryBtn = null;
+      (opt.buttons || []).forEach(function(bd){
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = bd.label;
+        if (bd.cls) btn.className = bd.cls;
+        if (bd.cls === "primary") primaryBtn = btn; /* Enter対象は主ボタンのみ。危険色は対象外(§5-3) */
+        btn.addEventListener("click", function(){
+          close(bd.value === "__input__" ? (input ? input.value : "") : bd.value);
+        });
+        bar.appendChild(btn);
+      });
+      box.appendChild(bar);
+      ov.classList.add("show");
+      if (input) setTimeout(function(){ input.focus(); }, 30);
+      function onKey(e){
+        if (e.key === "Escape"){ e.preventDefault(); close(null); return; }
+        if (e.key === "Enter" && !e.isComposing && primaryBtn){ /* IME確定は除外(§5-3) */
+          e.preventDefault();
+          primaryBtn.click();
+        }
+      }
+      document.addEventListener("keydown", onKey, true);
+      function close(v){
+        document.removeEventListener("keydown", onKey, true);
+        ov.classList.remove("show");
+        modalOpen = false;
+        resolve(v);
+        if (onModalClosed) onModalClosed();
+      }
+    });
+  }
+  function modalInfo(title, text){
+    return showModal({ title: title, text: text, buttons: [ { label: "OK", cls: "primary", value: true } ] });
+  }
+  function extractErrText(code){
+    if (code === "too_large") return "データが大きすぎます(上限2MB)。";
+    if (code === "unclosed") return "JSONの閉じ括弧が見つかりません。末尾まで貼り付けられているか確認してください。";
+    return "JSONを読み取れません。書き出した内容をそのまま貼り付けてください。";
+  }
+
+  /* ---------- 保存層(段階フォールバック §6) ---------- */
+  const STATE_KEY = "sora_buzz_state_v2";
+  const CFG_KEY = "sora_buzz_sync_cfg";        /* 端末ローカル設定(同期対象外) */
+  const LASTSYNC_KEY = "sora_buzz_last_sync";  /* 表示専用。送信・差分比較から除外(§1-7) */
+  const OLD_NG_KEY = "sora_buzz_custom_ng";    /* 旧形式(移行元) */
+  const OLD_HIST_KEY = "sora_buzz_hook_history";
+
+  const store = (function(){
+    const mem = Object.create(null);
+    let lsOK = true;
+    try { localStorage.setItem("__sb_probe", "1"); localStorage.removeItem("__sb_probe"); }
+    catch(e){ lsOK = false; }
+    let failWarned = false;
+    return {
+      lsOK: function(){ return lsOK; },
+      get: function(k){
+        if (lsOK){ try { const v = localStorage.getItem(k); if (v !== null) return v; } catch(e){} }
+        return (k in mem) ? mem[k] : null;
+      },
+      set: function(k, v){
+        mem[k] = v;
+        if (!lsOK) return false;
+        try { localStorage.setItem(k, v); return true; }
+        catch(e){
+          /* 書き込み失敗を握り潰さない(§6-3) */
+          if (!failWarned){
+            failWarned = true;
+            showBanner("保存に失敗しました(容量超過の可能性)。データは「バックアップ書き出し」で退避してください。");
+          }
+          return false;
+        }
+      },
+      remove: function(k){
+        delete mem[k];
+        if (lsOK){ try { localStorage.removeItem(k); } catch(e){} }
+      }
+    };
+  })();
+
+  /* ---------- 状態の読み書き ---------- */
+  let stateCache = null;
+  let quotaWarned = false;
+  function loadState(){
+    if (stateCache) return stateCache;
+    const raw = store.get(STATE_KEY);
+    if (raw !== null){
+      try { stateCache = SB.sanitizeState(JSON.parse(raw)); return stateCache; } catch(e){}
+    }
+    /* 旧形式からの移行: ts=0(どんな変更にも負ける安全側 §1-1) */
+    const st = SB.emptyState();
+    try {
+      const a = JSON.parse(store.get(OLD_NG_KEY) || "[]");
+      if (Array.isArray(a)) a.forEach(function(x){ if (x) st.ng.push({ word: x.word, cat: x.cat, ts: 0 }); });
+    } catch(e){}
+    try {
+      const a = JSON.parse(store.get(OLD_HIST_KEY) || "[]");
+      if (Array.isArray(a)) a.forEach(function(x){ if (x) st.hist.push({ sign: x.sign, phrase: x.phrase, date: x.date, ts: 0 }); });
+    } catch(e){}
+    stateCache = SB.sanitizeState(st);
+    store.set(STATE_KEY, SB.canonical(stateCache)); /* 移行結果を即時永続化(初回保存待ちにしない) */
+    return stateCache;
+  }
+  function persistState(st){
+    stateCache = SB.sanitizeState(st);
+    const s = SB.canonical(stateCache);
+    const ok = store.set(STATE_KEY, s);
+    if (ok && !quotaWarned && s.length > 3500000){
+      quotaWarned = true;
+      showBanner("保存容量が上限に近づいています。掴み履歴の整理を検討してください。"); /* §6-2 */
+    }
+  }
+  function saveState(st){
+    persistState(st);
+    scheduleCloudPush(); /* 保存の数秒後に自動同期(§4-4) */
+  }
+  /* 既存の検査ロジックが参照する互換アクセサ(生存項目のみ返す) */
   function loadCustomNG(){
-    try { return JSON.parse(localStorage.getItem(NG_KEY)) || []; }
-    catch(e){ return []; }
+    return SB.aliveList(loadState(), "ng").map(function(x){ return { word: x.word, cat: x.cat }; });
   }
-  function saveCustomNG(list){
-    try { localStorage.setItem(NG_KEY, JSON.stringify(list)); } catch(e){}
-  }
+  function loadHist(){ return SB.aliveList(loadState(), "hist"); }
+
+  /* ---------- カスタム禁止ワード(同期対応) ---------- */
   function renderNG(){
-    const list = loadCustomNG();
+    const list = SB.aliveList(loadState(), "ng");
     const ul = document.getElementById("ngList");
     const empty = document.getElementById("ngEmpty");
     ul.innerHTML = "";
     empty.style.display = list.length ? "none" : "block";
-    list.forEach((item, i) => {
+    list.forEach(function(item){
       const li = document.createElement("li");
       const w = document.createElement("span");
       w.textContent = item.word;
@@ -486,14 +1081,28 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
       const del = document.createElement("button");
       del.textContent = "×";
       del.setAttribute("aria-label", item.word + " を削除");
-      del.addEventListener("click", function(){
-        const l = loadCustomNG();
-        l.splice(i, 1);
-        saveCustomNG(l);
-        renderNG();
-      });
+      del.addEventListener("click", function(){ deleteNG(item.id); }); /* 添字でなくID参照(§1-4) */
       li.appendChild(w); li.appendChild(c); li.appendChild(del);
       ul.appendChild(li);
+    });
+  }
+  function deleteNG(id){
+    const st = loadState();
+    const it = st.ng.find(function(x){ return x.id === id; });
+    if (!it) return;
+    const k = SB.ngKey(it);
+    st.ngT = st.ngT.concat([{ k: k, ts: Math.max(Date.now(), it.ts + 1) }]); /* 墓標(§1-2)。tsが未来に膨れた項目でも確実に消す */
+    saveState(st);
+    renderNG();
+    /* 単発削除は履歴退避+トースト「元に戻す」で保護(§3-6) */
+    showToast("「" + it.word + "」を削除しました", "元に戻す", function(){
+      const st2 = loadState();
+      const tts = SB.tombTs(st2.ngT, k);
+      st2.ngT = st2.ngT.filter(function(t){ return t.k !== k; }); /* 自分の墓標を除去(§3-7) */
+      const back = { id: it.id, word: it.word, cat: it.cat, ts: Math.max(Date.now(), tts + 1) }; /* 時計巻き戻り対策(§3-7) */
+      st2.ng = st2.ng.filter(function(x){ return SB.ngKey(x) !== k; }).concat([back]);
+      saveState(st2);
+      renderNG();
     });
   }
   document.getElementById("ngAdd").addEventListener("click", function(){
@@ -501,73 +1110,76 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
     const word = input.value.trim();
     if (!word) return;
     const cat = document.getElementById("ngCat").value;
-    const list = loadCustomNG();
-    if (list.some(x => x.word === word && x.cat === cat)) { input.value = ""; return; }
-    list.push({ word, cat });
-    saveCustomNG(list);
+    const st = loadState();
+    const k = SB.ngKey({ word: word, cat: cat });
+    const exists = SB.aliveList(st, "ng").some(function(x){ return SB.ngKey(x) === k; });
+    if (exists){ input.value = ""; return; }
+    /* 再追加(追加ts)は墓標に勝つ(§1-6)。未来の墓標(時計進み端末の削除)にも負けないようtsを底上げ(§3-4と同旨) */
+    const addTs = Math.max(Date.now(), SB.effTombOf(st, "ng", k) + 1);
+    st.ng = st.ng.filter(function(x){ return SB.ngKey(x) !== k; })
+      .concat([{ id: SB.uid(), word: word, cat: cat, ts: addTs }]);
+    saveState(st);
     input.value = "";
     renderNG();
   });
   document.getElementById("ngInput").addEventListener("keydown", function(e){
-    if (e.key === "Enter") { e.preventDefault(); document.getElementById("ngAdd").click(); }
+    if (e.key === "Enter" && !e.isComposing){ e.preventDefault(); document.getElementById("ngAdd").click(); }
   });
 
-  /* 書き出し・取り込み(Safariの7日削除対策) */
+  /* 書き出し・取り込み(Safariの7日削除対策。旧版とも互換の配列形式) */
   const ngIO = document.getElementById("ngIO");
   document.getElementById("ngExport").addEventListener("click", function(){
     const json = JSON.stringify(loadCustomNG());
     ngIO.style.display = "block";
     ngIO.value = json;
     ngIO.select();
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(json).then(() => {
-        this.textContent = "コピー済";
-        setTimeout(() => { this.textContent = "書き出し"; }, 1200);
-      }).catch(() => {});
+    const self = this;
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(json).then(function(){
+        self.textContent = "コピー済";
+        setTimeout(function(){ self.textContent = "書き出し"; }, 1200);
+      }).catch(function(){});
     }
   });
   document.getElementById("ngImport").addEventListener("click", function(){
-    if (ngIO.style.display === "none") {
+    if (ngIO.style.display === "none"){
       ngIO.style.display = "block";
       ngIO.value = "";
       ngIO.focus();
       return;
     }
-    let data;
-    try { data = JSON.parse(ngIO.value); } catch(e){ alert("JSONを読み取れません。書き出した内容をそのまま貼り付けてください。"); return; }
-    if (!Array.isArray(data)) { alert("形式が不正です。"); return; }
-    const valid = data.filter(x => x && typeof x.word === "string" && x.word.trim() &&
-      (x.cat === "always" || x.cat === "夏" || x.cat === "冬"));
-    const list = loadCustomNG();
-    let added = 0;
-    valid.forEach(x => {
-      if (!list.some(y => y.word === x.word && y.cat === x.cat)) { list.push({word:x.word.trim(),cat:x.cat}); added++; }
+    const r = SB.extractJSON(ngIO.value); /* 括弧深度の1回走査・サイズ上限(§5-5) */
+    if (!r.ok){ modalInfo("取り込みエラー", extractErrText(r.error)); return; }
+    let arr = null;
+    if (Array.isArray(r.value)) arr = r.value;
+    else if (r.value && Array.isArray(r.value.ng)) arr = r.value.ng; /* バックアップファイル形式も受け入れ */
+    if (!arr){ modalInfo("取り込みエラー", "形式が不正です。書き出した内容をそのまま貼り付けてください。"); return; }
+    const st = loadState();
+    const beforeKeys = new Set();
+    SB.aliveList(st, "ng").forEach(function(x){ beforeKeys.add(SB.ngKey(x)); });
+    const now = Date.now();
+    const buf = [];
+    arr.slice(0, SB.NG_MAX * 4).forEach(function(x){ /* 件数上限(§1-10)。ループ内concatは巨大貼り付けでO(n^2)化するため使わない */
+      if (!x || typeof x.word !== "string") return;
+      buf.push({ id: SB.uid(), word: x.word, cat: x.cat, ts: now });
     });
-    saveCustomNG(list);
+    st.ng = st.ng.concat(buf);
+    saveState(st);
     renderNG();
+    let added = 0; /* 追加件数は取り込み前後の実測(§3-5) */
+    SB.aliveList(loadState(), "ng").forEach(function(x){ if (!beforeKeys.has(SB.ngKey(x))) added++; });
     ngIO.style.display = "none";
-    alert(added + "語を取り込みました。");
+    showToast(added + "語を取り込みました");
   });
 
   renderNG();
 
-  /* ---------- 掴み履歴(自動保存・重複検知) ---------- */
-  const HIST_KEY = "sora_buzz_hook_history";
-  const HIST_MAX = 500;
-  function loadHist(){
-    try { return JSON.parse(localStorage.getItem(HIST_KEY)) || []; }
-    catch(e){ return []; }
-  }
-  function saveHist(list){
-    try { localStorage.setItem(HIST_KEY, JSON.stringify(list.slice(-HIST_MAX))); } catch(e){}
-  }
+  /* ---------- 掴み履歴(自動保存・重複検知・同期対応) ---------- */
   function localDate(){
     const d = new Date();
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   }
-  function normPhrase(s){
-    return s.replace(/[、。\s]/g, "");
-  }
+  const normPhrase = SB.normPhrase;
   function bigrams(s){
     const set = new Set();
     for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
@@ -606,22 +1218,24 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
     return { exacts, similar, self };
   }
   function addHistory(sign, phrase){
-    const hist = loadHist();
-    const np = normPhrase(phrase);
-    if (hist.some(h => h.sign === sign && normPhrase(h.phrase) === np)) return;
-    hist.push({ sign: sign || "?", phrase, date: localDate() });
-    saveHist(hist);
+    const st = loadState();
+    const it = { id: SB.uid(), sign: sign || "?", phrase: phrase, date: localDate(), ts: Date.now() };
+    const k = SB.histKey(it);
+    it.ts = Math.max(it.ts, SB.effTombOf(st, "hist", k) + 1); /* 未来墓標に負けない(§3-4と同旨) */
+    if (SB.aliveList(st, "hist").some(function(h){ return SB.histKey(h) === k; })) return;
+    st.hist = st.hist.concat([it]);
+    saveState(st);
     renderHist();
   }
   function renderHist(){
-    const hist = loadHist();
-    document.getElementById("histCount").textContent = hist.length;
+    const list = loadHist();
+    document.getElementById("histCount").textContent = list.length;
     const ul = document.getElementById("histList");
     const empty = document.getElementById("histEmpty");
     ul.innerHTML = "";
-    empty.style.display = hist.length ? "none" : "block";
-    for (let i = hist.length - 1; i >= 0; i--){
-      const h = hist[i];
+    empty.style.display = list.length ? "none" : "block";
+    for (let i = list.length - 1; i >= 0; i--){
+      const h = list[i];
       const li = document.createElement("li");
       const w = document.createElement("span");
       w.textContent = h.phrase;
@@ -632,61 +1246,104 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
       const del = document.createElement("button");
       del.textContent = "×";
       del.setAttribute("aria-label", h.phrase + " を削除");
-      (function(idx){
-        del.addEventListener("click", function(){
-          const l = loadHist();
-          l.splice(idx, 1);
-          saveHist(l);
-          renderHist();
-        });
-      })(i);
+      del.addEventListener("click", function(){ deleteHist(h.id); }); /* ID参照(§1-4) */
       li.appendChild(w); li.appendChild(c); li.appendChild(del);
       ul.appendChild(li);
     }
   }
+  function deleteHist(id){
+    const st = loadState();
+    const it = st.hist.find(function(x){ return x.id === id; });
+    if (!it) return;
+    const k = SB.histKey(it);
+    st.histT = st.histT.concat([{ k: k, ts: Math.max(Date.now(), it.ts + 1) }]);
+    saveState(st);
+    renderHist();
+    showToast("履歴を1件削除しました", "元に戻す", function(){
+      const st2 = loadState();
+      const tts = SB.tombTs(st2.histT, k);
+      st2.histT = st2.histT.filter(function(t){ return t.k !== k; }); /* §3-7 */
+      const back = { id: it.id, sign: it.sign, phrase: it.phrase, date: it.date, ts: Math.max(Date.now(), tts + 1) };
+      st2.hist = st2.hist.filter(function(x){ return SB.histKey(x) !== k; }).concat([back]);
+      saveState(st2);
+      renderHist();
+    });
+  }
   const histIO = document.getElementById("histIO");
   document.getElementById("histExport").addEventListener("click", function(){
-    const json = JSON.stringify(loadHist());
+    const json = JSON.stringify(loadHist().map(function(h){ return { sign: h.sign, phrase: h.phrase, date: h.date }; }));
     histIO.style.display = "block";
     histIO.value = json;
     histIO.select();
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(json).then(() => {
-        this.textContent = "コピー済";
-        setTimeout(() => { this.textContent = "書き出し"; }, 1200);
-      }).catch(() => {});
+    const self = this;
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(json).then(function(){
+        self.textContent = "コピー済";
+        setTimeout(function(){ self.textContent = "書き出し"; }, 1200);
+      }).catch(function(){});
     }
   });
   document.getElementById("histImport").addEventListener("click", function(){
-    if (histIO.style.display === "none") {
+    if (histIO.style.display === "none"){
       histIO.style.display = "block";
       histIO.value = "";
       histIO.focus();
       return;
     }
-    let data;
-    try { data = JSON.parse(histIO.value); } catch(e){ alert("JSONを読み取れません。書き出した内容をそのまま貼り付けてください。"); return; }
-    if (!Array.isArray(data)) { alert("形式が不正です。"); return; }
-    const valid = data.filter(x => x && typeof x.phrase === "string" && x.phrase.trim());
-    const list = loadHist();
-    let added = 0;
-    valid.forEach(x => {
-      const np = normPhrase(x.phrase);
-      const sg = x.sign || "?";
-      if (!list.some(y => normPhrase(y.phrase) === np && y.sign === sg)) {
-        list.push({ sign: sg, phrase: x.phrase.trim(), date: (typeof x.date === "string" && x.date ? x.date : "----").slice(0,10) });
-        added++;
-      }
+    const r = SB.extractJSON(histIO.value); /* §5-5 */
+    if (!r.ok){ modalInfo("取り込みエラー", extractErrText(r.error)); return; }
+    let arr = null;
+    if (Array.isArray(r.value)) arr = r.value;
+    else if (r.value && Array.isArray(r.value.hist)) arr = r.value.hist;
+    if (!arr){ modalInfo("取り込みエラー", "形式が不正です。書き出した内容をそのまま貼り付けてください。"); return; }
+    const st = loadState();
+    const beforeKeys = new Set();
+    SB.aliveList(st, "hist").forEach(function(x){ beforeKeys.add(SB.histKey(x)); });
+    const now = Date.now();
+    const buf = [];
+    arr.slice(0, SB.HIST_MAX * 4).forEach(function(x){ /* 件数上限(§1-10)・O(n)維持 */
+      if (!x || typeof x.phrase !== "string") return;
+      buf.push({ id: SB.uid(), sign: x.sign, phrase: x.phrase, date: x.date, ts: now });
     });
-    saveHist(list);
+    st.hist = st.hist.concat(buf);
+    saveState(st);
     renderHist();
+    let added = 0; /* 実測(§3-5) */
+    SB.aliveList(loadState(), "hist").forEach(function(x){ if (!beforeKeys.has(SB.histKey(x))) added++; });
     histIO.style.display = "none";
-    alert(added + "件を取り込みました。");
+    showToast(added + "件を取り込みました");
   });
-  document.getElementById("histClear").addEventListener("click", function(){
-    if (!confirm("掴み履歴をすべて削除します。よろしいですか?")) return;
-    saveHist([]);
+  document.getElementById("histClear").addEventListener("click", async function(){
+    const alive = loadHist();
+    if (!alive.length){ showToast("履歴はすでに空です"); return; }
+    const v = await showModal({
+      title: "掴み履歴の全削除",
+      text: alive.length + "件をすべて削除します。実行前に現在データの自動バックアップをダウンロードします。他の端末と同期している場合、削除は同期先にも反映されます。",
+      buttons: [
+        { label: "キャンセル", cls: "", value: null },
+        { label: "削除する", cls: "danger", value: "go" } /* 具体語+危険色(§5-2) */
+      ]
+    });
+    if (v !== "go") return;
+    autoBackupDownload("before-clear"); /* 破壊的操作前の自動バックアップ(§3-2/§5-2) */
+    let maxTs = 0;
+    alive.forEach(function(h){ if (h.ts > maxTs) maxTs = h.ts; });
+    const now = Math.max(Date.now(), maxTs + 1); /* tsが膨れた項目も確実に消す */
+    const st = loadState();
+    /* 個別墓標を大量生成せず、グループ墓標1件で表す(§1-3) */
+    st.gT = st.gT.filter(function(g){ return g.k !== "hist"; }).concat([{ k: "hist", ts: now }]);
+    saveState(st);
     renderHist();
+    showToast(alive.length + "件を削除しました", "元に戻す", function(){
+      const st2 = loadState();
+      st2.gT = st2.gT.filter(function(g){ return g.k !== "hist"; }); /* 自分の墓標を除去(§3-7) */
+      const backTs = Math.max(Date.now(), now + 1);
+      st2.hist = st2.hist.concat(alive.map(function(h){
+        return { id: h.id, sign: h.sign, phrase: h.phrase, date: h.date, ts: backTs };
+      }));
+      saveState(st2);
+      renderHist();
+    });
   });
   renderHist();
 
@@ -842,7 +1499,7 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
   const runBtn = document.getElementById("runBtn");
   runBtn.addEventListener("click", function(){
     const raw = document.getElementById("src").value;
-    if (!raw.trim()) { alert("投稿全文を貼り付けてください。"); return; }
+    if (!raw.trim()) { showToast("投稿全文を貼り付けてください"); return; }
     /* 検査前に自動で改行整形(読点→改行)を適用 */
     const formatted = formatBreaks(raw);
     if (formatted !== raw) {
@@ -924,6 +1581,336 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
     document.getElementById("resultArea").classList.add("show");
     document.getElementById("resultArea").scrollIntoView({behavior:"smooth", block:"start"});
   });
+
+  /* ---------- バックアップ(書き出し・復元 §3) ---------- */
+  function fileStamp(){
+    const d = new Date();
+    const p = function(n){ return String(n).padStart(2, "0"); };
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes());
+  }
+  function backupJSON(){
+    /* canonicalベース = 最終同期時刻など端末ローカル値は含まれない(§1-7) */
+    const st = JSON.parse(SB.canonical(loadState()));
+    st.app = "sora_buzz_scanner";
+    st.exported = new Date().toISOString();
+    return JSON.stringify(st);
+  }
+  function plainDownload(text, name){
+    const blob = new Blob([text], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){
+      URL.revokeObjectURL(a.href);
+      if (a.parentNode) a.parentNode.removeChild(a);
+    }, 4000);
+  }
+  function autoBackupDownload(tag){
+    /* 破壊的操作の直前: 共有シートを出さない自動バックアップ(§3-2) */
+    plainDownload(backupJSON(), "buzz-scanner-autobackup-" + tag + "-" + fileStamp() + ".json");
+  }
+  document.getElementById("bakExport").addEventListener("click", async function(){
+    const json = backupJSON();
+    const name = "buzz-scanner-backup-" + fileStamp() + ".json";
+    /* 共有シート → 保存ダイアログ → 通常DL の順にフォールバック。キャンセルは黙って正常終了(§3-1) */
+    try {
+      if (navigator.canShare && typeof File === "function"){
+        const f = new File([json], name, { type: "application/json" });
+        if (navigator.canShare({ files: [f] })){
+          await navigator.share({ files: [f], title: name });
+          return;
+        }
+      }
+    } catch(e){ if (e && e.name === "AbortError") return; }
+    try {
+      if (window.showSaveFilePicker){
+        const h = await window.showSaveFilePicker({
+          suggestedName: name,
+          types: [{ description: "JSON", accept: { "application/json": [".json"] } }]
+        });
+        const w = await h.createWritable();
+        await w.write(json);
+        await w.close();
+        showToast("バックアップを保存しました");
+        return;
+      }
+    } catch(e){ if (e && e.name === "AbortError") return; }
+    plainDownload(json, name);
+  });
+  document.getElementById("bakRestore").addEventListener("click", function(){
+    const fi = document.getElementById("bakFile");
+    fi.value = "";
+    fi.click();
+  });
+  document.getElementById("bakFile").addEventListener("change", async function(){
+    const f = this.files && this.files[0];
+    if (!f) return;
+    let text;
+    try { text = await f.text(); }
+    catch(e){ modalInfo("復元エラー", "ファイルを読み込めませんでした。"); return; }
+    const r = SB.extractJSON(text); /* §5-5 */
+    if (!r.ok){ modalInfo("復元エラー", extractErrText(r.error)); return; }
+    let fileRaw = r.value;
+    if (Array.isArray(fileRaw)){ /* 旧形式(テキスト書き出しの配列)も受け入れる */
+      const legacy = { ng: [], hist: [] };
+      fileRaw.slice(0, SB.HIST_MAX * 4).forEach(function(x){
+        if (!x || typeof x !== "object") return;
+        if (typeof x.word === "string") legacy.ng.push({ word: x.word, cat: x.cat, ts: 0 });
+        else if (typeof x.phrase === "string") legacy.hist.push({ sign: x.sign, phrase: x.phrase, date: x.date, ts: 0 });
+      });
+      fileRaw = legacy;
+    }
+    const fileState = SB.sanitizeState(fileRaw);
+    const nNg = fileState.ng.length, nHist = fileState.hist.length;
+    if (!nNg && !nHist){ modalInfo("復元エラー", "このファイルに復元できるデータが見つかりません。"); return; }
+    /* 統合(推奨・一番上)/置き換え(危険色・二段確認)(§3-3) */
+    const v = await showModal({
+      title: "バックアップから復元",
+      text: "ファイル内容: 禁止ワード" + nNg + "語・掴み履歴" + nHist + "件\n\n統合(推奨): 現在のデータと合成します。ファイル内の項目は、削除記録があっても復活します。\n置き換え: 現在のデータを破棄してファイルの内容だけにします。",
+      buttons: [
+        { label: "統合する(推奨)", cls: "primary", value: "merge" },
+        { label: "置き換える", cls: "danger", value: "replace" },
+        { label: "キャンセル", cls: "", value: null }
+      ]
+    });
+    if (v === "merge"){
+      const res = SB.restoreMerge(loadState(), fileState, Date.now()); /* 未来墓標があっても復活後に消えない(§3-4) */
+      saveState(res.state);
+      renderNG();
+      renderHist();
+      const d = res.diff; /* 統合前後スナップショットの実測値(§3-5) */
+      modalInfo("統合が完了しました",
+        "禁止ワード: 追加" + d.ng.added + "件・更新" + d.ng.updated + "件・最新のまま" + d.ng.same + "件\n" +
+        "掴み履歴: 追加" + d.hist.added + "件・更新" + d.hist.updated + "件・最新のまま" + d.hist.same + "件");
+    } else if (v === "replace"){
+      const v2 = await showModal({
+        title: "本当に置き換えますか",
+        text: "現在のデータはすべて破棄され、元に戻せません。実行前に現在データの自動バックアップをダウンロードします。",
+        buttons: [
+          { label: "キャンセル", cls: "", value: null },
+          { label: "置き換える", cls: "danger", value: "go" }
+        ]
+      }); /* 二段確認(§3-3) */
+      if (v2 !== "go") return;
+      autoBackupDownload("before-replace"); /* §3-2 */
+      /* 同期環境下でも「置き換え」が成立するよう、グループ墓標+ファイル項目のts底上げで表現する。
+         これが無いと、次回同期でクラウド側の旧項目がマージ復活し置き換えが無効化される(§4-5との相互作用) */
+      const nowR = Date.now();
+      const bump = function(list){
+        return list.map(function(x){ return Object.assign({}, x, { ts: Math.max(x.ts || 0, nowR + 1) }); });
+      };
+      fileState.ng = bump(fileState.ng);
+      fileState.hist = bump(fileState.hist);
+      fileState.gT = fileState.gT.filter(function(g){ return g.k !== "ng" && g.k !== "hist"; })
+        .concat([{ k: "ng", ts: nowR }, { k: "hist", ts: nowR }]);
+      saveState(SB.sanitizeState(fileState));
+      renderNG();
+      renderHist();
+      showToast("ファイルの内容に置き換えました");
+    }
+  });
+
+  /* ---------- クラウド同期(E2E暗号化 §4) ---------- */
+  function loadCfg(){
+    try {
+      const c = JSON.parse(store.get(CFG_KEY) || "null");
+      return (c && typeof c === "object") ? c : null;
+    } catch(e){ return null; }
+  }
+  function cfgComplete(c){
+    return !!(c && typeof c.url === "string" && /^https?:\/\/\S+$/.test(c.url) &&
+      typeof c.pass === "string" && c.pass.length >= 8 &&
+      typeof c.salt === "string" && c.salt);
+  }
+  let booted = false, syncing = false, pendingSync = false, decryptFailed = false;
+  let pushTimer = null, lastPushed = null, flushInFlight = false;
+  onModalClosed = function(){ /* ブロック解除時に保留分を実行(§2-6) */
+    if (pendingSync && !modalOpen){ pendingSync = false; syncNow("resume"); }
+  };
+  function setSyncStatus(t){
+    document.getElementById("syncStatus").textContent = "クラウド同期: " + t;
+  }
+  function fmtTime(ms){
+    const d = new Date(ms);
+    const p = function(n){ return String(n).padStart(2, "0"); };
+    return p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+  function scheduleCloudPush(){
+    if (!cfgComplete(loadCfg()) || decryptFailed) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(function(){ syncNow("debounce"); }, 3000); /* 保存の数秒後(§4-4) */
+  }
+  async function syncNow(reason){
+    const c = loadCfg();
+    if (!booted || !cfgComplete(c) || decryptFailed) return; /* 起動完了フラグ(§4-6) */
+    if (syncing){ pendingSync = true; return; } /* 二重実行防止(§4-6) */
+    if (modalOpen){ pendingSync = true; return; } /* ダイアログ中の取り込み遅延(§4-6) */
+    syncing = true;
+    setSyncStatus("同期中…");
+    try {
+      let remoteMsg = null;
+      const res = await fetch(c.url, { method: "GET", cache: "no-store" });
+      if (res.status !== 404 && res.status !== 204){
+        if (!res.ok) throw new Error("http " + res.status);
+        const txt = (await res.text()).trim();
+        if (txt.length > 4000000) throw new Error("remote_too_large"); /* 敵対的/故障サーバの巨大応答でタブを殺さない */
+        if (txt){
+          try { remoteMsg = JSON.parse(txt); }
+          catch(e){ throw new Error("remote_not_json"); }
+        }
+      }
+      /* ネットワーク待ち完了後・マージ直前の再チェック(§2-6) */
+      if (modalOpen){ pendingSync = true; setSyncStatus("操作中のため保留"); return; }
+      let remoteState = null, remoteCanon = null;
+      if (remoteMsg){
+        let plain;
+        try { plain = await SB.decryptPayload(c.pass, remoteMsg); }
+        catch(e){
+          /* 復号失敗時は同期をエラーで停止し、リモートをいかなる場合も上書きしない(§4-9) */
+          decryptFailed = true;
+          setSyncStatus("停止中(復号失敗)");
+          showBanner("クラウド上のデータを復号できません(パスフレーズ違い、または破損)。データ保護のため同期を停止しました。「クラウド同期設定」からパスフレーズを再入力してください。");
+          return;
+        }
+        try { remoteState = SB.sanitizeState(JSON.parse(plain)); }
+        catch(e){ throw new Error("remote_bad"); }
+        remoteCanon = SB.canonical(remoteState);
+      }
+      const cur = loadState();
+      /* 取り込みは必ずマージ経由。置き換え取り込みは禁止(§4-5) */
+      const merged = remoteState ? SB.mergeState(cur, remoteState, Date.now()) : cur;
+      const mergedCanon = SB.canonical(merged);
+      if (mergedCanon !== SB.canonical(cur)){
+        persistState(merged);
+        renderNG();
+        renderHist();
+      }
+      if (remoteCanon === null || mergedCanon !== remoteCanon){
+        /* 鍵はセッション内キャッシュ・IVは毎回ランダム(§4-7) */
+        const msg = await SB.encryptPayload(c.pass, c.salt, SB.PBKDF2_ITER, mergedCanon);
+        const put = await fetch(c.url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(msg),
+          cache: "no-store"
+        });
+        if (!put.ok) throw new Error("put " + put.status);
+      }
+      lastPushed = mergedCanon;
+      store.set(LASTSYNC_KEY, String(Date.now())); /* 表示専用・同期対象外(§1-7) */
+      setSyncStatus("最終同期 " + fmtTime(Date.now()));
+    } catch(e){
+      setSyncStatus("エラー(通信失敗)。画面復帰時に再試行します");
+    } finally {
+      syncing = false;
+      if (pendingSync && !modalOpen){ pendingSync = false; syncNow("retry"); }
+    }
+  }
+  function flushSend(){
+    /* hidden・pagehide時の即時送信。ベストエフォート(§4-4/§4-10/§8-3) */
+    const c = loadCfg();
+    if (!cfgComplete(c) || decryptFailed || flushInFlight) return;
+    const canon = SB.canonical(loadState());
+    if (canon === lastPushed) return;
+    if (!SB.hasCachedKey(c.pass, c.salt, SB.PBKDF2_ITER)) return; /* 鍵未導出なら間に合わないため断念(§4-7) */
+    flushInFlight = true;
+    SB.encryptPayload(c.pass, c.salt, SB.PBKDF2_ITER, canon).then(function(msg){
+      lastPushed = canon;
+      return fetch(c.url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(msg),
+        keepalive: true
+      });
+    }).catch(function(){}).then(function(){ flushInFlight = false; });
+  }
+  document.addEventListener("visibilitychange", function(){
+    if (document.visibilityState === "visible") syncNow("visible"); /* 画面復帰時(§4-4) */
+    else flushSend();
+  });
+  window.addEventListener("pagehide", function(){ flushSend(); });
+
+  /* 段階式の設定ダイアログ。解除も同じ導線(§4-2) */
+  document.getElementById("cloudBtn").addEventListener("click", async function(){
+    const c = loadCfg();
+    if (cfgComplete(c)){
+      const v = await showModal({
+        title: "クラウド同期(設定済み)",
+        text: "接続先: " + c.url + "\n状態: " + (decryptFailed ? "停止中(復号失敗)" : "有効") +
+          "\n\nパスフレーズは自動同期のためこの端末内に保存されています。暗号化が守るのはクラウド上のデータのみで、この端末の中身を読める相手からは保護されません(§4-3)。閉じる瞬間の送信はベストエフォートで、届かなくても次回同期で収束します。",
+        buttons: [
+          { label: "閉じる", cls: "", value: null },
+          { label: "パスフレーズ再入力", cls: "primary", value: "pass" },
+          { label: "同期を解除", cls: "danger", value: "off" }
+        ]
+      });
+      if (v === "off"){
+        /* 鍵キャッシュ・認証情報・タイマーをすべて破棄(§4-8) */
+        store.remove(CFG_KEY);
+        SB.clearKeyCache();
+        clearTimeout(pushTimer);
+        decryptFailed = false;
+        lastPushed = null;
+        pendingSync = false;
+        setSyncStatus("未設定");
+        showToast("同期を解除し、この端末の鍵情報を破棄しました");
+      } else if (v === "pass"){
+        await askPassphrase(c.url, c.salt);
+      }
+      return;
+    }
+    const url = await showModal({
+      title: "クラウド同期の設定 1/2",
+      text: "暗号化済みデータの置き場所(GETとPUTを受け付けるURL)を入力してください。自分のサーバやWebDAVなど、JSONを1ファイル保存できるエンドポイントが使えます。データは送信前にこの端末内でAES-GCM暗号化されます。",
+      input: { type: "url", placeholder: "https://example.com/buzz-sync.json" },
+      buttons: [
+        { label: "キャンセル", cls: "", value: null },
+        { label: "次へ", cls: "primary", value: "__input__" }
+      ]
+    });
+    if (url === null) return;
+    const u = String(url).trim();
+    if (!/^https?:\/\/\S+$/.test(u)){ modalInfo("設定エラー", "URLの形式が正しくありません(https://〜)。"); return; }
+    await askPassphrase(u, null);
+  });
+  async function askPassphrase(url, salt){
+    const pass = await showModal({
+      title: "クラウド同期の設定 2/2",
+      text: "パスフレーズ(8文字以上)を入力してください。すべての端末で同じものを使います。\n\n注意: 自動同期のため、パスフレーズはこの端末内に保存されます。暗号化が守るのはクラウド上のデータのみです。パスフレーズを忘れるとクラウド上のデータは復元できません。",
+      input: { type: "password", placeholder: "パスフレーズ(8文字以上)" },
+      buttons: [
+        { label: "キャンセル", cls: "", value: null },
+        { label: "同期を開始", cls: "primary", value: "__input__" }
+      ]
+    });
+    if (pass === null) return;
+    if (String(pass).length < 8){ modalInfo("設定エラー", "パスフレーズは8文字以上にしてください。"); return; }
+    const cfg = { url: url, pass: String(pass), salt: salt || SB.randomSaltB64(), iter: SB.PBKDF2_ITER };
+    store.set(CFG_KEY, JSON.stringify(cfg));
+    decryptFailed = false;
+    lastPushed = null;
+    setSyncStatus("設定完了。同期を開始します…");
+    syncNow("setup");
+  }
+
+  /* ---------- 起動 ---------- */
+  if (!store.lsOK()){
+    /* メモリのみフォールバック時の常時警告(§6-1) */
+    showBanner("この環境では保存領域を使えないため、データはメモリ上にのみ保持されます(閉じると消えます)。「バックアップ書き出し」で退避してください。");
+  }
+  (function(){
+    const c = loadCfg();
+    if (cfgComplete(c)){
+      const ls = Number(store.get(LASTSYNC_KEY) || 0);
+      setSyncStatus(ls ? "最終同期 " + fmtTime(ls) : "設定済み");
+    } else {
+      setSyncStatus("未設定");
+    }
+  })();
+  booted = true;
+  syncNow("boot"); /* 起動時同期(§4-4) */
 
   /* ---------- コピー ---------- */
   document.querySelectorAll("[data-copy]").forEach(btn => {
