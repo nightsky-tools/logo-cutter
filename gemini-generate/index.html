@@ -115,6 +115,29 @@
   details.setup .hint{background:#f0eee7;border-radius:8px;padding:10px 12px;margin-top:8px}
   a{color:var(--accent)}
   @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+
+  /* ===== 同期・モーダル・トースト(追加分) ===== */
+  .ui-overlay{position:fixed;inset:0;background:rgba(30,34,48,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
+  .ui-modal{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;max-width:420px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.2)}
+  .ui-modal-title{font-weight:700;font-size:15px;margin-bottom:8px}
+  .ui-modal-body{font-size:13px;color:var(--ink-soft);line-height:1.7;margin-bottom:12px;white-space:pre-wrap;word-break:break-all}
+  .ui-modal-input{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:14px;margin-bottom:12px;font-family:inherit}
+  .ui-modal-btns{display:flex;flex-direction:column;gap:8px}
+  .ui-btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:11px 14px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;min-height:44px}
+  .ui-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .ui-btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+  .ui-btn.ghost{color:var(--ink-soft)}
+  .ui-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;border-radius:10px;padding:11px 16px;font-size:13px;display:flex;gap:12px;align-items:center;z-index:1100;opacity:0;transition:.3s;max-width:92vw}
+  .ui-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .ui-toast-act{background:none;border:none;color:var(--amber);font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .preset-chip{display:inline-flex;align-items:center;margin:3px 4px 3px 0;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}
+  .preset-chip .pc-apply{border:none;background:none;padding:7px 4px 7px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+  .preset-chip .pc-apply small{color:var(--ink-soft)}
+  .preset-chip .pc-del{border:none;background:none;color:var(--danger);font-size:14px;padding:7px 10px 7px 6px;cursor:pointer}
+  .sync-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .sync-row .btn{flex:1;min-width:120px}
+  #storWarn{display:none;background:#fdf3f1;border:1px solid #e8c4bc;color:var(--danger);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px}
+  #syncStatus{font-size:12px;color:var(--ink-soft);margin-top:6px}
 </style>
 </head>
 <body>
@@ -208,6 +231,11 @@
         <button class="btn btn-ghost preset-btn" data-p="bl">左下ロゴ</button>
         <button class="btn btn-ghost preset-btn" data-p="zero">ゼロ</button>
       </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
+        <button class="btn btn-ghost" id="savePresetBtn" style="flex:1">＋ 今のカット%をプリセット保存</button>
+        <button class="btn btn-ghost" id="delAllPresets" style="color:var(--danger)">全削除</button>
+      </div>
+      <div id="customPresets" style="margin-top:8px"></div>
       <div class="slrow"><label>上から</label><input type="range" id="cutT" min="0" max="45" value="22"><span class="val" id="cutTOut">22%</span></div>
       <div class="slrow"><label>下から</label><input type="range" id="cutB" min="0" max="45" value="25"><span class="val" id="cutBOut">25%</span></div>
       <div class="slrow"><label>左から</label><input type="range" id="cutL" min="0" max="45" value="3"><span class="val" id="cutLOut">3%</span></div>
@@ -246,6 +274,20 @@
         <div id="errlog" style="font-size:12px;line-height:1.7;background:#fdf3f1;border:1px solid #e8c4bc;border-radius:8px;padding:8px 10px;max-height:200px;overflow:auto;margin-top:6px;word-break:break-all"></div>
       </div>
     </section>
+
+    <!-- 同期・バックアップ -->
+    <section class="panel">
+      <h2>同期・バックアップ(設定・プリセット)</h2>
+      <div id="storWarn"></div>
+      <div class="sync-row">
+        <button class="btn btn-ghost" id="exportBtn">📤 設定を書き出す</button>
+        <button class="btn btn-ghost" id="importBtn">📥 ファイルから復元</button>
+      </div>
+      <button class="btn btn-ghost" id="syncSetupBtn" style="width:100%">☁ クラウド同期を設定</button>
+      <input type="file" id="importFile" accept=".json,application/json" style="display:none">
+      <div id="syncStatus">同期: 未設定</div>
+      <p class="hint" style="margin-top:8px">対象は設定値とカットプリセットのみ(生成画像・APIの通信内容は同期されません※APIキーは同期対象)。クラウド上のデータは端末で暗号化されます。閉じる瞬間の送信は確実ではありませんが、次回同期で必ず収束します。複数タブでの同時利用は非対応(1タブ運用)。端末の時計が大きく狂っていると、その端末の変更が常に勝つ/負けることがあります。</p>
+    </section>
   </div>
 
   <!-- 右:ギャラリー -->
@@ -271,6 +313,336 @@
   <div class="cap">📱 iPhoneはこの画像を<b>長押し</b>→「"写真"に追加」で写真アプリに保存できます(タップで閉じる)</div>
 </div>
 
+<script>
+/* ===== SyncCore(DOM非依存・純関数層)===== */
+(function(root){
+"use strict";
+var SC={};
+SC._now=function(){return Date.now();};
+
+/* --- uid: ミリ秒+単調増加カウンタ+ランダム(§1-8) --- */
+var ID_RE=/^[A-Za-z0-9_-]{1,40}$/;
+var BAD_ID=/^(__proto__|constructor|prototype)$/; /* プロトタイプ汚染対策 */
+SC.ID_RE=ID_RE;
+var GROUP_PRESETS='group_presets'; /* グループ墓標キー(§1-3) */
+SC.GROUP_PRESETS=GROUP_PRESETS;
+var _uidLast=0,_uidCtr=0,_CS='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+SC.uid=function(){
+  var t=SC._now();
+  if(t===_uidLast)_uidCtr++;else{_uidLast=t;_uidCtr=0;}
+  var r='';for(var i=0;i<8;i++)r+=_CS[Math.floor(Math.random()*_CS.length)];
+  return 'p'+t.toString(36)+'-'+_uidCtr.toString(36)+'-'+r;
+};
+
+/* --- フィールド定義(型・範囲・上限をここで一元強制 §1-10) --- */
+var FIELDS={
+  apiKey:{t:'s',max:200}, engine:{t:'e',v:['gemini','pollinations']},
+  model:{t:'s',max:60}, aspect:{t:'e',v:['1:1','16:9','9:16','4:3','3:4']},
+  count:{t:'i',min:1,max:10}, interval:{t:'i',min:0,max:120},
+  saveMode:{t:'e',v:['folder','each','zip','none']},
+  autoSwitch:{t:'b'}, cropOn:{t:'b'},
+  cutT:{t:'i',min:0,max:45}, cutB:{t:'i',min:0,max:45},
+  cutL:{t:'i',min:0,max:45}, cutR:{t:'i',min:0,max:45},
+  prompts:{t:'s',max:20000}, theme:{t:'s',max:500}, themeCount:{t:'i',min:1,max:20}
+};
+SC.FIELDS=FIELDS;
+var ITEM_MAX=200, TOMB_MAX=100, HIST_MAX=20;
+SC.TOMB_MAX=TOMB_MAX;
+
+function num(x,min,max,dflt){
+  var n=typeof x==='number'?x:parseInt(x,10);
+  if(!isFinite(n))return dflt;
+  n=Math.round(n);
+  return Math.min(max,Math.max(min,n));
+}
+function ts(x){var n=typeof x==='number'?x:Number(x);return (isFinite(n)&&n>0)?Math.floor(n):0;} /* 旧形式(tsなし)=0(§1-1) */
+function str(x,max){return (typeof x==='string'?x:'').slice(0,max);}
+
+/* --- フィールド単体サニタイズ(DOM値の意味的比較用) --- */
+SC.sanitizeFieldValue=function(k,v){
+  var d=FIELDS[k];if(!d)return undefined;
+  if(d.t==='s')return str(v,d.max);
+  if(d.t==='i')return num(v,d.min,d.max,d.min);
+  if(d.t==='b')return !!v;
+  return (d.v.indexOf(v)>=0)?v:d.v[0];
+};
+
+/* --- サニタイズ(外部入力は全てここを通す §1-9/§1-10) --- */
+SC.sanitizeState=function(raw){
+  raw=(raw&&typeof raw==='object')?raw:{};
+  var out={fields:{},items:{},tomb:[]};
+  var rf=(raw.fields&&typeof raw.fields==='object')?raw.fields:{};
+  Object.keys(FIELDS).forEach(function(k){
+    if(!(k in rf))return;
+    var d=FIELDS[k],cell=rf[k];
+    var v=(cell&&typeof cell==='object'&&'v' in cell)?cell.v:cell;
+    var t=(cell&&typeof cell==='object')?ts(cell.ts):0;
+    if(d.t==='s')v=str(v,d.max);
+    else if(d.t==='i')v=num(v,d.min,d.max,d.min);
+    else if(d.t==='b')v=!!v;
+    else if(d.t==='e')v=(d.v.indexOf(v)>=0)?v:d.v[0];
+    out.fields[k]={v:v,ts:t};
+  });
+  var ri=raw.items;
+  var arr=Array.isArray(ri)?ri:(ri&&typeof ri==='object'?Object.keys(ri).map(function(k){return ri[k];}):[]);
+  var items=[];
+  arr.forEach(function(it){
+    if(!it||typeof it!=='object')return;
+    var id=(typeof it.id==='string'&&ID_RE.test(it.id)&&!BAD_ID.test(it.id))?it.id:SC.uid(); /* 不正・危険IDは再生成(§1-9) */
+    items.push({id:id,name:str(it.name,40)||'無題',
+      T:num(it.T,0,45,0),B:num(it.B,0,45,0),L:num(it.L,0,45,0),R:num(it.R,0,45,0),ts:ts(it.ts)});
+  });
+  items.sort(function(a,b){return b.ts-a.ts;});
+  items.slice(0,ITEM_MAX).forEach(function(it){out.items[it.id]=it;});
+  /* 正規形: 自身の墓標に負ける項目は保持しない(マージとの表現一致=冪等性) */
+  var tombsPre=capTombs((Array.isArray(raw.tomb)?raw.tomb:[]).filter(function(t){return t&&typeof t==='object'&&typeof t.id==='string'&&!BAD_ID.test(t.id)&&(t.id===GROUP_PRESETS||ID_RE.test(t.id));}).map(function(t){return {id:t.id,ts:ts(t.ts)};}));
+  var view={tomb:tombsPre};
+  Object.keys(out.items).forEach(function(id){
+    var eff=SC.effTombTs(view,id);
+    if(eff>0&&out.items[id].ts<=eff)delete out.items[id];
+  });
+  var rt=Array.isArray(raw.tomb)?raw.tomb:[];
+  var tombs=[];
+  rt.forEach(function(t0){
+    if(!t0||typeof t0!=='object')return;
+    var id=t0.id;
+    if(typeof id!=='string')return;
+    if(BAD_ID.test(id))return;
+    if(id!==GROUP_PRESETS&&!ID_RE.test(id))return;
+    tombs.push({id:id,ts:ts(t0.ts)});
+  });
+  out.tomb=capTombs(tombs);
+  return out;
+};
+
+function capTombs(tombs){
+  var byId=Object.create(null); /* 外部由来キーはnull-protoマップで扱う */
+  tombs.forEach(function(t){if(!byId[t.id]||byId[t.id].ts<t.ts)byId[t.id]={id:t.id,ts:t.ts};});
+  var list=Object.keys(byId).map(function(k){return byId[k];});
+  list.sort(function(a,b){return (b.ts-a.ts)||(a.id<b.id?-1:1);}); /* 同tsはIDで決定的に(順序非決定→差分あり誤判定の防止) */
+  return list.slice(0,TOMB_MAX); /* 上限超過は古い順に消える(§8-8) */
+}
+
+/* --- 実効墓標(個別とグループのmax §1-3) --- */
+SC.effTombTs=function(state,id){
+  var t=0;
+  state.tomb.forEach(function(x){
+    if(x.id===id||x.id===GROUP_PRESETS)t=Math.max(t,x.ts);
+  });
+  return t;
+};
+
+/* --- 正規化文字列(安定ソートJSON) --- */
+function canonical(x){
+  if(x===null||typeof x!=='object')return JSON.stringify(x);
+  if(Array.isArray(x))return '['+x.map(canonical).join(',')+']';
+  return '{'+Object.keys(x).sort().map(function(k){return JSON.stringify(k)+':'+canonical(x[k]);}).join(',')+'}';
+}
+SC.canonical=canonical;
+
+/* 内容比較(ts除外) */
+function fieldContent(c){return canonical(c.v);}
+function itemContent(it){return canonical({name:it.name,T:it.T,B:it.B,L:it.L,R:it.R});}
+SC.itemContent=itemContent;
+
+/* --- 差分比較・送信ペイロード:端末ローカル値は構造上含まれない(§1-7) --- */
+SC.stateEquals=function(a,b){
+  return canonical({fields:a.fields,items:a.items,tomb:a.tomb})===canonical({fields:b.fields,items:b.items,tomb:b.tomb});
+};
+SC.buildPayload=function(state){
+  return {app:'logo-cutter-sync',version:1,state:{fields:state.fields,items:state.items,tomb:state.tomb}};
+};
+
+/* --- LWWマージ(§2)。純関数・入力は事前サニタイズ前提 --- */
+/* tie(ts同値)は内容の正規化文字列が大きい方=可換で決定的 */
+function pickLWW(a,b,contentFn){
+  if(!a)return {win:b,lose:null};
+  if(!b)return {win:a,lose:null};
+  if(a.ts!==b.ts)return a.ts>b.ts?{win:a,lose:b}:{win:b,lose:a};
+  return contentFn(a)>=contentFn(b)?{win:a,lose:b}:{win:b,lose:a};
+}
+SC.mergeState=function(A,B){
+  var a=SC.sanitizeState(A),b=SC.sanitizeState(B);
+  var out={fields:{},items:{},tomb:capTombs(a.tomb.concat(b.tomb))};
+  var history=[];
+  var fk=Object.create(null);Object.keys(a.fields).concat(Object.keys(b.fields)).forEach(function(k){fk[k]=1;});
+  Object.keys(fk).forEach(function(k){
+    var r=pickLWW(a.fields[k],b.fields[k],fieldContent);
+    out.fields[k]=r.win;
+    if(r.lose&&fieldContent(r.lose)!==fieldContent(r.win))
+      history.push({kind:'field',key:k,value:r.lose.v,ts:r.lose.ts}); /* 負けた側を履歴退避(§2-1) */
+  });
+  var ik=Object.create(null);Object.keys(a.items).concat(Object.keys(b.items)).forEach(function(k){ik[k]=1;});
+  Object.keys(ik).forEach(function(id){
+    var r=pickLWW(a.items[id],b.items[id],itemContent);
+    var eff=SC.effTombTs(out,id);
+    if(eff===0||r.win.ts>eff){ /* 墓標が存在する場合のみ勝敗判定(§2-3)。旧形式ts=0は墓標なしなら生存(§1-1) */
+      out.items[id]=r.win;
+      if(r.lose&&itemContent(r.lose)!==itemContent(r.win))
+        history.push({kind:'item',key:id,value:r.lose,ts:r.lose.ts});
+    }
+  });
+  return {state:out,history:history.slice(0,HIST_MAX)};
+};
+
+/* --- 復元(統合): 墓標があっても復活。ts=max(now, 実効墓標ts+1)(§3-4) --- */
+SC.restoreMerge=function(current,incoming,now){
+  var cur=SC.sanitizeState(current),inc=SC.sanitizeState(incoming);
+  now=ts(now)||SC._now();
+  var tombView={tomb:capTombs(cur.tomb.concat(inc.tomb))};
+  Object.keys(inc.items).forEach(function(id){
+    var eff=SC.effTombTs(tombView,id);
+    if(inc.items[id].ts<=eff){
+      inc.items[id]={id:inc.items[id].id,name:inc.items[id].name,
+        T:inc.items[id].T,B:inc.items[id].B,L:inc.items[id].L,R:inc.items[id].R,
+        ts:Math.max(now,eff+1)};
+    }
+  });
+  return SC.mergeState(cur,inc);
+};
+
+/* --- undo用: 復元tsの決定(§3-7 時計巻き戻り対策) --- */
+SC.reviveTs=function(now,tombTs){return Math.max(ts(now),ts(tombTs)+1);};
+
+/* --- 実測diff(統合前後スナップショット比較・ts除外 §3-5) --- */
+SC.diffStates=function(before,after){
+  var d={added:0,updated:0,kept:0,removed:0};
+  function walk(bmap,amap,contentFn){
+    var keys={};Object.keys(bmap).concat(Object.keys(amap)).forEach(function(k){keys[k]=1;});
+    Object.keys(keys).forEach(function(k){
+      var b0=bmap[k],a0=amap[k];
+      if(!b0&&a0)d.added++;
+      else if(b0&&!a0)d.removed++;
+      else if(b0&&a0)(contentFn(b0)===contentFn(a0))?d.kept++:d.updated++;
+    });
+  }
+  walk(before.fields||{},after.fields||{},fieldContent);
+  walk(before.items||{},after.items||{},itemContent);
+  return d;
+};
+
+/* ===== 暗号(AES-GCM + PBKDF2 150,000回 §4-1/§4-7) ===== */
+var subtle=(root.crypto&&root.crypto.subtle)?root.crypto.subtle:null;
+var ITER=150000;
+SC.ITER=ITER;
+function b64(u8){var s='';for(var i=0;i<u8.length;i++)s+=String.fromCharCode(u8[i]);return (typeof btoa!=='undefined')?btoa(s):Buffer.from(u8).toString('base64');}
+function unb64(s){
+  if(typeof atob!=='undefined'){var bin=atob(s),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u;}
+  return new Uint8Array(Buffer.from(s,'base64'));
+}
+SC.b64=b64;SC.unb64=unb64;
+SC.randomSaltB64=function(){var s=new Uint8Array(16);root.crypto.getRandomValues(s);return b64(s);};
+SC.deriveKey=function(pass,saltB64,iter){
+  var enc=new TextEncoder();
+  return subtle.importKey('raw',enc.encode(pass),'PBKDF2',false,['deriveKey']).then(function(km){
+    return subtle.deriveKey({name:'PBKDF2',salt:unb64(saltB64),iterations:iter||ITER,hash:'SHA-256'},
+      km,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  });
+};
+/* 暗号化: IVは毎回ランダム(§4-7)。saltは固定でよい */
+SC.encryptJSON=function(key,saltB64,obj){
+  var iv=new Uint8Array(12);root.crypto.getRandomValues(iv);
+  var data=new TextEncoder().encode(JSON.stringify(obj));
+  return subtle.encrypt({name:'AES-GCM',iv:iv},key,data).then(function(ct){
+    return JSON.stringify({v:1,alg:'AES-GCM',kdf:'PBKDF2-SHA256',iter:ITER,salt:saltB64,iv:b64(iv),ct:b64(new Uint8Array(ct))});
+  });
+};
+/* 復号: メッセージ内saltから導出(互換 §4-7) */
+SC.decryptJSON=function(pass,msgStr){
+  var msg;
+  try{msg=JSON.parse(msgStr);}catch(e){return Promise.reject(new Error('形式不正'));}
+  if(!msg||msg.alg!=='AES-GCM'||!msg.salt||!msg.iv||!msg.ct)return Promise.reject(new Error('形式不正'));
+  return SC.deriveKey(pass,msg.salt,msg.iter||ITER).then(function(key){
+    return subtle.decrypt({name:'AES-GCM',iv:unb64(msg.iv)},key,unb64(msg.ct));
+  }).then(function(pt){
+    return JSON.parse(new TextDecoder().decode(pt));
+  });
+};
+
+if(typeof module!=='undefined'&&module.exports)module.exports=SC;
+root.SyncCore=SC;
+})(typeof globalThis!=='undefined'?globalThis:this);
+
+/* ===== UI層: アプリ内モーダル/トースト(confirm・prompt・alert禁止の代替 §5-1) ===== */
+(function(){
+"use strict";
+var UI={modalOpen:false,onModalClose:[]};
+function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
+
+/* opts: {title, body(text), input:{placeholder,type,value}, buttons:[{id,label,primary,danger}]}
+   戻り値: Promise<{id, value} | null(キャンセル)> */
+UI.modal=function(opts){
+  return new Promise(function(resolve){
+    var ov=el('div','ui-overlay'),box=el('div','ui-modal');
+    box.appendChild(el('div','ui-modal-title',opts.title||''));
+    if(opts.body){var b=el('div','ui-modal-body');b.textContent=opts.body;box.appendChild(b);}
+    var input=null;
+    if(opts.input){
+      input=el('input','ui-modal-input');
+      input.type=opts.input.type||'text';
+      input.placeholder=opts.input.placeholder||'';
+      input.value=opts.input.value||'';
+      box.appendChild(input);
+    }
+    var row=el('div','ui-modal-btns');
+    var primaryBtn=null,primaryDef=null;
+    (opts.buttons||[{id:'ok',label:'OK',primary:true}]).forEach(function(def){
+      var btn=el('button','ui-btn'+(def.danger?' danger':(def.primary?' primary':'')),def.label);
+      btn.addEventListener('click',function(){done({id:def.id,value:input?input.value:null});});
+      if(def.primary&&!def.danger){primaryBtn=btn;primaryDef=def;}
+      row.appendChild(btn);
+    });
+    var cancel=el('button','ui-btn ghost','キャンセル');
+    cancel.addEventListener('click',function(){done(null);});
+    row.appendChild(cancel);
+    box.appendChild(row);ov.appendChild(box);document.body.appendChild(ov);
+    UI.modalOpen=true;
+    if(input)setTimeout(function(){input.focus();},50);
+    function keyH(e){
+      if(e.key==='Escape'){done(null);}
+      /* Enterは主ボタンのみ実行・IME確定と危険色は除外(§5-3) */
+      else if(e.key==='Enter'&&!e.isComposing&&primaryBtn&&primaryDef&&!primaryDef.danger){
+        e.preventDefault();primaryBtn.click();
+      }
+    }
+    document.addEventListener('keydown',keyH,true);
+    ov.addEventListener('click',function(e){if(e.target===ov)done(null);});
+    function done(res){
+      document.removeEventListener('keydown',keyH,true);
+      ov.remove();UI.modalOpen=false;
+      var cbs=UI.onModalClose.slice();UI.onModalClose.length=0;
+      cbs.forEach(function(f){try{f();}catch(e){}});
+      resolve(res);
+    }
+  });
+};
+/* 確認(具体語ボタン §5-2)。戻り値 Promise<boolean> */
+UI.confirm=function(o){
+  return UI.modal({title:o.title,body:o.body,
+    buttons:[{id:'ok',label:o.okLabel||'実行する',primary:!o.danger,danger:!!o.danger}]
+  }).then(function(r){return !!(r&&r.id==='ok');});
+};
+UI.info=function(title,body){
+  return UI.modal({title:title,body:body,buttons:[{id:'ok',label:'OK',primary:true}]});
+};
+
+/* トースト(+元に戻す §3-6) */
+UI.toast=function(msg,actionLabel,actionFn,ms){
+  var t=el('div','ui-toast');
+  t.appendChild(el('span',null,msg));
+  if(actionLabel){
+    var a=el('button','ui-toast-act',actionLabel);
+    a.addEventListener('click',function(){try{actionFn();}catch(e){} t.remove();});
+    t.appendChild(a);
+  }
+  document.body.appendChild(t);
+  setTimeout(function(){t.classList.add('show');},20);
+  setTimeout(function(){t.classList.remove('show');setTimeout(function(){t.remove();},350);},ms||6000);
+};
+window.UI=UI;
+})();
+
+</script>
 <script>
 "use strict";
 
@@ -724,11 +1096,16 @@ function buildZip(files){
   });
   $('zipBtn').addEventListener('click',function(){if(results.length)saveZip().then(function(){hasUnsaved=false;setStatus('<span class="ok">✓ ZIP保存しました</span>');});});
   $('clearBtn').addEventListener('click',function(){
-    if(results.length&&!confirm('ギャラリーをクリアしますか?(保存済みのファイルは消えません)'))return;
-    if(lbUrl){URL.revokeObjectURL(lbUrl);lbUrl=null;}
-    results=[];hasUnsaved=false;gallery.innerHTML='';galCount.textContent='0';emptyState.style.display='block';
-    retryBtn.style.display='none';failedPrompts=[];
-    renderStrip([],0,-1,new Set());setStatus('待機中です。');
+    var ask=results.length
+      ?window.UI.confirm({title:'ギャラリーをクリア',body:'ギャラリーをクリアしますか?(保存済みのファイルは消えません)',okLabel:'クリアする',danger:true})
+      :Promise.resolve(true);
+    ask.then(function(ok){
+      if(!ok)return;
+      if(lbUrl){URL.revokeObjectURL(lbUrl);lbUrl=null;}
+      results=[];hasUnsaved=false;gallery.innerHTML='';galCount.textContent='0';emptyState.style.display='block';
+      retryBtn.style.display='none';failedPrompts=[];
+      renderStrip([],0,-1,new Set());setStatus('待機中です。');
+    });
   });
 
   /* ---- AIプロンプト自動作成(同じAPIキーでテキストモデルを利用) ---- */
@@ -788,6 +1165,449 @@ function buildZip(files){
   lightbox.addEventListener('click',function(e){if(e.target!==lightboxImg)lightbox.classList.remove('show');});
   document.addEventListener('keydown',function(e){if(e.key==='Escape')lightbox.classList.remove('show');});
 })();
+</script>
+<script>
+/* ===== 同期・バックアップモジュール(命令書準拠) ===== */
+(function(){
+"use strict";
+var SC=window.SyncCore,UI=window.UI;
+var $=function(id){return document.getElementById(id);};
+
+/* ---- 保存層: localStorage → メモリのみ 段階フォールバック(§6-1/§6-3) ---- */
+var mem={},memOnly=false,warnedFail=false;
+try{
+  var probe='__lc_probe__'+Date.now();
+  localStorage.setItem(probe,'1');localStorage.removeItem(probe);
+}catch(e){memOnly=true;}
+function warnStorage(msg){
+  if(warnedFail)return;warnedFail=true;
+  var b=$('storWarn');b.style.display='block';b.textContent='⚠ '+msg;
+  UI.toast('⚠ '+msg);
+}
+if(memOnly)warnStorage('この環境では保存領域が使えません。設定はメモリのみ保持され、閉じると消えます。');
+function stGet(k){
+  if(memOnly)return mem[k]!==undefined?mem[k]:null;
+  try{return localStorage.getItem(k);}catch(e){return mem[k]!==undefined?mem[k]:null;}
+}
+function stSet(k,v){
+  mem[k]=v;
+  if(memOnly)return;
+  try{
+    localStorage.setItem(k,v);
+    /* 容量警告(§6-2) */
+    if(v.length>2000000)warnStorage('保存データが大きくなっています。容量上限に達すると保存に失敗します。');
+  }catch(e){
+    warnStorage('保存に失敗しました(容量上限の可能性)。以後の変更はこの画面を閉じると失われる恐れがあります。'); /* 握り潰し禁止(§6-3) */
+  }
+}
+function stDel(k){delete mem[k];if(!memOnly){try{localStorage.removeItem(k);}catch(e){}}}
+
+var K_STATE='lc_state_v1',K_CFG='lc_sync_cfg_v1',K_LAST='lc_last_sync',K_HIST='lc_hist_v1';
+
+/* ---- 状態 ---- */
+var state=SC.sanitizeState((function(){try{return JSON.parse(stGet(K_STATE)||'{}');}catch(e){return {};}})());
+var booted=false,applying=false;
+
+function persist(){stSet(K_STATE,JSON.stringify(state));}
+function pushHistory(entries){
+  if(!entries||!entries.length)return;
+  var h;try{h=JSON.parse(stGet(K_HIST)||'[]');}catch(e){h=[];}
+  h=h.concat(entries).slice(-40);
+  stSet(K_HIST,JSON.stringify(h));
+}
+
+/* ---- 設定バインド ---- */
+var BIND=[
+  ['apiKey','apikey','value','change'],['engine','engine','value','change'],
+  ['model','model','value','change'],['aspect','aspect','value','change'],
+  ['count','count','value','change'],['interval','interval','value','change'],
+  ['saveMode','saveMode','value','change'],['autoSwitch','autoSwitch','checked','change'],
+  ['cropOn','cropOn','checked','change'],
+  ['cutT','cutT','value','input'],['cutB','cutB','value','input'],
+  ['cutL','cutL','value','input'],['cutR','cutR','value','input'],
+  ['prompts','prompts','value','input'],['theme','theme','value','input'],
+  ['themeCount','themeCount','value','change']
+];
+function readEl(elId,prop){var e=$(elId);if(!e)return undefined;return prop==='checked'?e.checked:e.value;}
+function setField(k,v){
+  var d=SC.FIELDS[k];
+  if(d.t==='i')v=parseInt(v,10);
+  state=SC.sanitizeState({fields:Object.assign({},state.fields,(function(){var o={};o[k]={v:v,ts:SC._now()};return o;})()),items:state.items,tomb:state.tomb});
+  persist();scheduleSync();
+}
+function applyStateToUI(){
+  applying=true;
+  try{
+    BIND.forEach(function(b){
+      var k=b[0],e=$(b[1]);if(!e)return;
+      if(document.activeElement===e)return; /* バグ修正2: 入力中の欄は書き換えない(離脱後、照合ポーリングでローカル側がLWW再主張) */
+      var cell=state.fields[k];if(!cell)return;
+      if(b[2]==='checked'){if(e.checked!==!!cell.v){e.checked=!!cell.v;e.dispatchEvent(new Event('change',{bubbles:true}));}}
+      else if(e.tagName==='SELECT'&&!Array.prototype.some.call(e.options,function(o){return o.value===String(cell.v);})){
+        /* 同期先に存在しないoption値は適用しない(空文字化→逆流でリモート設定を破壊するのを防ぐ) */
+      }
+      else{
+        var sv=String(cell.v);
+        if(e.value!==sv){e.value=sv;
+          e.dispatchEvent(new Event('input',{bubbles:true}));
+          e.dispatchEvent(new Event('change',{bubbles:true}));
+        }
+      }
+    });
+    renderPresets();
+  }finally{applying=false;}
+}
+BIND.forEach(function(b){
+  var e=$(b[1]);if(!e)return;
+  e.addEventListener(b[3],function(){if(applying)return;setField(b[0],readEl(b[1],b[2]));});
+  if(b[3]==='input')e.addEventListener('change',function(){if(applying)return;setField(b[0],readEl(b[1],b[2]));});
+});
+/* バグ修正1: プログラム的書き込み(既存プリセットボタン・AIプロンプト追記・保存モードフォールバック)は
+   inputイベントが発火せずstateに入らない。2秒毎の実測照合で取りこぼしを回収する。 */
+setInterval(function(){
+  if(applying||UI.modalOpen)return;
+  BIND.forEach(function(b){
+    var k=b[0],e=$(b[1]);if(!e)return;
+    var cur=(b[2]==='checked')?e.checked:e.value;
+    var cell=state.fields[k];
+    if(cell===undefined){
+      if(b[2]==='checked'||String(cur)!=='')setField(k,cur); /* 初期値の取り込み */
+      return;
+    }
+    var sv=SC.sanitizeFieldValue(k,(b[2]==='checked')?cur:String(cur)); /* 意味的比較(クランプ後)。生値比較だと範囲外入力で永久再送信になる */
+    if(SC.canonical(sv)!==SC.canonical(cell.v))setField(k,cur);
+  });
+},2000);
+
+/* 旧キーからの取込(初回のみ・どんな編集にも負けるts=1) */
+(function(){
+  var legacy=stGet('gemini_api_key');
+  if(legacy&&!(state.fields.apiKey&&state.fields.apiKey.v)){
+    state=SC.sanitizeState({fields:Object.assign({},state.fields,{apiKey:{v:legacy,ts:1}}),items:state.items,tomb:state.tomb});
+    persist();
+  }
+})();
+
+/* ---- カスタムプリセット(追加・削除=墓標 §1-2/§1-3) ---- */
+var presetsBox=$('customPresets');
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function renderPresets(){
+  presetsBox.innerHTML='';
+  var list=Object.keys(state.items).map(function(id){return state.items[id];});
+  list.sort(function(a,b){return a.ts-b.ts;});
+  if(!list.length){presetsBox.innerHTML='<span class="hint" style="margin:0">保存したプリセットはここに並びます(2台間で同期されます)</span>';return;}
+  list.forEach(function(it){
+    var chip=document.createElement('span');chip.className='preset-chip';
+    /* HTML属性に入れるのは検証済みIDのみ・表示名は必ずエスケープ(§1-9) */
+    chip.innerHTML='<button class="pc-apply" data-id="'+it.id+'">'+esc(it.name)+' <small>('+it.T+'/'+it.B+'/'+it.L+'/'+it.R+')</small></button><button class="pc-del" data-id="'+it.id+'" aria-label="削除">×</button>';
+    presetsBox.appendChild(chip);
+  });
+}
+presetsBox.addEventListener('click',function(ev){
+  var t=ev.target.closest('button');if(!t)return;
+  var id=t.getAttribute('data-id');
+  var it=state.items[id];/* ID参照で操作(§1-4) */
+  if(!it)return;
+  if(t.className==='pc-apply'){
+    ['T','B','L','R'].forEach(function(k){setField('cut'+k,it[k]);});
+    applyStateToUI();
+  }else if(t.className==='pc-del'){
+    deletePreset(id);
+  }
+});
+function deletePreset(id){
+  var it=state.items[id];if(!it)return;
+  var snapshot={id:it.id,name:it.name,T:it.T,B:it.B,L:it.L,R:it.R};
+  var tombTs=SC._now();
+  var items=Object.assign({},state.items);delete items[id];
+  state=SC.sanitizeState({fields:state.fields,items:items,tomb:state.tomb.concat([{id:id,ts:tombTs}])});
+  persist();renderPresets();scheduleSync();
+  pushHistory([{kind:'item',key:id,value:snapshot,ts:tombTs}]); /* 履歴退避+元に戻す(§3-6 採用) */
+  UI.toast('「'+snapshot.name+'」を削除しました','元に戻す',function(){
+    /* 自分の墓標を除去し ts=max(now, 墓標ts+1)(§3-7) */
+    var tomb=state.tomb.filter(function(x){return !(x.id===id&&x.ts===tombTs);});
+    var items2=Object.assign({},state.items);
+    items2[id]=Object.assign({},snapshot,{ts:SC.reviveTs(SC._now(),tombTs)});
+    state=SC.sanitizeState({fields:state.fields,items:items2,tomb:tomb});
+    persist();renderPresets();scheduleSync();
+  });
+}
+$('savePresetBtn').addEventListener('click',function(){
+  UI.modal({title:'カットプリセットを保存',
+    body:'今のカット%('+readEl('cutT')+'/'+readEl('cutB')+'/'+readEl('cutL')+'/'+readEl('cutR')+')に名前を付けて保存します。',
+    input:{placeholder:'例: note用ロゴ消し',type:'text'},
+    buttons:[{id:'save',label:'保存する',primary:true}]
+  }).then(function(r){
+    if(!r||r.id!=='save')return;
+    var name=(r.value||'').trim();if(!name){UI.toast('名前を入力してください');return;}
+    var id=SC.uid();
+    var items=Object.assign({},state.items);
+    items[id]={id:id,name:name,T:parseInt(readEl('cutT'),10)||0,B:parseInt(readEl('cutB'),10)||0,
+      L:parseInt(readEl('cutL'),10)||0,R:parseInt(readEl('cutR'),10)||0,ts:SC._now()};
+    state=SC.sanitizeState({fields:state.fields,items:items,tomb:state.tomb});
+    persist();renderPresets();scheduleSync();
+  });
+});
+$('delAllPresets').addEventListener('click',function(){
+  if(!Object.keys(state.items).length){UI.toast('プリセットはありません');return;}
+  UI.confirm({title:'全プリセット削除',body:'保存済みのカットプリセットをすべて削除します。直前に自動バックアップをダウンロードします。',okLabel:'全て削除する',danger:true}).then(function(ok){
+    if(!ok)return;
+    autoBackupDownload(); /* 破壊的操作の直前バックアップ(§3-2) */
+    /* 個別墓標を量産せずグループ墓標1件(§1-3) */
+    state=SC.sanitizeState({fields:state.fields,items:{},tomb:state.tomb.concat([{id:SC.GROUP_PRESETS,ts:SC._now()}])});
+    persist();renderPresets();scheduleSync();
+    UI.toast('全プリセットを削除しました(バックアップ保存済み)');
+  });
+});
+
+/* ---- 書き出し・復元(§3) ---- */
+function payloadStr(){return JSON.stringify(SC.buildPayload(state),null,1);}
+function fname(pre){return pre+'_'+new Date().toISOString().slice(0,10)+'.json';}
+function plainDownload(text,name){
+  var url=URL.createObjectURL(new Blob([text],{type:'application/json'}));
+  var a=document.createElement('a');a.href=url;a.download=name;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},1500);
+}
+function autoBackupDownload(){plainDownload(payloadStr(),fname('logo-cutter_backup'));} /* 共有シートを出さない(§3-2) */
+$('exportBtn').addEventListener('click',function(){
+  var text=payloadStr(),name=fname('logo-cutter_settings');
+  var file=new File([text],name,{type:'application/json'});
+  /* share → showSaveFilePicker → DL の順(§3-1)。キャンセルは黙って終了 */
+  if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+    navigator.share({files:[file]}).then(function(){UI.toast('書き出しました');})
+      .catch(function(e){if(e&&e.name==='AbortError')return;trySavePicker(text,name);});
+  }else trySavePicker(text,name);
+  function trySavePicker(t,n){
+    if(window.showSaveFilePicker){
+      window.showSaveFilePicker({suggestedName:n,types:[{description:'JSON',accept:{'application/json':['.json']}}]})
+        .then(function(h){return h.createWritable().then(function(w){return w.write(t).then(function(){return w.close();});});})
+        .then(function(){UI.toast('書き出しました');})
+        .catch(function(e){if(e&&e.name==='AbortError')return;plainDownload(t,n);});
+    }else{plainDownload(t,n);UI.toast('書き出しました');}
+  }
+});
+$('importBtn').addEventListener('click',function(){$('importFile').click();});
+$('importFile').addEventListener('change',function(){
+  var f=this.files&&this.files[0];this.value='';
+  if(!f)return;
+  var fr=new FileReader();
+  fr.onload=function(){
+    var raw;
+    try{raw=JSON.parse(fr.result);}catch(e){UI.info('復元できません','JSONとして読み取れませんでした。');return;}
+    var incoming=SC.sanitizeState(raw&&raw.state?raw.state:raw); /* 外部入力はサニタイズ必須(§1-10) */
+    UI.modal({title:'復元方法を選んでください',
+      body:'「統合する」は今の設定と安全に合成します(推奨)。「置き換える」は今の設定を破棄します。',
+      buttons:[
+        {id:'merge',label:'統合する(推奨)',primary:true},
+        {id:'replace',label:'置き換える',danger:true}
+      ]
+    }).then(function(r){
+      if(!r)return;
+      if(r.id==='merge'){
+        var before=state;
+        var res=SC.restoreMerge(state,incoming,SC._now()); /* 墓標があっても復活(§3-4) */
+        state=res.state;pushHistory(res.history);
+        persist();applyStateToUI();scheduleSync();
+        var d=SC.diffStates(before,state); /* 実測diff(§3-5) */
+        UI.info('統合しました','追加 '+d.added+'件・更新 '+d.updated+'件・最新のまま '+d.kept+'件');
+      }else if(r.id==='replace'){
+        /* 二段確認+事前自動バックアップ(§3-2/§3-3) */
+        UI.confirm({title:'本当に置き換えますか?',body:'今の設定は破棄されます(直前に自動バックアップをダウンロードします)。',okLabel:'置き換える',danger:true}).then(function(ok){
+          if(!ok)return;
+          autoBackupDownload();
+          var before=state;
+          state=incoming;persist();applyStateToUI();scheduleSync();
+          var d=SC.diffStates(before,state);
+          UI.info('置き換えました','追加 '+d.added+'件・更新 '+d.updated+'件・変更なし '+d.kept+'件・削除 '+d.removed+'件');
+        });
+      }
+    });
+  };
+  fr.onerror=function(){UI.info('復元できません','ファイルの読み取りに失敗しました。');};
+  fr.readAsText(f);
+});
+
+/* ---- クラウド同期(GitHub Gist・E2E暗号化 §4) ---- */
+var GIST_FILE='logo-cutter-sync.json.enc';
+var cfg=(function(){try{return JSON.parse(stGet(K_CFG)||'null');}catch(e){return null;}})();
+var sessionKey=null;      /* 鍵はセッション内キャッシュ(§4-7) */
+var syncing=false,flushing=false,dirty=false,pendingRemote=null,syncTimer=null,decryptBroken=false;
+
+function setSyncStatus(html){$('syncStatus').innerHTML=html;}
+function lastSyncLabel(){
+  var t=stGet(K_LAST); /* 表示専用・送信ペイロード外(§1-7) */
+  return t?new Date(parseInt(t,10)).toLocaleString('ja-JP'):'未同期';
+}
+function refreshSyncUI(){
+  $('syncSetupBtn').textContent=cfg?'⚙ 同期設定・解除':'☁ クラウド同期を設定';
+  setSyncStatus(cfg?('同期: 有効(最終 '+lastSyncLabel()+')'):'同期: 未設定');
+}
+function getKey(){
+  if(sessionKey)return Promise.resolve(sessionKey);
+  return SC.deriveKey(cfg.pass,cfg.salt).then(function(k){sessionKey=k;return k;});
+}
+function gistHeaders(){return {'Authorization':'Bearer '+cfg.token,'Accept':'application/vnd.github+json','Content-Type':'application/json'};}
+function pushRemote(msg,keepalive){
+  return fetch('https://api.github.com/gists/'+cfg.gistId,{
+    method:'PATCH',headers:gistHeaders(),keepalive:!!keepalive,
+    body:JSON.stringify({files:(function(){var o={};o[GIST_FILE]={content:msg};return o;})()})
+  });
+}
+function scheduleSync(){
+  dirty=true;
+  if(!cfg||decryptBroken)return;
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(function(){syncNow('debounce');},3000); /* 保存の数秒後(§4-4) */
+}
+function uiBlocked(){return UI.modalOpen||$('startBtn').disabled;} /* ダイアログ中・生成実行中(§4-6) */
+function applyRemote(remoteState){
+  /* ネットワーク待ち完了後の再チェック(§2-6) */
+  if(uiBlocked()){
+    pendingRemote=remoteState;
+    UI.onModalClose.push(flushPending);
+    return false;
+  }
+  var res=SC.mergeState(state,remoteState);
+  pushHistory(res.history);
+  if(!SC.stateEquals(state,res.state)){
+    state=res.state;persist();applyStateToUI();
+  }
+  return true;
+}
+function flushPending(){
+  if(pendingRemote&&!uiBlocked()){
+    var p=pendingRemote;pendingRemote=null;
+    if(applyRemote(p))scheduleSync(); /* 保留分の反映後にマージ結果を送信 */
+  }
+}
+setInterval(flushPending,4000); /* 生成実行中ブロックの解除検知(§2-6) */
+function syncNow(reason){
+  if(!cfg||syncing||!booted||decryptBroken)return; /* 二重実行防止・起動完了フラグ(§4-6) */
+  syncing=true;
+  setSyncStatus('同期中…');
+  fetch('https://api.github.com/gists/'+cfg.gistId+'?t='+Date.now(),{headers:gistHeaders()})
+  .then(function(res){
+    if(!res.ok)throw new Error('取得失敗 HTTP '+res.status);
+    return res.json();
+  })
+  .then(function(g){
+    var f=g.files&&g.files[GIST_FILE];
+    if(!f||!f.content||f.content==='{}')return {remoteOk:true,remoteState:null}; /* 初回=リモート空(新規Gistのプレースホルダ含む) */
+    var contentP=f.truncated?fetch(f.raw_url).then(function(r){return r.text();}):Promise.resolve(f.content);
+    return contentP.then(function(content){
+      return SC.decryptJSON(cfg.pass,content).then(function(obj){
+        return {remoteOk:true,remoteState:SC.sanitizeState(obj&&obj.state?obj.state:{})};
+      }).catch(function(){
+        /* 復号失敗→エラー停止。リモートは絶対に上書きしない(§4-9) */
+        decryptBroken=true;
+        throw new Error('復号に失敗しました(パスフレーズ違い/破損)。同期を停止しました。リモートのデータは変更していません。設定し直すまで自動同期は再開されません。');
+      });
+    });
+  })
+  .then(function(r){
+    /* push経路は remoteOk===true のこの1箇所のみ(§4-9の構造的保証) */
+    if(r.remoteState){
+      var applied=applyRemote(r.remoteState);
+      if(!applied){setSyncStatus('編集中のため取り込みを保留中…(閉じると反映)');syncing=false;return;}
+    }
+    var localMsgNeeded=!r.remoteState||!SC.stateEquals(state,r.remoteState);
+    var fin=function(){
+      dirty=false;
+      stSet(K_LAST,String(SC._now()));
+      refreshSyncUI();syncing=false;
+    };
+    if(localMsgNeeded){
+      getKey().then(function(key){return SC.encryptJSON(key,cfg.salt,SC.buildPayload(state));})
+        .then(function(msg){return pushRemote(msg,false);})
+        .then(function(res){if(!res.ok)throw new Error('送信失敗 HTTP '+res.status);fin();})
+        .catch(function(e){setSyncStatus('<span style="color:var(--danger)">同期エラー: '+esc(e.message||'')+'</span>');syncing=false;});
+    }else fin();
+  })
+  .catch(function(e){
+    setSyncStatus('<span style="color:var(--danger)">同期エラー: '+esc(e.message||'通信失敗')+'</span>');
+    syncing=false;
+  });
+}
+/* 閉じる瞬間の即時送信: キャッシュ鍵+keepalive のみ(§4-7)。ベストエフォート(§4-10) */
+function flushOnHide(){
+  if(!cfg||!dirty||!sessionKey||flushing||decryptBroken)return; /* 二重実行防止 */
+  flushing=true;
+  SC.encryptJSON(sessionKey,cfg.salt,SC.buildPayload(state)).then(function(msg){
+    if(msg.length<=60000)pushRemote(msg,true); /* keepalive本文上限対策(§8-3) */
+  }).catch(function(){});
+  setTimeout(function(){flushing=false;},2000);
+}
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible'){if(cfg&&!decryptBroken)syncNow('visible');}
+  else flushOnHide();
+});
+window.addEventListener('pagehide',flushOnHide);
+
+/* 同期設定ダイアログ(段階式・解除も同導線 §4-2) */
+$('syncSetupBtn').addEventListener('click',function(){
+  if(cfg){
+    UI.modal({title:'クラウド同期の設定',body:'現在: 有効(Gist '+cfg.gistId.slice(0,8)+'…)。解除するとこの端末の鍵・認証情報を破棄します(クラウド上の暗号化データは残ります)。',
+      buttons:[{id:'off',label:'同期を解除する',danger:true}]
+    }).then(function(r){
+      if(r&&r.id==='off'){
+        /* 鍵キャッシュ・認証情報・タイマー全破棄(§4-8) */
+        cfg=null;sessionKey=null;decryptBroken=false;clearTimeout(syncTimer);
+        stDel(K_CFG);refreshSyncUI();UI.toast('同期を解除しました');
+      }
+    });
+    return;
+  }
+  UI.modal({title:'同期設定 1/3: GitHubトークン',body:'gist権限のみのFine-grained/classicトークンを貼り付けてください。',
+    input:{placeholder:'ghp_… / github_pat_…',type:'password'},
+    buttons:[{id:'next',label:'次へ',primary:true}]
+  }).then(function(r1){
+    if(!r1||!r1.value.trim())return;
+    var token=r1.value.trim();
+    UI.modal({title:'同期設定 2/3: パスフレーズ',
+      body:'クラウド上のデータはこのパスフレーズで暗号化されます。注意: 自動同期のためパスフレーズはこの端末内に保存されます。暗号化が守るのはクラウド上のデータのみで、この端末を読める人には守れません。',
+      input:{placeholder:'パスフレーズ(2台で同じもの)',type:'password'},
+      buttons:[{id:'next',label:'次へ',primary:true}]
+    }).then(function(r2){
+      if(!r2||!r2.value)return;
+      var pass=r2.value;
+      UI.modal({title:'同期設定 3/3: Gist',body:'既存のGist IDを貼るか、空のまま「新規作成」を押してください(2台目は1台目と同じIDを貼ります)。',
+        input:{placeholder:'Gist ID(空=新規作成)',type:'text'},
+        buttons:[{id:'go',label:'新規作成/接続する',primary:true}]
+      }).then(function(r3){
+        if(!r3)return;
+        var gid=(r3.value||'').trim();
+        var saltB64=SC.randomSaltB64(); /* 固定salt(§4-7) */
+        var finish=function(gistId){
+          cfg={token:token,pass:pass,gistId:gistId,salt:saltB64};
+          sessionKey=null;decryptBroken=false;
+          stSet(K_CFG,JSON.stringify(cfg));
+          refreshSyncUI();dirty=true;syncNow('setup');
+        };
+        if(gid){finish(gid);return;}
+        fetch('https://api.github.com/gists',{method:'POST',
+          headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
+          body:JSON.stringify({description:'logo-cutter encrypted sync',public:false,
+            files:(function(){var o={};o[GIST_FILE]={content:'{}'};return o;})()})
+        }).then(function(res){
+          if(!res.ok)throw new Error('Gist作成失敗 HTTP '+res.status);
+          return res.json();
+        }).then(function(g){
+          finish(g.id);
+          UI.info('Gistを作成しました','2台目ではこのIDを貼ってください:\n'+g.id);
+        }).catch(function(e){UI.info('失敗しました',e.message||'通信エラー');});
+      });
+    });
+  });
+});
+
+/* ---- 起動 ---- */
+applyStateToUI();
+refreshSyncUI();
+booted=true; /* 起動完了フラグ(§4-6) */
+if(cfg)syncNow('boot'); /* 起動時同期(§4-4) */
+})();
+
 </script>
 </body>
 </html>
