@@ -711,7 +711,7 @@ const SB = (function(){
   /* 多字助詞を先に。は/が/を/も は弱い境界としてペナルティ */
   const FMT_PARTICLE = /(ながら|ように|のに|ので|から|けど|たら|には|のは|とは|ても|て|に|で|と|は|が|を|も)/g;
   const FMT_WEAK = { "は":4.5, "が":4.5, "を":4.5, "も":4.5 };
-  const FMT_BADNEXT = "。、!?！？」』）)てにでとはがをものたりらるれ";
+  const FMT_BADNEXT = "。、!?！？」』）)てにでとはがをものたりらるれつ";
 
   function fmtCandidates(s){
     const out = []; let m;
@@ -799,6 +799,27 @@ const SB = (function(){
       s.replace(/」「/g, "」\n「").split("\n").forEach(function(x){ if (x) out.push(x); });
     }
     const lines = raw.replace(/\r\n/g, "\n").split("\n");
+    /* 導入部 = 掴みの後の最初の段落(?で終わる)。読点は必ず改行、途中の。も改行にする */
+    const introSet = new Set();
+    (function(){
+      let k = 0;
+      /* 先頭の空行・掴み(保護行)を読み飛ばす */
+      while (k < lines.length){
+        const l = lines[k].replace(/\s+$/, "");
+        if (l.trim() === "" || fmtIsProtected(l)) { k++; continue; }
+        break;
+      }
+      const group = [];
+      while (k < lines.length){
+        const l = lines[k].replace(/\s+$/, "");
+        if (l.trim() === "" || fmtIsProtected(l)) break;
+        group.push(k); k++;
+      }
+      if (group.length){
+        const last = lines[group[group.length - 1]].replace(/\s+$/, "");
+        if (/[?？!！]\s*$/.test(last)) group.forEach(function(ix){ introSet.add(ix); });
+      }
+    })();
     let firstContent = true;
     let i = 0;
     while (i < lines.length){
@@ -820,11 +841,12 @@ const SB = (function(){
           if (nxt.indexOf("「") >= 0 || nxt.indexOf("」") >= 0) break;
         }
       }
+      const isIntro = introSet.has(i);
       fmtSentences(line).forEach(function(sent){
         sent = sent.replace(/^\s+/, "");
         if (!sent) return;
         /* 本文冒頭が「と+漢字」で始まる場合(掴みからの継続)は「と」を独立行に */
-        if (firstContent && /^と(?!ても|ころ|にかく|りあえず|もかく|うとう|はいえ|うぜん|んでも).+/.test(sent)){
+        if (firstContent && /^と(?=[\u4E00-\u9FFFそあど])./.test(sent)){
           out.push("と");
           sent = sent.slice(1);
           if (fmtLastNotes.indexOf("冒頭の「と」を独立行に") < 0) fmtLastNotes.push("冒頭の「と」を独立行に");
@@ -832,6 +854,14 @@ const SB = (function(){
         /* 文末記号も単独読点もない断片は整形済みとみなして再処理しない */
         if (!/[。？?！!」』]$/.test(sent) && !/(?<!、)、(?!、)/.test(sent)) {
           pushLines(sent);
+          return;
+        }
+        /* 導入部: 途中の。は改行に(消す)、読点は必ず改行 */
+        if (isIntro){
+          sent = sent.replace(/。+$/, "");
+          if (!sent) return;
+          sent = sent.replace(/(?<!、)、(?=[「『（(“])/g, "");
+          sent.split(/(?<!、)、(?!、)/).forEach(function(l){ if (l) pushLines(l); });
           return;
         }
         if (sent.indexOf(SHIME) >= 0) {
