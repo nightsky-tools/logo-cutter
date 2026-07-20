@@ -133,6 +133,35 @@
   }
   details.rules textarea:focus { border-color: var(--tape); }
   details.rules .note { font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
+  .instbox {
+    margin-top: 8px;
+    font-size: 12.5px;
+    line-height: 1.7;
+    background: #f7f8fa;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 12px;
+    white-space: pre-wrap;
+    color: var(--ink);
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .copybtn {
+    margin-top: 8px;
+    width: 100%;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: inherit;
+    color: var(--tape);
+    background: #fff;
+    border: 1.5px solid var(--tape);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .copybtn:hover { background: var(--ok-bg); }
+  .copybtn.copied { background: var(--tape); color: #fff; }
 
   .summary {
     display: none;
@@ -286,6 +315,17 @@
       <textarea id="rules"></textarea>
       <div class="note">1行1ルール。「名前/」=そのフォルダを除外、「*.拡張子」=その種類を除外、それ以外は部分一致。編集内容は保存されます。</div>
     </details>
+    <details class="rules">
+      <summary>プロジェクト初期設定用の指示文(コピーして「指示」欄に貼る)</summary>
+      <div class="instbox" id="instText">コンテキストに登録されている連結txtファイルが、このアプリの最新ソースコードです。
+
+- ファイル冒頭の「申し送りメモ」を最優先で読み、開発の現状を踏まえて回答してください
+- コードについて回答する時は、必ず連結txt本文の該当箇所を参照してください
+- 連結txtには目次があります。全体を確認する作業の時は、目次と照合して読み漏れがないかチェックしてください
+- 日付の異なる連結txtが複数ある場合は、ファイル名の日付が最新のものだけを正とみなしてください</div>
+      <button class="copybtn" id="copyInst">📋 指示文をコピー</button>
+      <div class="note">Claudeのプロジェクト画面 →「指示」に貼り付けて保存してください(最初の1回だけでOK)。</div>
+    </details>
   </div>
 
   <div class="summary" id="summary">
@@ -345,6 +385,35 @@
   function loadMemo() { $("memo").value = localStorage.getItem("cup_memo_" + projKey()) || ""; }
   $("memo").addEventListener("input", () => localStorage.setItem("cup_memo_" + projKey(), $("memo").value));
   loadMemo();
+
+  /* ===== 指示文コピー ===== */
+  $("copyInst").addEventListener("click", async () => {
+    const text = $("instText").innerText;
+    const btn = $("copyInst");
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch (e) {
+      // フォールバック(古いブラウザ・非https環境)
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand("copy");
+        ta.remove();
+      } catch (e2) { ok = false; }
+    }
+    btn.textContent = ok ? "✓ コピーしました!「指示」欄に貼ってください" : "コピーできませんでした。上の文を長押しで選択してください";
+    btn.classList.toggle("copied", ok);
+    setTimeout(() => {
+      btn.textContent = "📋 指示文をコピー";
+      btn.classList.remove("copied");
+    }, 2500);
+  });
 
   /* ===== ユーティリティ ===== */
   function fmtSize(n) {
