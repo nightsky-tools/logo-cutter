@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZIP名前変え係 — .zip を .zip.txt に</title>
+<style>
+  :root {
+    --paper: #f2f4f3;
+    --card: #ffffff;
+    --ink: #1f2a33;
+    --ink-soft: #5d6b75;
+    --line: #cfd6da;
+    --stamp: #c73e3a;
+    --tape: #2f6f6a;
+    --ok-bg: #eef6f2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px 64px;
+    line-height: 1.6;
+  }
+  .sheet { width: 100%; max-width: 520px; }
+  header {
+    background: var(--card);
+    border: 1.5px solid var(--ink);
+    border-radius: 6px;
+    padding: 18px 20px 16px;
+    position: relative;
+    margin-bottom: 20px;
+  }
+  header::before {
+    content: "";
+    position: absolute;
+    top: -1.5px; left: -1.5px; right: -1.5px;
+    height: 8px;
+    background: var(--tape);
+    border-radius: 6px 6px 0 0;
+  }
+  .eyebrow { font-size: 11px; letter-spacing: 0.18em; color: var(--ink-soft); margin-top: 4px; }
+  h1 { font-size: 22px; font-weight: 700; }
+  h1 small { display: block; font-size: 13px; font-weight: 400; color: var(--ink-soft); margin-top: 4px; }
+
+  .dropzone {
+    border: 2px dashed var(--line);
+    border-radius: 6px;
+    background: var(--card);
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    user-select: none;
+  }
+  .dropzone.dragover { border-color: var(--tape); background: var(--ok-bg); }
+  .dropzone, button, input { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  .dropzone p.main { font-size: 15px; font-weight: 600; }
+  .dropzone p.sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; }
+  .dropzone .icon { font-size: 30px; display: block; margin-bottom: 8px; }
+  input[type="file"] { display: none; }
+
+  /* 変換前→変換後の表示 */
+  .rename-card {
+    margin-top: 18px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 16px;
+    display: none;
+    font-size: 14px;
+  }
+  .rename-card.show { display: block; }
+  .rename-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .tag {
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 1px 8px;
+    flex-shrink: 0;
+  }
+  .name { word-break: break-all; }
+  .name.before { color: var(--ink-soft); text-decoration: line-through; text-decoration-color: var(--stamp); }
+  .name.after { font-weight: 700; }
+  .arrow { text-align: center; color: var(--tape); font-size: 18px; margin: 6px 0; }
+  .meta { font-size: 12px; color: var(--ink-soft); margin-top: 10px; }
+  .warn {
+    margin-top: 10px;
+    font-size: 12.5px;
+    color: var(--stamp);
+    display: none;
+  }
+  .warn.show { display: block; }
+
+  .go-btn {
+    margin-top: 18px;
+    width: 100%;
+    padding: 15px;
+    font-size: 16px;
+    font-weight: 700;
+    font-family: inherit;
+    letter-spacing: 0.08em;
+    color: #fff;
+    background: var(--ink);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: none;
+    transition: transform .08s, background .15s;
+  }
+  .go-btn.show { display: block; }
+  .go-btn:hover { background: #34434f; }
+  .go-btn:active { transform: scale(0.985); }
+
+  .done {
+    margin-top: 18px;
+    display: none;
+    background: var(--ok-bg);
+    border: 1px solid var(--tape);
+    border-radius: 6px;
+    padding: 16px 18px;
+    position: relative;
+  }
+  .done.show { display: block; animation: pop .25s ease-out; }
+  @keyframes pop {
+    from { transform: scale(0.96); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) { .done.show { animation: none; } }
+  .done .stamp {
+    position: absolute;
+    top: 12px; right: 14px;
+    width: 54px; height: 54px;
+    border: 2.5px solid var(--stamp);
+    border-radius: 50%;
+    color: var(--stamp);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.1em;
+    transform: rotate(-12deg);
+    opacity: 0.85;
+  }
+  .done h2 { font-size: 15px; margin-bottom: 6px; }
+  .done p { font-size: 13px; color: var(--ink-soft); padding-right: 64px; }
+  .done .outname { font-weight: 700; color: var(--ink); word-break: break-all; }
+  .done ol { margin-top: 10px; padding-left: 20px; font-size: 13px; color: var(--ink-soft); }
+  .done ol li { margin-bottom: 3px; }
+
+  footer { margin-top: 22px; font-size: 11.5px; color: var(--ink-soft); text-align: center; }
+  .save-hint {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    background: #fff;
+    border: 1px dashed var(--line);
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: none;
+  }
+  .save-hint.show { display: block; }
+  @media (max-width: 420px) {
+    body { padding: 14px 10px 48px; }
+    header { padding: 14px 14px 12px; }
+    h1 { font-size: 19px; }
+    .dropzone { padding: 32px 14px; }
+    .done p { padding-right: 0; }
+    .done .stamp { width: 46px; height: 46px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <header>
+    <div class="eyebrow">CLAUDE 向け 名前変え伝票</div>
+    <h1>ZIP名前変え係
+      <small>手持ちのZIPを、自動展開されない「.zip.txt」に改名してお返し</small>
+    </h1>
+  </header>
+
+  <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="ZIPファイルを選択">
+    <span class="icon">🏷️</span>
+    <p class="main">ここにZIPをドラッグ、またはタップして選択</p>
+    <p class="sub">中身はいじりません。名前だけ変えます(端末内で完結)</p>
+  </div>
+  <input type="file" id="fileInput" accept=".zip,application/zip,application/x-zip-compressed">
+
+  <div class="rename-card" id="renameCard">
+    <div class="rename-row">
+      <span class="tag">いまの名前</span>
+      <span class="name before" id="beforeName"></span>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="rename-row">
+      <span class="tag">新しい名前</span>
+      <span class="name after" id="afterName"></span>
+    </div>
+    <div class="meta" id="metaInfo"></div>
+    <div class="warn" id="warn">※ ZIP以外のファイルのようです。それでも変換はできますが、中身がZIPかご確認ください。</div>
+  </div>
+
+  <button class="go-btn" id="goBtn">この名前でダウンロード</button>
+
+  <div class="done" id="done">
+    <div class="stamp">改名<br>済</div>
+    <h2>できあがり!</h2>
+    <p><span class="outname" id="outname"></span> を保存しました。</p>
+    <ol>
+      <li>このファイルをClaudeのチャットにアップロード</li>
+      <li>「これはZIPです」と一言添える</li>
+      <li>Claudeが展開して全ファイルを読みます</li>
+    </ol>
+    <div class="save-hint" id="saveHint">📱 iPhone/iPadの場合:保存先は「ファイル」アプリ →「ダウンロード」です。Claudeアプリの添付画面で「ファイルを選択」から開けます。</div>
+  </div>
+
+  <footer>ファイルはサーバーに送信されません。すべてブラウザ内で完結します。</footer>
+</div>
+
+<script>
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const renameCard = document.getElementById('renameCard');
+  const beforeName = document.getElementById('beforeName');
+  const afterName = document.getElementById('afterName');
+  const metaInfo = document.getElementById('metaInfo');
+  const warn = document.getElementById('warn');
+  const goBtn = document.getElementById('goBtn');
+  const done = document.getElementById('done');
+  const outname = document.getElementById('outname');
+
+  let currentFile = null;
+  let newName = '';
+
+  // 端末に合わせて案内文を切り替え
+  const isTouch = window.matchMedia('(pointer: coarse)').matches;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isTouch) {
+    dropzone.querySelector('.main').textContent = 'ここをタップしてZIPを選択';
+  } else {
+    dropzone.querySelector('.main').textContent = 'ここにZIPをドラッグ&ドロップ、またはクリックして選択';
+  }
+  if (isIOS) document.getElementById('saveHint').classList.add('show');
+
+  function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  function setFile(f) {
+    if (!f) return;
+    currentFile = f;
+    // 元の名前から新しい名前を作る: foo.zip -> foo.zip.txt / foo -> foo.zip.txt
+    if (/\.zip$/i.test(f.name)) {
+      newName = f.name + '.txt';
+    } else {
+      newName = f.name + '.zip.txt';
+    }
+    beforeName.textContent = f.name;
+    afterName.textContent = newName;
+    metaInfo.textContent = 'サイズ: ' + fmtSize(f.size);
+    const looksZip = /\.zip$/i.test(f.name) ||
+      f.type === 'application/zip' ||
+      f.type === 'application/x-zip-compressed';
+    warn.classList.toggle('show', !looksZip);
+    renameCard.classList.add('show');
+    goBtn.classList.add('show');
+    done.classList.remove('show');
+  }
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+  });
+  fileInput.addEventListener('change', () => {
+    setFile(fileInput.files[0]);
+    fileInput.value = '';
+  });
+
+  ['dragenter', 'dragover'].forEach(ev =>
+    dropzone.addEventListener(ev, e => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    })
+  );
+  ['dragleave', 'drop'].forEach(ev =>
+    dropzone.addEventListener(ev, e => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+    })
+  );
+  dropzone.addEventListener('drop', e => {
+    if (e.dataTransfer && e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+  });
+
+  goBtn.addEventListener('click', () => {
+    if (!currentFile) return;
+    const url = URL.createObjectURL(currentFile);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = newName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    outname.textContent = newName + '(' + fmtSize(currentFile.size) + ')';
+    done.classList.add('show');
+  });
+</script>
+</body>
+</html>
