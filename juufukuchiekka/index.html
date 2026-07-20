@@ -73,6 +73,9 @@ section.groups{margin-top:18px}
 .uniqueNote{font-size:12px;color:var(--dim);margin:14px 0}
 .optrow{margin-top:14px;font-size:12.5px;color:var(--dim);display:flex;align-items:center;gap:8px}
 .optrow input{accent-color:var(--gold)}
+.group .skiprow{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim);margin-top:8px;padding:8px 4px 2px;border-top:1px dashed var(--line);cursor:pointer}
+.group .skiprow input{margin-top:0;accent-color:var(--gold);flex:none}
+.group .skiprow:hover{color:var(--star)}
 
 .actions{margin-top:22px;display:flex;gap:10px;flex-wrap:wrap}
 button.primary{
@@ -161,6 +164,10 @@ button.ghost:disabled{opacity:.4;cursor:default}
   <div class="optrow">
     <input type="checkbox" id="optEmpty">
     <label for="optEmpty">空ファイル(0バイト)同士も重複として削除する</label>
+  </div>
+  <div class="optrow">
+    <input type="checkbox" id="optClaude">
+    <label for="optClaude">Claude用に「.zip.txt」でダウンロード(アップロード時の自動展開を回避)</label>
   </div>
   <section class="groups" id="groupsSec">
     <div class="sechead">重複グループ(残すファイルを選択)</div>
@@ -686,9 +693,10 @@ function analyze(){
     if(!map.has(key)) map.set(key,[]);
     map.get(key).push(i);
   });
+  const prevSkip=new Map(groups.map(g=>[g.key,g.skip]));
   groups=[];
   for(const [key,indices] of map)
-    if(indices.length>1) groups.push({indices,keepIdx:indices[0],size:allFiles[indices[0]].size});
+    if(indices.length>1) groups.push({key,indices,keepIdx:indices[0],size:allFiles[indices[0]].size,skip:prevSkip.get(key)||false});
   groups.sort((a,b)=>b.size*(b.indices.length-1)-a.size*(a.indices.length-1));
   renderGroups();
 }
@@ -696,8 +704,10 @@ function renderGroups(){
   const wrap=$("groups"); wrap.textContent="";
   let removeCount=0, saveBytes=0;
   groups.forEach((g,gi)=>{
-    removeCount+=g.indices.length-1;
-    saveBytes+=g.size*(g.indices.length-1);
+    if(!g.skip){
+      removeCount+=g.indices.length-1;
+      saveBytes+=g.size*(g.indices.length-1);
+    }
     const card=el("div","group");
     const meta=el("div","meta");
     meta.append(el("span",null,`${g.indices.length} 件が完全一致 · ${fmtSize(g.size)}/件`));
@@ -706,13 +716,20 @@ function renderGroups(){
     for(const i of g.indices){
       const label=el("label");
       const radio=el("input"); radio.type="radio"; radio.name="g"+gi; radio.checked=(i===g.keepIdx);
+      radio.disabled=g.skip;
       radio.addEventListener("change",()=>{g.keepIdx=i;renderGroups();});
       const name=el("span","name",allFiles[i].name);
-      const tag=el("span","tag "+(i===g.keepIdx?"keep":"rm"),i===g.keepIdx?"★ 残す":"削除");
-      if(i!==g.keepIdx) name.classList.add("rmname");
+      const keep=g.skip||i===g.keepIdx;
+      const tag=el("span","tag "+(keep?"keep":"rm"),keep?"★ 残す":"削除");
+      if(!keep) name.classList.add("rmname");
       label.append(radio,name,tag);
       card.appendChild(label);
     }
+    const skipRow=el("label","skiprow");
+    const skipChk=el("input"); skipChk.type="checkbox"; skipChk.checked=g.skip;
+    skipChk.addEventListener("change",()=>{g.skip=skipChk.checked;renderGroups();});
+    skipRow.append(skipChk,el("span",null,"このグループは削除しない(全部残す — Xcodeプロジェクト等、配置が意味を持つ場合に)"));
+    card.appendChild(skipRow);
     wrap.appendChild(card);
   });
   $("stTotal").textContent=allFiles.length;
@@ -725,7 +742,7 @@ function renderGroups(){
 }
 async function buildOutput(){
   const removeSet=new Set();
-  for(const g of groups) for(const i of g.indices) if(i!==g.keepIdx) removeSet.add(i);
+  for(const g of groups){ if(g.skip) continue; for(const i of g.indices) if(i!==g.keepIdx) removeSet.add(i); }
   const out=[]; let n=0;
   for(let i=0;i<allFiles.length;i++){
     if(removeSet.has(i)) continue;
@@ -746,13 +763,20 @@ $("dl").addEventListener("click",async()=>{
   if(loading) return; loading=true; $("dl").disabled=true;
   try{
     const r=await buildOutput();
+    const forClaude=$("optClaude").checked;
+    const outName=srcName+"_dedup.zip"+(forClaude?".txt":"");
     const a=document.createElement("a");
     a.href=URL.createObjectURL(r.blob);
-    a.download=srcName+"_dedup.zip"; a.click();
+    a.download=outName; a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),30000);
-    $("done").textContent=`出力完了: ${r.count} ファイル / ${fmtSize(r.blob.size)}(${r.removed} 件削除)`;
+    $("done").textContent=`出力完了: ${outName} / ${r.count} ファイル / ${fmtSize(r.blob.size)}(${r.removed} 件削除)`+(forClaude?" — そのままClaudeにアップロードできます":"");
   }catch(err){ setStatus("出力エラー: "+err.message,true); }
   finally{ loading=false; $("dl").disabled=false; }
+});
+/* Claude用出力の選択を記憶 */
+$("optClaude").checked=localStorage.getItem("zdv_optClaude")==="1";
+$("optClaude").addEventListener("change",()=>{
+  localStorage.setItem("zdv_optClaude",$("optClaude").checked?"1":"0");
 });
 $("toVault").addEventListener("click",async()=>{
   if(loading) return; loading=true; $("toVault").disabled=true;
