@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZIP重複除去・保管庫 | nightsky-tools</title>
+<style>
+:root{
+  --sky:#10182b; --sky2:#182238; --card:#1d2942; --line:#2c3a58;
+  --star:#e8ddc0; --dim:#8b97b0; --gold:#d9b45b; --remove:#c96f6f; --ok:#7fb28a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--sky); color:var(--star);
+  font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Noto Sans JP",system-ui,sans-serif;
+  min-height:100vh; padding:24px 16px 80px; line-height:1.6;
+}
+.wrap{max-width:760px;margin:0 auto}
+header{margin-bottom:20px}
+.eyebrow{font-size:11px;letter-spacing:.35em;color:var(--dim);text-transform:uppercase;margin-bottom:6px}
+h1{font-size:22px;font-weight:600;letter-spacing:.06em}
+h1 small{font-size:12px;color:var(--dim);font-weight:400;margin-left:10px;letter-spacing:.1em}
+.lead{font-size:13px;color:var(--dim);margin-top:8px}
+
+.syncbar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:var(--sky2);border:1px solid var(--line);border-radius:10px;
+  padding:10px 14px;margin-bottom:20px;font-size:12.5px;
+}
+.syncbar .st{flex:1;color:var(--dim);min-width:140px}
+.syncbar .st.err{color:var(--remove)}
+.syncbar .st.good{color:var(--ok)}
+.mini{
+  background:none;color:var(--dim);border:1px solid var(--line);border-radius:8px;
+  font-size:12px;padding:6px 12px;cursor:pointer;font-family:inherit;
+}
+.mini:hover{color:var(--star);border-color:var(--dim)}
+.mini:disabled{opacity:.4;cursor:default}
+
+.drop{
+  border:1.5px dashed var(--line);border-radius:12px;background:var(--sky2);
+  padding:38px 20px;text-align:center;cursor:pointer;
+  transition:border-color .15s,background .15s;outline:none;
+}
+.drop:hover,.drop:focus-visible,.drop.over{border-color:var(--gold);background:#1b2740}
+.drop:focus-visible{box-shadow:0 0 0 2px var(--gold)}
+.drop .big{font-size:15px;margin-bottom:6px}
+.drop .sub{font-size:12px;color:var(--dim)}
+input[type=file]{display:none}
+.status{margin-top:14px;font-size:13px;color:var(--dim);min-height:1.4em}
+.status.err{color:var(--remove)}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:20px 0 6px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 8px;text-align:center}
+.stat b{display:block;font-size:20px;font-weight:600}
+.stat span{font-size:10.5px;color:var(--dim);letter-spacing:.08em}
+.stat.rm b{color:var(--remove)}
+.stat.sv b{color:var(--ok)}
+
+section.groups{margin-top:18px}
+.sechead{font-size:12px;letter-spacing:.25em;color:var(--dim);font-weight:500;margin-bottom:10px}
+.group{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.group .meta{font-size:11px;color:var(--dim);margin-bottom:8px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.group label{display:flex;align-items:flex-start;gap:8px;padding:6px 4px;border-radius:6px;cursor:pointer;font-size:13px;word-break:break-all}
+.group label:hover{background:#232f4c}
+.group input{margin-top:5px;accent-color:var(--gold);flex:none}
+.group label .name{flex:1}
+.group label .tag{font-size:10.5px;flex:none;margin-top:2px}
+.tag.keep{color:var(--gold)}
+.tag.rm{color:var(--remove)}
+.rmname{color:var(--dim);text-decoration:line-through;text-decoration-color:#5a6780}
+.uniqueNote{font-size:12px;color:var(--dim);margin:14px 0}
+.optrow{margin-top:14px;font-size:12.5px;color:var(--dim);display:flex;align-items:center;gap:8px}
+.optrow input{accent-color:var(--gold)}
+
+.actions{margin-top:22px;display:flex;gap:10px;flex-wrap:wrap}
+button.primary{
+  background:var(--gold);color:#1a1408;border:none;border-radius:10px;
+  font-size:14px;font-weight:600;padding:13px 22px;cursor:pointer;letter-spacing:.04em;font-family:inherit;
+}
+button.primary:hover{filter:brightness(1.08)}
+button.primary:disabled{opacity:.4;cursor:default}
+button.ghost{background:none;color:var(--dim);border:1px solid var(--line);border-radius:10px;font-size:13px;padding:12px 18px;cursor:pointer;font-family:inherit}
+button.ghost:hover{color:var(--star);border-color:var(--dim)}
+button.ghost:disabled{opacity:.4;cursor:default}
+.done{margin-top:12px;font-size:13px;color:var(--ok)}
+.hidden{display:none}
+
+.vault{margin-top:34px}
+.vaultEmpty{font-size:12.5px;color:var(--dim)}
+.vitem{
+  background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:11px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.vitem .vname{flex:1;font-size:13px;word-break:break-all;min-width:160px}
+.vitem .vmeta{font-size:11px;color:var(--dim);flex:none}
+
+/* modal */
+.overlay{
+  position:fixed;inset:0;background:rgba(6,10,20,.72);
+  display:flex;align-items:center;justify-content:center;padding:18px;z-index:50;
+}
+.modal{
+  background:#232c52;border:1px solid #39457e;border-radius:14px;
+  max-width:440px;width:100%;padding:22px 20px;max-height:90vh;overflow:auto;
+}
+.modal h2{font-size:16px;font-weight:600;color:var(--gold);letter-spacing:.06em;margin-bottom:12px}
+.modal p{font-size:13.5px;margin-bottom:10px;white-space:pre-wrap}
+.modal .note{font-size:12px;color:#aab4d6}
+.modal input[type=password],.modal input[type=text]{
+  display:block;width:100%;margin:14px 0 4px;padding:12px 12px;
+  background:#161d38;border:2px solid #4a5aa0;border-radius:10px;
+  color:var(--star);font-size:14px;font-family:inherit;outline:none;
+}
+.modal input:focus{border-color:var(--gold)}
+.modal .btn{
+  display:block;width:100%;border:none;border-radius:10px;padding:13px;
+  font-size:14px;font-weight:600;cursor:pointer;margin-top:10px;font-family:inherit;letter-spacing:.04em;
+}
+.modal .btn.ok{background:var(--gold);color:#1a1408}
+.modal .btn.ok:disabled{opacity:.5;cursor:default}
+.modal .btn.cancel{background:#1a2140;color:var(--star);font-weight:400}
+.modal .merr{color:#ff9d9d;font-size:12.5px;margin-top:8px;min-height:1.2em}
+@media(max-width:520px){.stats{grid-template-columns:repeat(2,1fr)}}
+@media(prefers-reduced-motion:no-preference){
+  .group,.vitem{animation:rise .25s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="eyebrow">nightsky-tools</div>
+  <h1>ZIP重複除去・保管庫<small>完全一致ファイルを削除 → 保管 → 端末間同期</small></h1>
+  <p class="lead">中身が一語一句同一のファイルを検出・削除して再ZIP。結果は保管庫に保存でき、GitHub Gist(AES-GCM暗号化)経由で両端末が自動同期されます。</p>
+</header>
+
+<div class="syncbar">
+  <span class="st" id="syncSt">同期: 未設定</span>
+  <button class="mini" id="syncNow" disabled>今すぐ同期</button>
+  <button class="mini" id="syncCfg">同期の設定</button>
+  <button class="mini hidden" id="syncOff">同期を解除</button>
+</div>
+
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="ZIPファイルを選択">
+  <div class="big">ZIPをここにドロップ / タップして選択</div>
+  <div class="sub">対応: 通常のZIP(無圧縮・Deflate)。ZIP64・暗号化ZIPは非対応</div>
+</div>
+<input type="file" id="file" accept=".zip,application/zip">
+<div class="status" id="status"></div>
+
+<div id="result" class="hidden">
+  <div class="stats">
+    <div class="stat"><b id="stTotal">0</b><span>ファイル数</span></div>
+    <div class="stat"><b id="stGroups">0</b><span>重複グループ</span></div>
+    <div class="stat rm"><b id="stRemove">0</b><span>削除される数</span></div>
+    <div class="stat sv"><b id="stSave">0</b><span>削減サイズ</span></div>
+  </div>
+  <div class="optrow">
+    <input type="checkbox" id="optEmpty">
+    <label for="optEmpty">空ファイル(0バイト)同士も重複として削除する</label>
+  </div>
+  <section class="groups" id="groupsSec">
+    <div class="sechead">重複グループ(残すファイルを選択)</div>
+    <div id="groups"></div>
+  </section>
+  <p class="uniqueNote" id="noDup" style="display:none">重複はありませんでした。すべてのファイルの内容が一意です。</p>
+  <div class="actions">
+    <button class="primary" id="dl">重複除去ZIPをダウンロード</button>
+    <button class="ghost" id="toVault">保管庫に保存</button>
+    <button class="ghost" id="reset">別のZIPを読み込む</button>
+  </div>
+  <div class="done" id="done"></div>
+</div>
+
+<section class="vault">
+  <div class="sechead">保管庫</div>
+  <div id="vaultList"></div>
+  <p class="vaultEmpty" id="vaultEmpty">まだ何も保管されていません。ZIPを処理して「保管庫に保存」すると、ここに並び端末間で同期されます。</p>
+</section>
+</div>
+
+<div id="modalRoot"></div>
+
+<script>
+"use strict";
+(() => {
+
+/* ================= 共通ユーティリティ ================= */
+const $ = id => document.getElementById(id);
+const enc8 = s => new TextEncoder().encode(s);
+const dec8 = u => new TextDecoder().decode(u);
+function fmtSize(n){
+  if(n<1024) return n+" B";
+  if(n<1048576) return (n/1024).toFixed(1)+" KB";
+  return (n/1048576).toFixed(2)+" MB";
+}
+function fmtTime(t){ return new Date(t).toLocaleString("ja-JP"); }
+function b64encode(u8){
+  let s=""; const CH=0x8000;
+  for(let i=0;i<u8.length;i+=CH) s+=String.fromCharCode.apply(null,u8.subarray(i,i+CH));
+  return btoa(s);
+}
+function b64decode(str){
+  const bin=atob(str); const u8=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+  return u8;
+}
+
+/* ================= CRC32 ================= */
+const CRC_TABLE=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}return t;})();
+function crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=CRC_TABLE[(c^u8[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+
+/* ================= 圧縮/ハッシュ ================= */
+async function inflateRaw(u8){const s=new Blob([u8]).stream().pipeThrough(new DecompressionStream("deflate-raw"));return new Uint8Array(await new Response(s).arrayBuffer());}
+async function deflateRaw(u8){const s=new Blob([u8]).stream().pipeThrough(new CompressionStream("deflate-raw"));return new Uint8Array(await new Response(s).arrayBuffer());}
+async function sha256hex(u8){const d=await crypto.subtle.digest("SHA-256",u8);return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,"0")).join("");}
+
+/* ================= ZIP 解析/生成 ================= */
+function decodeName(bytes,utf8flag){
+  if(utf8flag) return new TextDecoder("utf-8").decode(bytes);
+  try{return new TextDecoder("shift_jis",{fatal:true}).decode(bytes);}
+  catch(e){ try{return new TextDecoder("utf-8",{fatal:true}).decode(bytes);}catch(e2){return new TextDecoder("latin1").decode(bytes);} }
+}
+function parseZip(buf){
+  const dv=new DataView(buf); const len=buf.byteLength;
+  let eocd=-1, firstCand=-1; const min=Math.max(0,len-65557);
+  for(let i=len-22;i>=min;i--){
+    if(dv.getUint32(i,true)!==0x06054b50) continue;
+    if(firstCand<0) firstCand=i;
+    const cdSz=dv.getUint32(i+12,true), cdOf=dv.getUint32(i+16,true);
+    if(cdOf+cdSz===i){ eocd=i; break; } // セントラルディレクトリ終端=EOCD位置の整合を検証(コメント内の偽署名対策)
+  }
+  if(eocd<0) eocd=firstCand;
+  if(eocd<0) throw new Error("ZIPとして認識できません(EOCDが見つかりません)");
+  const count=dv.getUint16(eocd+10,true); const cdOff=dv.getUint32(eocd+16,true);
+  if(count===0xFFFF||cdOff===0xFFFFFFFF) throw new Error("ZIP64形式は非対応です");
+  const entries=[]; let p=cdOff;
+  for(let i=0;i<count;i++){
+    if(dv.getUint32(p,true)!==0x02014b50) throw new Error("セントラルディレクトリの破損を検出しました");
+    const flag=dv.getUint16(p+8,true), method=dv.getUint16(p+10,true);
+    const dosTime=dv.getUint16(p+12,true), dosDate=dv.getUint16(p+14,true);
+    const csize=dv.getUint32(p+20,true), usize=dv.getUint32(p+24,true);
+    const nlen=dv.getUint16(p+28,true), elen=dv.getUint16(p+30,true), clen=dv.getUint16(p+32,true);
+    const lho=dv.getUint32(p+42,true);
+    if(csize===0xFFFFFFFF||usize===0xFFFFFFFF||lho===0xFFFFFFFF) throw new Error("ZIP64形式(4GB超)は非対応です");
+    const name=decodeName(new Uint8Array(buf,p+46,nlen),(flag&0x0800)!==0);
+    if(flag&0x0001) throw new Error("暗号化ZIPは非対応です: "+name);
+    entries.push({name,flag,method,dosTime,dosDate,csize,usize,lho});
+    p+=46+nlen+elen+clen;
+  }
+  for(const e of entries){
+    if(dv.getUint32(e.lho,true)!==0x04034b50) throw new Error("ローカルヘッダの破損: "+e.name);
+    const n=dv.getUint16(e.lho+26,true), m=dv.getUint16(e.lho+28,true);
+    e.dataOff=e.lho+30+n+m;
+  }
+  return entries;
+}
+function buildZip(files){
+  const enc=new TextEncoder(); const parts=[]; const central=[]; let offset=0;
+  for(const f of files){
+    const nameB=enc.encode(f.name);
+    const lh=new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true);
+    lh.setUint16(8,f.method,true); lh.setUint16(10,f.dosTime,true); lh.setUint16(12,f.dosDate,true);
+    lh.setUint32(14,f.crc,true); lh.setUint32(18,f.stored.length,true); lh.setUint32(22,f.data.length,true);
+    lh.setUint16(26,nameB.length,true); lh.setUint16(28,0,true);
+    parts.push(lh.buffer,nameB,f.stored);
+    const ch=new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true);
+    ch.setUint16(8,0x0800,true); ch.setUint16(10,f.method,true);
+    ch.setUint16(12,f.dosTime,true); ch.setUint16(14,f.dosDate,true);
+    ch.setUint32(16,f.crc,true); ch.setUint32(20,f.stored.length,true); ch.setUint32(24,f.data.length,true);
+    ch.setUint16(28,nameB.length,true); ch.setUint32(42,offset,true);
+    central.push({header:ch.buffer,nameB});
+    offset+=30+nameB.length+f.stored.length;
+  }
+  const cdStart=offset; let cdSize=0;
+  for(const c of central){ parts.push(c.header,c.nameB); cdSize+=46+c.nameB.length; }
+  const eocd=new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0,0x06054b50,true); eocd.setUint16(8,files.length,true); eocd.setUint16(10,files.length,true);
+  eocd.setUint32(12,cdSize,true); eocd.setUint32(16,cdStart,true);
+  parts.push(eocd.buffer);
+  return new Blob(parts,{type:"application/zip"});
+}
+
+/* ================= IndexedDB ================= */
+let _db=null;
+function db(){
+  if(_db) return Promise.resolve(_db);
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open("zipDedupeVault",1);
+    r.onupgradeneeded=()=>{ const d=r.result; d.createObjectStore("items",{keyPath:"id"}); d.createObjectStore("tombs",{keyPath:"id"}); };
+    r.onsuccess=()=>{_db=r.result;res(_db);};
+    r.onerror=()=>rej(r.error||new Error("IndexedDBを開けません"));
+  });
+}
+function tx(store,mode,fn){
+  return db().then(d=>new Promise((res,rej)=>{
+    const t=d.transaction(store,mode); const s=t.objectStore(store);
+    const out=fn(s);
+    t.oncomplete=()=>res(out&&out.result!==undefined?out.result:out);
+    t.onerror=()=>rej(t.error);
+  }));
+}
+const idbAll=(store)=>db().then(d=>new Promise((res,rej)=>{
+  const r=d.transaction(store).objectStore(store).getAll();
+  r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+}));
+const idbPut=(store,obj)=>tx(store,"readwrite",s=>s.put(obj));
+const idbDel=(store,id)=>tx(store,"readwrite",s=>s.delete(id));
+
+/* ================= 暗号 (AES-GCM / PBKDF2) ================= */
+const PBKDF2_ITERS=250000;
+async function deriveKey(password,saltB64){
+  const km=await crypto.subtle.importKey("raw",enc8(password),"PBKDF2",false,["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name:"PBKDF2",salt:b64decode(saltB64),iterations:PBKDF2_ITERS,hash:"SHA-256"},
+    km,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+}
+async function encB64(key,u8){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},key,u8));
+  const out=new Uint8Array(12+ct.length); out.set(iv); out.set(ct,12);
+  return b64encode(out);
+}
+async function decB64(key,b64){
+  const all=b64decode(b64);
+  return new Uint8Array(await crypto.subtle.decrypt({name:"AES-GCM",iv:all.subarray(0,12)},key,all.subarray(12)));
+}
+const CHUNK=900000; // base64文字数。Gist APIの1MB切り詰めを確実に回避
+function splitChunks(str){ const out=[]; for(let i=0;i<str.length;i+=CHUNK) out.push(str.slice(i,i+CHUNK)); return out; }
+
+/* ================= Gist API ================= */
+const GIST_DESC="nightsky-tools zip-dedupe-vault (encrypted)";
+const META_FILE="meta.json", MANIFEST_FILE="vault.manifest.txt";
+const cfg={
+  get token(){return localStorage.getItem("zdv_token")||"";},
+  set token(v){localStorage.setItem("zdv_token",v);},
+  get password(){return localStorage.getItem("zdv_pass")||"";},
+  set password(v){localStorage.setItem("zdv_pass",v);},
+  get gistId(){return localStorage.getItem("zdv_gist")||"";},
+  set gistId(v){localStorage.setItem("zdv_gist",v);},
+  clear(){["zdv_token","zdv_pass","zdv_gist"].forEach(k=>localStorage.removeItem(k));},
+  get ready(){return !!(this.token&&this.password&&this.gistId);}
+};
+async function gh(path,opts={}){
+  const r=await fetch("https://api.github.com"+path,{
+    ...opts,
+    headers:{
+      "Authorization":"Bearer "+cfg.token,
+      "Accept":"application/vnd.github+json",
+      ...(opts.body?{"Content-Type":"application/json"}:{}),
+      ...(opts.headers||{})
+    }
+  });
+  if(r.status===401) throw new Error("トークンが無効です(401)。同期の設定をやり直してください");
+  if(r.status===403||r.status===429) throw new Error("GitHub APIの制限に達しました。しばらく待って再試行してください");
+  if(r.status===404) throw new Error("同期先Gistが見つかりません(404)");
+  if(!r.ok) throw new Error("GitHub APIエラー: "+r.status);
+  return r.status===204?null:r.json();
+}
+async function findExistingGist(){
+  for(let page=1;page<=3;page++){
+    const list=await gh(`/gists?per_page=100&page=${page}`);
+    const hit=list.find(g=>g.description===GIST_DESC);
+    if(hit) return hit.id;
+    if(list.length<100) break;
+  }
+  return null;
+}
+async function createGist(saltB64){
+  const g=await gh("/gists",{method:"POST",body:JSON.stringify({
+    description:GIST_DESC, public:false,
+    files:{[META_FILE]:{content:JSON.stringify({app:"zip-dedupe-vault",v:1,salt:saltB64})}}
+  })});
+  return g.id;
+}
+
+/* ================= 同期 (アイテム単位LWWマージ) ================= */
+const syncState={busy:false,dirty:false,key:null,keySalt:null};
+function setSync(msg,cls){
+  const el=$("syncSt"); el.textContent=msg;
+  el.className="st"+(cls?" "+cls:"");
+}
+function stamp(x){ return Math.max(x.updatedAt||0,x.deletedAt||0); }
+async function getKey(saltB64){
+  if(syncState.key&&syncState.keySalt===saltB64) return syncState.key;
+  syncState.key=await deriveKey(cfg.password,saltB64);
+  syncState.keySalt=saltB64;
+  return syncState.key;
+}
+function itemFileNames(id,chunks){ const a=[]; for(let i=0;i<chunks;i++)a.push(`item_${id}.${i}.txt`); return a; }
+
+async function doSync(){
+  if(!cfg.ready) return;
+  if(syncState.busy){ syncState.dirty=true; return; }
+  syncState.busy=true;
+  setSync("同期中…");
+  $("syncNow").disabled=true;
+  try{
+    const g=await gh("/gists/"+cfg.gistId);
+    const metaF=g.files[META_FILE];
+    if(!metaF) throw new Error("同期先Gistの形式が不正です(meta.jsonなし)");
+    const meta=JSON.parse(metaF.content);
+    const key=await getKey(meta.salt);
+
+    let remote={rev:0,items:{}};
+    if(g.files[MANIFEST_FILE]){
+      try{
+        let mb64=g.files[MANIFEST_FILE].content;
+        if(g.files[MANIFEST_FILE].truncated) throw new Error("マニフェストが大きすぎます");
+        remote=JSON.parse(dec8(await decB64(key,mb64.trim())));
+      }catch(e){
+        throw new Error("復号に失敗しました。暗号化パスワードが両端末で一致しているか確認してください");
+      }
+    }
+
+    const localItems=await idbAll("items");
+    const localTombs=await idbAll("tombs");
+    const local={};
+    for(const it of localItems) local[it.id]={name:it.name,size:it.size,updatedAt:it.updatedAt,item:it};
+    for(const tb of localTombs){
+      if(!local[tb.id]||tb.deletedAt>stamp(local[tb.id])) local[tb.id]={...(local[tb.id]||{}),deletedAt:tb.deletedAt};
+    }
+
+    const ids=new Set([...Object.keys(local),...Object.keys(remote.items)]);
+    const patchFiles={}; let changed=false;
+    const newManifest={rev:(remote.rev||0)+1,items:{}};
+
+    for(const id of ids){
+      const L=local[id], R=remote.items[id];
+      const ls=L?stamp(L):-1, rs=R?stamp(R):-1;
+
+      if(rs>ls){
+        /* リモート優先: 取り込み */
+        if(R.deletedAt){
+          await idbDel("items",id);
+          await idbPut("tombs",{id,deletedAt:R.deletedAt});
+          newManifest.items[id]={deletedAt:R.deletedAt};
+        }else{
+          let b64="";
+          for(const fn of itemFileNames(id,R.chunks)){
+            const f=g.files[fn];
+            if(!f) throw new Error("同期データの欠損: "+fn);
+            if(f.truncated) throw new Error("同期データの取得に失敗(切り詰め): "+fn);
+            b64+=f.content;
+          }
+          let raw;
+          try{ raw=await decB64(key,b64.trim()); }
+          catch(e){ throw new Error("復号に失敗しました。暗号化パスワードを確認してください"); }
+          await idbPut("items",{id,name:R.name,size:raw.length,updatedAt:R.updatedAt,data:raw.buffer});
+          await idbDel("tombs",id);
+          newManifest.items[id]={name:R.name,size:R.size,updatedAt:R.updatedAt,chunks:R.chunks};
+        }
+      }else if(ls>rs){
+        /* ローカル優先: 送信 */
+        changed=true;
+        if(L.deletedAt){
+          newManifest.items[id]={deletedAt:L.deletedAt};
+          if(R&&R.chunks) for(const fn of itemFileNames(id,R.chunks)) patchFiles[fn]=null;
+        }else{
+          const b64=await encB64(key,new Uint8Array(L.item.data));
+          const chunks=splitChunks(b64);
+          chunks.forEach((c,i)=>{ patchFiles[`item_${id}.${i}.txt`]={content:c}; });
+          if(R&&R.chunks>chunks.length) for(let i=chunks.length;i<R.chunks;i++) patchFiles[`item_${id}.${i}.txt`]=null;
+          newManifest.items[id]={name:L.name,size:L.size,updatedAt:L.updatedAt,chunks:chunks.length};
+        }
+      }else if(R){
+        newManifest.items[id]=R;
+      }else if(L&&!L.deletedAt){
+        /* 同時刻&リモート無し(初回push漏れ等) */
+        changed=true;
+        const b64=await encB64(key,new Uint8Array(L.item.data));
+        const chunks=splitChunks(b64);
+        chunks.forEach((c,i)=>{ patchFiles[`item_${id}.${i}.txt`]={content:c}; });
+        newManifest.items[id]={name:L.name,size:L.size,updatedAt:L.updatedAt,chunks:chunks.length};
+      }else if(L&&L.deletedAt){
+        newManifest.items[id]={deletedAt:L.deletedAt};
+      }
+    }
+
+    if(changed){
+      patchFiles[MANIFEST_FILE]={content:await encB64(key,enc8(JSON.stringify(newManifest)))};
+      await gh("/gists/"+cfg.gistId,{method:"PATCH",body:JSON.stringify({files:patchFiles})});
+    }
+    await renderVault();
+    setSync("同期完了 "+new Date().toLocaleTimeString("ja-JP"),"good");
+  }catch(err){
+    setSync("同期エラー: "+err.message,"err");
+  }finally{
+    syncState.busy=false;
+    $("syncNow").disabled=!cfg.ready;
+    if(syncState.dirty){ syncState.dirty=false; doSync(); }
+  }
+}
+
+/* ================= 保管庫 UI ================= */
+const MAX_ITEM=6*1048576; // Gist API経由の実用上限
+async function renderVault(){
+  const items=(await idbAll("items")).sort((a,b)=>b.updatedAt-a.updatedAt);
+  const wrap=$("vaultList"); wrap.textContent="";
+  $("vaultEmpty").style.display=items.length?"none":"";
+  for(const it of items){
+    const row=document.createElement("div"); row.className="vitem";
+    const name=document.createElement("span"); name.className="vname"; name.textContent=it.name;
+    const meta=document.createElement("span"); meta.className="vmeta";
+    meta.textContent=fmtSize(it.size)+" · "+fmtTime(it.updatedAt);
+    const dlB=document.createElement("button"); dlB.className="mini"; dlB.textContent="DL";
+    dlB.addEventListener("click",()=>{
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(new Blob([it.data],{type:"application/zip"}));
+      a.download=it.name; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),30000);
+    });
+    const rmB=document.createElement("button"); rmB.className="mini"; rmB.textContent="削除";
+    rmB.addEventListener("click",async()=>{
+      if(!confirm(`「${it.name}」を保管庫から削除しますか?(全端末から消えます)`)) return;
+      await idbDel("items",it.id);
+      await idbPut("tombs",{id:it.id,deletedAt:Date.now()});
+      await renderVault();
+      doSync();
+    });
+    row.append(name,meta,dlB,rmB);
+    wrap.appendChild(row);
+  }
+}
+async function saveToVault(name,u8){
+  if(u8.length>MAX_ITEM) throw new Error(`サイズ超過(${fmtSize(u8.length)})。同期はGist経由のため1件${fmtSize(MAX_ITEM)}までです`);
+  const existing=await idbAll("items");
+  let finalName=name, n=2;
+  while(existing.some(it=>it.name===finalName)){
+    finalName=name.replace(/\.zip$/i,"")+`(${n}).zip`; n++;
+  }
+  await idbPut("items",{id:crypto.randomUUID(),name:finalName,size:u8.length,updatedAt:Date.now(),data:u8.buffer});
+  await renderVault();
+  doSync();
+  return finalName;
+}
+
+/* ================= 同期設定ウィザード ================= */
+function modal(build){
+  const root=$("modalRoot"); root.textContent="";
+  const ov=document.createElement("div"); ov.className="overlay";
+  const box=document.createElement("div"); box.className="modal";
+  ov.appendChild(box); root.appendChild(ov);
+  const close=()=>{root.textContent="";};
+  build(box,close);
+  return close;
+}
+function el(tag,cls,text){ const e=document.createElement(tag); if(cls)e.className=cls; if(text!==undefined)e.textContent=text; return e; }
+
+function wizardStep1(){
+  modal((box,close)=>{
+    box.append(el("h2",null,"同期の設定 1/3"));
+    box.append(el("p",null,"①GitHubのアクセストークンを貼り付けてください(gist権限のもの)。"));
+    box.append(el("p","note","作り方: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → gistにチェック"));
+    const inp=el("input"); inp.type="password"; inp.autocomplete="off"; inp.value=cfg.token;
+    const err=el("div","merr");
+    const ok=el("button","btn ok","OK");
+    const cancel=el("button","btn cancel","キャンセル");
+    ok.addEventListener("click",async()=>{
+      const v=inp.value.trim();
+      if(!v){err.textContent="トークンを入力してください";return;}
+      ok.disabled=true; err.textContent="トークンを確認中…";
+      try{
+        const r=await fetch("https://api.github.com/gists?per_page=1",{headers:{"Authorization":"Bearer "+v,"Accept":"application/vnd.github+json"}});
+        if(!r.ok) throw new Error();
+        cfg.token=v; close(); wizardStep2();
+      }catch(e){ err.textContent="トークンが無効か、gist権限がありません"; ok.disabled=false; }
+    });
+    cancel.addEventListener("click",close);
+    box.append(inp,err,ok,cancel);
+    inp.focus();
+  });
+}
+function wizardStep2(){
+  modal((box,close)=>{
+    box.append(el("h2",null,"同期の設定 2/3"));
+    box.append(el("p",null,"②暗号化パスワードを決めてください(両端末で同じものを入力)。\nクラウド上のデータはこのパスワードで暗号化され、他人には読めなくなります。"));
+    box.append(el("p","note","※自動同期のため、パスワードはこの端末の中に保存されます(暗号化が守るのはクラウド上のデータのみです)。\n※忘れるとクラウドのデータを取り出せなくなるので必ず控えてください"));
+    const inp=el("input"); inp.type="password"; inp.autocomplete="new-password"; inp.value=cfg.password;
+    const err=el("div","merr");
+    const ok=el("button","btn ok","OK");
+    const cancel=el("button","btn cancel","キャンセル");
+    ok.addEventListener("click",()=>{
+      const v=inp.value;
+      if(v.length<4){err.textContent="4文字以上にしてください";return;}
+      cfg.password=v; syncState.key=null; close(); wizardStep3();
+    });
+    cancel.addEventListener("click",close);
+    box.append(inp,err,ok,cancel);
+    inp.focus();
+  });
+}
+function wizardStep3(){
+  modal((box,close)=>{
+    box.append(el("h2",null,"同期の設定 3/3"));
+    const p=el("p",null,"③同期先を確認しています…");
+    const err=el("div","merr");
+    box.append(p,err);
+    (async()=>{
+      try{
+        const existing=await findExistingGist();
+        if(existing){
+          p.textContent="既存の同期データが見つかりました。どうしますか?";
+          const join=el("button","btn ok","既存データと同期する");
+          const fresh=el("button","btn cancel","新規に作り直す(既存は使わない)");
+          const cancel=el("button","btn cancel","キャンセル");
+          join.addEventListener("click",async()=>{
+            cfg.gistId=existing; close(); finishSetup();
+          });
+          fresh.addEventListener("click",async()=>{
+            fresh.disabled=true;
+            try{
+              const salt=b64encode(crypto.getRandomValues(new Uint8Array(16)));
+              cfg.gistId=await createGist(salt); close(); finishSetup();
+            }catch(e){ err.textContent=e.message; fresh.disabled=false; }
+          });
+          cancel.addEventListener("click",close);
+          box.append(join,fresh,cancel);
+        }else{
+          p.textContent="同期データを新規作成します。";
+          const ok=el("button","btn ok","作成して同期を開始");
+          const cancel=el("button","btn cancel","キャンセル");
+          ok.addEventListener("click",async()=>{
+            ok.disabled=true;
+            try{
+              const salt=b64encode(crypto.getRandomValues(new Uint8Array(16)));
+              cfg.gistId=await createGist(salt); close(); finishSetup();
+            }catch(e){ err.textContent=e.message; ok.disabled=false; }
+          });
+          cancel.addEventListener("click",close);
+          box.append(ok,cancel);
+        }
+      }catch(e){ err.textContent=e.message; }
+    })();
+  });
+}
+function finishSetup(){
+  $("syncOff").classList.remove("hidden");
+  $("syncNow").disabled=false;
+  setSync("同期: 設定済み");
+  doSync();
+}
+
+/* ================= 重複除去 (既存機能) ================= */
+let srcBuf=null, allFiles=[], groups=[], srcName="output", loading=false;
+const drop=$("drop"), fileInput=$("file"), statusEl=$("status");
+function setStatus(msg,err){ statusEl.textContent=msg||""; statusEl.classList.toggle("err",!!err); }
+
+async function loadZip(file){
+  if(loading){ setStatus("処理中です。完了までお待ちください",true); return; }
+  loading=true;
+  try{
+    setStatus("読み込み中…");
+    $("result").classList.add("hidden"); $("done").textContent="";
+    srcName=file.name.replace(/\.zip$/i,"")||"output";
+    srcBuf=await file.arrayBuffer();
+    const entries=parseZip(srcBuf);
+    allFiles=[]; let idx=0;
+    for(const e of entries){
+      if(e.name.endsWith("/")) continue;
+      setStatus(`展開・ハッシュ計算中… ${++idx} / ${entries.length}`);
+      const comp=new Uint8Array(srcBuf,e.dataOff,e.csize);
+      let raw;
+      if(e.method===0) raw=comp.slice();
+      else if(e.method===8) raw=await inflateRaw(comp);
+      else throw new Error(`非対応の圧縮方式 (method ${e.method}): ${e.name}`);
+      if(raw.length!==e.usize) throw new Error("展開サイズ不一致: "+e.name);
+      allFiles.push({name:e.name,entry:e,raw,hash:await sha256hex(raw),size:raw.length});
+    }
+    analyze();
+    setStatus(`読み込み完了: ${file.name}(${fmtSize(srcBuf.byteLength)})`);
+  }catch(err){ setStatus("エラー: "+err.message,true); }
+  finally{ loading=false; }
+}
+function analyze(){
+  const includeEmpty=$("optEmpty").checked;
+  const map=new Map();
+  allFiles.forEach((f,i)=>{
+    if(f.size===0&&!includeEmpty) return;
+    const key=f.hash+":"+f.size;
+    if(!map.has(key)) map.set(key,[]);
+    map.get(key).push(i);
+  });
+  groups=[];
+  for(const [key,indices] of map)
+    if(indices.length>1) groups.push({indices,keepIdx:indices[0],size:allFiles[indices[0]].size});
+  groups.sort((a,b)=>b.size*(b.indices.length-1)-a.size*(a.indices.length-1));
+  renderGroups();
+}
+function renderGroups(){
+  const wrap=$("groups"); wrap.textContent="";
+  let removeCount=0, saveBytes=0;
+  groups.forEach((g,gi)=>{
+    removeCount+=g.indices.length-1;
+    saveBytes+=g.size*(g.indices.length-1);
+    const card=el("div","group");
+    const meta=el("div","meta");
+    meta.append(el("span",null,`${g.indices.length} 件が完全一致 · ${fmtSize(g.size)}/件`));
+    meta.append(el("span",null,"SHA-256: "+allFiles[g.indices[0]].hash.slice(0,12)+"…"));
+    card.appendChild(meta);
+    for(const i of g.indices){
+      const label=el("label");
+      const radio=el("input"); radio.type="radio"; radio.name="g"+gi; radio.checked=(i===g.keepIdx);
+      radio.addEventListener("change",()=>{g.keepIdx=i;renderGroups();});
+      const name=el("span","name",allFiles[i].name);
+      const tag=el("span","tag "+(i===g.keepIdx?"keep":"rm"),i===g.keepIdx?"★ 残す":"削除");
+      if(i!==g.keepIdx) name.classList.add("rmname");
+      label.append(radio,name,tag);
+      card.appendChild(label);
+    }
+    wrap.appendChild(card);
+  });
+  $("stTotal").textContent=allFiles.length;
+  $("stGroups").textContent=groups.length;
+  $("stRemove").textContent=removeCount;
+  $("stSave").textContent=fmtSize(saveBytes);
+  $("groupsSec").style.display=groups.length?"":"none";
+  $("noDup").style.display=groups.length?"none":"";
+  $("result").classList.remove("hidden");
+}
+async function buildOutput(){
+  const removeSet=new Set();
+  for(const g of groups) for(const i of g.indices) if(i!==g.keepIdx) removeSet.add(i);
+  const out=[]; let n=0;
+  for(let i=0;i<allFiles.length;i++){
+    if(removeSet.has(i)) continue;
+    const f=allFiles[i];
+    setStatus(`再圧縮中… ${++n} 件目`);
+    const crc=crc32(f.raw);
+    let stored=f.raw, method=0;
+    if(f.raw.length>64){
+      const comp=await deflateRaw(f.raw);
+      if(comp.length<f.raw.length){stored=comp;method=8;}
+    }
+    out.push({name:f.name,data:f.raw,stored,method,crc,dosTime:f.entry.dosTime,dosDate:f.entry.dosDate});
+  }
+  setStatus("");
+  return {blob:buildZip(out),count:out.length,removed:removeSet.size};
+}
+$("dl").addEventListener("click",async()=>{
+  if(loading) return; loading=true; $("dl").disabled=true;
+  try{
+    const r=await buildOutput();
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(r.blob);
+    a.download=srcName+"_dedup.zip"; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),30000);
+    $("done").textContent=`出力完了: ${r.count} ファイル / ${fmtSize(r.blob.size)}(${r.removed} 件削除)`;
+  }catch(err){ setStatus("出力エラー: "+err.message,true); }
+  finally{ loading=false; $("dl").disabled=false; }
+});
+$("toVault").addEventListener("click",async()=>{
+  if(loading) return; loading=true; $("toVault").disabled=true;
+  try{
+    const r=await buildOutput();
+    const u8=new Uint8Array(await r.blob.arrayBuffer());
+    const finalName=await saveToVault(srcName+"_dedup.zip",u8);
+    $("done").textContent=`保管庫に保存: ${finalName}(${fmtSize(u8.length)}${cfg.ready?"、同期します":""})`;
+  }catch(err){ setStatus("保存エラー: "+err.message,true); }
+  finally{ loading=false; $("toVault").disabled=false; }
+});
+$("reset").addEventListener("click",()=>{
+  if(loading) return;
+  srcBuf=null; allFiles=[]; groups=[];
+  $("result").classList.add("hidden"); setStatus("");
+});
+$("optEmpty").addEventListener("change",analyze);
+
+drop.addEventListener("click",()=>fileInput.click());
+drop.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fileInput.click();}});
+fileInput.addEventListener("change",()=>{if(fileInput.files[0])loadZip(fileInput.files[0]);fileInput.value="";});
+["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
+drop.addEventListener("drop",e=>{const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)loadZip(f);});
+
+/* ================= 同期バー ================= */
+$("syncCfg").addEventListener("click",wizardStep1);
+$("syncNow").addEventListener("click",()=>doSync());
+$("syncOff").addEventListener("click",()=>{
+  if(!confirm("同期を解除しますか?(この端末の保管データは残ります。クラウド側も消しません)")) return;
+  cfg.clear(); syncState.key=null;
+  $("syncOff").classList.add("hidden");
+  $("syncNow").disabled=true;
+  setSync("同期: 未設定");
+});
+
+/* ================= 起動 ================= */
+(async()=>{
+  await renderVault();
+  if(cfg.ready){
+    $("syncOff").classList.remove("hidden");
+    $("syncNow").disabled=false;
+    setSync("同期: 設定済み");
+    doSync(); // 開いたら自動同期
+  }
+})();
+
+})();
+</script>
+</body>
+</html>
