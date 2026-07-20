@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>キーワードチェッカー</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #09090b;
+    color: #e4e4e7;
+    font-family: "SFMono-Regular", Consolas, "Courier New", monospace;
+    min-height: 100vh;
+  }
+  .container { max-width: 880px; margin: 0 auto; padding: 40px 20px; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin-bottom: 32px; }
+  .eyebrow { font-size: 11px; letter-spacing: 3px; color: #f59e0b; margin-bottom: 4px; }
+  h1 { font-size: 24px; font-weight: 400; color: #fafafa; }
+  .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .stats { display: flex; gap: 20px; align-items: baseline; font-size: 13px; }
+  .stats .big { font-size: 24px; color: #fafafa; }
+  .stats .big.amber { color: #fbbf24; }
+  .stats .dim { color: #71717a; }
+  .sync-row { display: flex; align-items: center; gap: 10px; }
+  #sync-status { font-size: 11px; color: #71717a; }
+  #sync-status.ok { color: #4ade80; }
+  #sync-status.err { color: #f87171; }
+  #sync-status.busy { color: #fbbf24; }
+  label.field-label { display: block; font-size: 12px; color: #71717a; margin-bottom: 8px; }
+  .label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .label-row label { font-size: 12px; color: #71717a; }
+  textarea, input[type="text"], input[type="password"] {
+    width: 100%;
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 6px;
+    color: #e4e4e7;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.7;
+    padding: 14px;
+  }
+  textarea { resize: vertical; min-height: 200px; }
+  textarea:focus, input:focus { outline: none; border-color: #d97706; }
+  ::placeholder { color: #52525b; }
+  section { margin-bottom: 24px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .toolbar .spacer { flex: 1; }
+  button {
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #27272a;
+    background: transparent;
+    color: #a1a1aa;
+    cursor: pointer;
+  }
+  button:hover { border-color: #d97706; color: #fbbf24; }
+  button.preset { border-radius: 999px; }
+  button.toggle.active { border-color: #d97706; color: #fbbf24; background: #451a03; }
+  button.link { border: none; font-size: 11px; padding: 2px 4px; color: #71717a; }
+  button.link:hover { color: #e4e4e7; }
+  .kw-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; padding: 6px 12px; border-radius: 6px;
+    border: 1px solid #27272a; color: #71717a;
+  }
+  .chip.hit { border-color: #b45309; background: #451a03; color: #fcd34d; }
+  .chip .count { color: #52525b; }
+  .chip.hit .count { color: #f59e0b; }
+  .preview { border: 1px solid #27272a; border-radius: 6px; overflow: hidden; }
+  .preview-scroll { max-height: 420px; overflow: auto; font-size: 13px; line-height: 1.7; }
+  .line { display: flex; }
+  .line:hover { background: #18181b; }
+  .line .num {
+    width: 48px; flex-shrink: 0; text-align: right;
+    padding: 2px 10px 2px 0; color: #52525b;
+    background: #18181b; border-right: 1px solid #27272a;
+    user-select: none;
+  }
+  .line .txt { padding: 2px 0 2px 12px; white-space: pre-wrap; word-break: break-all; flex: 1; }
+  mark { background: #f59e0b; color: #09090b; border-radius: 2px; padding: 0 2px; }
+  .empty {
+    font-size: 13px; color: #52525b; text-align: center;
+    border: 1px dashed #27272a; border-radius: 6px; padding: 28px;
+  }
+  .no-match {
+    font-size: 13px; color: #52525b;
+    border: 1px solid #27272a; border-radius: 6px; padding: 16px;
+  }
+  #results { display: none; }
+
+  .overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 10;
+    align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .overlay.show { display: flex; }
+  .dialog {
+    width: 100%; max-width: 520px;
+    background: #1a1a3e;
+    border: 1px solid #34346a;
+    border-radius: 14px;
+    padding: 26px 24px;
+  }
+  .dialog h2 {
+    font-size: 18px; font-weight: 500;
+    color: #f0d78c;
+    margin-bottom: 14px;
+  }
+  .dialog .body { font-size: 14px; line-height: 1.9; color: #e8e8f0; margin-bottom: 18px; white-space: pre-wrap; }
+  .dialog .note { font-size: 12px; color: #a0a0c0; }
+  .dialog input {
+    background: #12122e;
+    border: 2px solid #3b5bdb;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+  .dialog input:focus { border-color: #5c7cfa; }
+  .dialog .btn-ok {
+    display: block; width: 100%;
+    background: #f0dd77;
+    color: #1a1a2e;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    padding: 13px;
+    margin-bottom: 10px;
+  }
+  .dialog .btn-ok:hover { background: #f5e690; color: #1a1a2e; }
+  .dialog .btn-cancel {
+    display: block; width: 100%;
+    background: #12122e;
+    color: #e8e8f0;
+    border: 1px solid #34346a;
+    border-radius: 10px;
+    font-size: 14px;
+    padding: 12px;
+  }
+  .dialog .btn-cancel:hover { border-color: #5c7cfa; color: #fff; }
+  .dialog .err { font-size: 12px; color: #ff8787; margin-bottom: 12px; display: none; }
+  .dialog .footer-link { text-align: center; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div>
+      <p class="eyebrow">GREP-LIKE KEYWORD SCANNER</p>
+      <h1>キーワードチェッカー</h1>
+    </div>
+    <div class="header-right">
+      <div class="sync-row">
+        <span id="sync-status">同期: 未設定</span>
+        <button id="sync-btn">同期の設定</button>
+        <button id="sync-now-btn" style="display:none;">今すぐ同期</button>
+      </div>
+      <div class="stats" id="stats" style="display:none;">
+        <span><span class="big" id="stat-found">0</span><span class="dim" id="stat-total">/0 検出</span></span>
+        <span><span class="big amber" id="stat-hits">0</span><span class="dim"> ヒット</span></span>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <div class="label-row">
+      <label for="code">チェックするコード</label>
+      <button class="link" id="clear-btn">クリア</button>
+    </div>
+    <textarea id="code" spellcheck="false" placeholder="ここにコードを貼り付け
+
+function login(user) {
+  console.log(user.password); // TODO: remove
+}"></textarea>
+  </section>
+
+  <section>
+    <label class="field-label" for="keywords">キーワード（カンマ区切り）</label>
+    <input type="text" id="keywords" placeholder="TODO, console.log, password">
+    <div class="toolbar">
+      <button class="preset" data-kws="console.log, print(, debugger">デバッグ残し</button>
+      <button class="preset" data-kws="TODO, FIXME, HACK, XXX">TODO系</button>
+      <button class="preset" data-kws="password, api_key, secret, token">機密情報</button>
+      <span class="spacer"></span>
+      <button class="toggle" id="case-btn">Aa 大文字小文字</button>
+      <button class="toggle" id="word-btn">単語一致</button>
+    </div>
+  </section>
+
+  <div id="results">
+    <section><div class="kw-chips" id="kw-chips"></div></section>
+    <section>
+      <label class="field-label" id="match-label">該当行</label>
+      <div id="preview-wrap"></div>
+    </section>
+  </div>
+
+  <p class="empty" id="empty-msg">コードとキーワードを入力すると、該当行がここに表示されます</p>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="dialog">
+    <h2 id="dlg-title"></h2>
+    <div class="body" id="dlg-body"></div>
+    <p class="err" id="dlg-err"></p>
+    <input type="password" id="dlg-input" autocomplete="off" style="display:none;">
+    <button class="btn-ok" id="dlg-ok">OK</button>
+    <button class="btn-cancel" id="dlg-cancel">キャンセル</button>
+    <div class="footer-link" id="dlg-footer"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var GIST_FILE = "keyword-checker-sync.json";
+  var GIST_DESC = "keyword-checker-sync";
+  var LS = { token: "kwc_token", pass: "kwc_pass", gist: "kwc_gist", updated: "kwc_updated", state: "kwc_state" };
+
+  var codeEl = document.getElementById("code");
+  var kwEl = document.getElementById("keywords");
+  var caseBtn = document.getElementById("case-btn");
+  var wordBtn = document.getElementById("word-btn");
+  var caseSensitive = false;
+  var wholeWord = false;
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  /* 単語一致: \b は日本語等の非ASCII文字境界を認識しないため、
+     キーワードの端が英数字の場合のみ境界条件を付ける方式にする。
+     lookbehind非対応の古いブラウザでは従来の \b にフォールバック */
+  var lookbehindOK = true;
+  try { new RegExp("(?<!a)b"); } catch (e) { lookbehindOK = false; }
+
+  function kwPattern(kw) {
+    var pat = escapeRegExp(kw);
+    if (!wholeWord) return pat;
+    if (lookbehindOK) {
+      if (/^[A-Za-z0-9_]/.test(kw)) pat = "(?<![A-Za-z0-9_])" + pat;
+      if (/[A-Za-z0-9_]$/.test(kw)) pat = pat + "(?![A-Za-z0-9_])";
+    } else {
+      if (/^[A-Za-z0-9_]/.test(kw)) pat = "\\b" + pat;
+      if (/[A-Za-z0-9_]$/.test(kw)) pat = pat + "\\b";
+    }
+    return pat;
+  }
+
+  function update() {
+    var code = codeEl.value;
+    var kws = kwEl.value.split(/[,\n]/).map(function (s) { return s.trim(); }).filter(Boolean);
+    kws = kws.filter(function (k, i) { return kws.indexOf(k) === i; });
+
+    var results = document.getElementById("results");
+    var emptyMsg = document.getElementById("empty-msg");
+    var stats = document.getElementById("stats");
+
+    if (!code || kws.length === 0) {
+      results.style.display = "none";
+      stats.style.display = "none";
+      emptyMsg.style.display = "block";
+      return;
+    }
+    results.style.display = "block";
+    stats.style.display = "flex";
+    emptyMsg.style.display = "none";
+
+    var flags = caseSensitive ? "g" : "gi";
+    var found = 0, totalHits = 0, chips = "";
+
+    kws.forEach(function (kw) {
+      var count = 0;
+      try {
+        var m = code.match(new RegExp(kwPattern(kw), flags));
+        count = m ? m.length : 0;
+      } catch (e) { count = 0; }
+      totalHits += count;
+      if (count > 0) found++;
+      chips += '<span class="chip' + (count > 0 ? " hit" : "") + '">' +
+        (count > 0 ? "&#10003;" : "&#10005;") + " " + escapeHtml(kw) +
+        ' <span class="count">' + (count > 0 ? count + "件" : "なし") + "</span></span>";
+    });
+
+    document.getElementById("kw-chips").innerHTML = chips;
+    document.getElementById("stat-found").textContent = found;
+    document.getElementById("stat-total").textContent = "/" + kws.length + " 検出";
+    document.getElementById("stat-hits").textContent = totalHits;
+
+    /* ハイライトは長いキーワード優先(TOとTODOがある場合にTODOを優先) */
+    var sorted = kws.slice().sort(function (a, b) { return b.length - a.length; });
+    var re;
+    try {
+      re = new RegExp("(" + sorted.map(kwPattern).join("|") + ")", flags);
+    } catch (e) { re = null; }
+
+    var linesHtml = "";
+    var matchCount = 0;
+    if (re) code.split("\n").forEach(function (line, i) {
+      line = line.replace(/\r$/, "");
+      var parts = line.split(re);
+      if (parts.length <= 1) return;
+      matchCount++;
+      var txt = "";
+      parts.forEach(function (part, j) {
+        txt += j % 2 === 1 ? "<mark>" + escapeHtml(part) + "</mark>" : escapeHtml(part);
+      });
+      linesHtml += '<div class="line"><span class="num">' + (i + 1) +
+        '</span><span class="txt">' + txt + "</span></div>";
+    });
+
+    document.getElementById("match-label").textContent = "該当行（" + matchCount + "行）";
+    var wrap = document.getElementById("preview-wrap");
+    wrap.innerHTML = matchCount === 0
+      ? '<p class="no-match">一致する行はありません</p>'
+      : '<div class="preview"><div class="preview-scroll">' + linesHtml + "</div></div>";
+  }
+
+  /* 大きなコードで1文字ごとに全再スキャンしないよう120msのdebounce */
+  var editTimer = null;
+  function onEdit() {
+    clearTimeout(editTimer);
+    editTimer = setTimeout(function () {
+      editTimer = null;
+      update();
+      saveLocal();
+      schedulePush();
+    }, 120);
+  }
+  codeEl.addEventListener("input", onEdit);
+  kwEl.addEventListener("input", onEdit);
+  caseBtn.addEventListener("click", function () {
+    caseSensitive = !caseSensitive;
+    caseBtn.classList.toggle("active", caseSensitive);
+    caseBtn.setAttribute("aria-pressed", String(caseSensitive));
+    onEdit();
+  });
+  wordBtn.addEventListener("click", function () {
+    wholeWord = !wholeWord;
+    wordBtn.classList.toggle("active", wholeWord);
+    wordBtn.setAttribute("aria-pressed", String(wholeWord));
+    onEdit();
+  });
+  caseBtn.setAttribute("aria-pressed", "false");
+  wordBtn.setAttribute("aria-pressed", "false");
+  document.getElementById("clear-btn").addEventListener("click", function () {
+    codeEl.value = "";
+    onEdit();
+  });
+  document.querySelectorAll(".preset").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      kwEl.value = btn.getAttribute("data-kws");
+      onEdit();
+    });
+  });
+
+  /* ---------- 暗号化 (PBKDF2 + AES-GCM) ---------- */
+  function b64enc(buf) {
+    var bytes = new Uint8Array(buf), s = "";
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }
+  function b64dec(str) {
+    var bin = atob(str), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  function deriveKey(pass, salt) {
+    return crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"])
+      .then(function (km) {
+        return crypto.subtle.deriveKey(
+          { name: "PBKDF2", salt: salt, iterations: 200000, hash: "SHA-256" },
+          km, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+      });
+  }
+  function encryptJson(obj, pass) {
+    var salt = crypto.getRandomValues(new Uint8Array(16));
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    return deriveKey(pass, salt).then(function (key) {
+      var data = new TextEncoder().encode(JSON.stringify(obj));
+      return crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, data);
+    }).then(function (ct) {
+      return JSON.stringify({ v: 1, salt: b64enc(salt), iv: b64enc(iv), data: b64enc(ct) });
+    });
+  }
+  function decryptJson(payloadStr, pass) {
+    var p = JSON.parse(payloadStr);
+    var salt = b64dec(p.salt), iv = b64dec(p.iv), ct = b64dec(p.data);
+    return deriveKey(pass, salt).then(function (key) {
+      return crypto.subtle.decrypt({ name: "AES-GCM", iv: iv }, key, ct);
+    }).then(function (pt) {
+      return JSON.parse(new TextDecoder().decode(pt));
+    });
+  }
+
+  /* ---------- GitHub Gist API ---------- */
+  function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({
+      "Authorization": "token " + localStorage.getItem(LS.token),
+      "Accept": "application/vnd.github+json"
+    }, opts.headers || {});
+    return fetch("https://api.github.com" + path, opts).then(function (res) {
+      if (!res.ok) return res.text().then(function (t) {
+        throw new Error("GitHub API " + res.status + ": " + t.slice(0, 120));
+      });
+      return res.status === 204 ? null : res.json();
+    });
+  }
+  function findGist() {
+    /* Gistが100件を超えるユーザーでも見つかるようページを辿る(最大10ページ) */
+    function page(n) {
+      if (n > 10) return Promise.resolve(null);
+      return api("/gists?per_page=100&page=" + n).then(function (list) {
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].files && list[i].files[GIST_FILE]) return list[i].id;
+        }
+        if (list.length < 100) return null;
+        return page(n + 1);
+      });
+    }
+    return page(1);
+  }
+  function readGistContent(id) {
+    return api("/gists/" + id).then(function (g) {
+      var f = g.files[GIST_FILE];
+      if (!f) throw new Error("同期ファイルが見つかりません");
+      if (f.truncated) return fetch(f.raw_url).then(function (r) { return r.text(); });
+      return f.content;
+    });
+  }
+  function writeGist(content) {
+    var id = localStorage.getItem(LS.gist);
+    var payload = { description: GIST_DESC, public: false, files: {} };
+    payload.files[GIST_FILE] = { content: content };
+    var opts = { body: JSON.stringify(payload) };
+    /* ページを閉じる直前の送信を通りやすくする(keepaliveは64KB制限があるため小さい時のみ) */
+    if (opts.body.length < 60000) opts.keepalive = true;
+    if (id) {
+      opts.method = "PATCH";
+      return api("/gists/" + id, opts);
+    }
+    opts.method = "POST";
+    return api("/gists", opts).then(function (g) {
+      localStorage.setItem(LS.gist, g.id);
+      return g;
+    });
+  }
+
+  /* ---------- 同期ロジック ---------- */
+  var statusEl = document.getElementById("sync-status");
+  var pushTimer = null;
+  var syncing = false;
+
+  function isConfigured() {
+    return !!(localStorage.getItem(LS.token) && localStorage.getItem(LS.pass));
+  }
+  function setStatus(text, cls) {
+    statusEl.textContent = "同期: " + text;
+    statusEl.className = cls || "";
+  }
+  function collectState() {
+    return {
+      code: codeEl.value,
+      keywords: kwEl.value,
+      caseSensitive: caseSensitive,
+      wholeWord: wholeWord,
+      updatedAt: Date.now()
+    };
+  }
+  function applyState(s) {
+    codeEl.value = s.code || "";
+    kwEl.value = s.keywords || "";
+    caseSensitive = !!s.caseSensitive;
+    wholeWord = !!s.wholeWord;
+    caseBtn.classList.toggle("active", caseSensitive);
+    wordBtn.classList.toggle("active", wholeWord);
+    update();
+  }
+  function timeStr() {
+    return new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  }
+  function saveLocal() {
+    var s = collectState();
+    try {
+      localStorage.setItem(LS.state, JSON.stringify(s));
+      localStorage.setItem(LS.updated, String(s.updatedAt));
+    } catch (e) {}
+    return s;
+  }
+  function restoreLocal() {
+    try {
+      var raw = localStorage.getItem(LS.state);
+      if (raw) {
+        applyState(JSON.parse(raw));
+      } else {
+        /* 内容が無いのにタイムスタンプだけ残っていると、
+           クラウドの方が古い扱いになり取り込まれないため消す */
+        localStorage.removeItem(LS.updated);
+      }
+    } catch (e) {
+      localStorage.removeItem(LS.updated);
+    }
+  }
+  /* パスワード不一致時は正しいパスワードを入れ直すまで自動同期を止める
+     (30秒ごとに失敗し続けるのを防ぐ) */
+  var passwordBad = false;
+  function pushSync() {
+    if (!isConfigured() || syncing) return Promise.resolve();
+    syncing = true;
+    setStatus("送信中...", "busy");
+    var state = saveLocal();
+    return encryptJson(state, localStorage.getItem(LS.pass))
+      .then(writeGist)
+      .then(function () {
+        setStatus("同期済み " + timeStr(), "ok");
+      })
+      .catch(function (e) { setStatus("エラー (" + e.message.slice(0, 40) + ")", "err"); })
+      .finally(function () { syncing = false; });
+  }
+  /* 双方向同期: 新しい方(updatedAt)で両側を揃える */
+  function syncNow(forcePull) {
+    if (!isConfigured() || syncing || passwordBad) return Promise.resolve();
+    syncing = true;
+    setStatus("同期中...", "busy");
+    var pass = localStorage.getItem(LS.pass);
+    var idPromise = localStorage.getItem(LS.gist)
+      ? Promise.resolve(localStorage.getItem(LS.gist))
+      : findGist().then(function (found) {
+          if (found) localStorage.setItem(LS.gist, found);
+          return found;
+        });
+    return idPromise.then(function (gid) {
+      if (!gid) {
+        /* クラウド側にまだ何もない → この端末の内容を新規保存 */
+        syncing = false;
+        return pushSync();
+      }
+      return readGistContent(gid)
+        .then(function (content) { return decryptJson(content, pass); })
+        .then(function (remote) {
+          var localUpdated = Number(localStorage.getItem(LS.updated) || 0);
+          var remoteUpdated = Number(remote.updatedAt || 0);
+          syncing = false;
+          if (forcePull || remoteUpdated > localUpdated) {
+            /* クラウドの方が新しい → この端末に取り込む */
+            applyState(remote);
+            try {
+              localStorage.setItem(LS.state, JSON.stringify(remote));
+              localStorage.setItem(LS.updated, String(remoteUpdated || Date.now()));
+            } catch (e) {}
+            setStatus("取り込み完了 " + timeStr(), "ok");
+          } else if (localUpdated > remoteUpdated) {
+            /* この端末の方が新しい → クラウドを更新 */
+            return pushSync();
+          } else {
+            setStatus("同期済み " + timeStr(), "ok");
+          }
+        });
+    }).catch(function (e) {
+      syncing = false;
+      if (e.name === "OperationError") {
+        passwordBad = true;
+        setStatus("パスワード不一致(同期設定から入れ直してください)", "err");
+      }
+      else setStatus("エラー (" + e.message.slice(0, 40) + ")", "err");
+    });
+  }
+  function schedulePush() {
+    if (!isConfigured()) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(function () {
+      pushTimer = null;
+      pushSync();
+    }, 2500);
+  }
+
+  /* ---------- 設定ウィザード ---------- */
+  var overlay = document.getElementById("overlay");
+  var dlgTitle = document.getElementById("dlg-title");
+  var dlgBody = document.getElementById("dlg-body");
+  var dlgInput = document.getElementById("dlg-input");
+  var dlgErr = document.getElementById("dlg-err");
+  var dlgOk = document.getElementById("dlg-ok");
+  var dlgCancel = document.getElementById("dlg-cancel");
+  var dlgFooter = document.getElementById("dlg-footer");
+
+  function showDialog(opt) {
+    dlgTitle.textContent = opt.title;
+    dlgBody.textContent = opt.body;
+    dlgErr.style.display = "none";
+    dlgInput.style.display = opt.input ? "block" : "none";
+    dlgInput.value = "";
+    dlgInput.placeholder = opt.placeholder || "";
+    dlgOk.textContent = opt.okText || "OK";
+    dlgCancel.textContent = opt.cancelText || "キャンセル";
+    dlgFooter.innerHTML = opt.footer || "";
+    overlay.classList.add("show");
+    if (opt.input) dlgInput.focus();
+    dlgOk.onclick = function () {
+      var v = dlgInput.value.trim();
+      if (opt.input && !v) {
+        dlgErr.textContent = "入力してください";
+        dlgErr.style.display = "block";
+        return;
+      }
+      opt.onOk(v);
+    };
+    dlgCancel.onclick = function () {
+      overlay.classList.remove("show");
+      if (opt.onCancel) opt.onCancel();
+    };
+  }
+  function dialogError(msg) {
+    dlgErr.textContent = msg;
+    dlgErr.style.display = "block";
+    dlgOk.textContent = "OK";
+    dlgOk.disabled = false;
+  }
+  function closeDialog() { overlay.classList.remove("show"); }
+
+  function startWizard() {
+    showDialog({
+      title: "同期の設定 1/3",
+      body: "①GitHubのアクセストークンを貼り付けてください(gist権限のもの)。\n作り方: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → gistにチェック",
+      input: true,
+      placeholder: "ghp_...",
+      footer: isConfigured() ? '<button class="link" id="unlink-btn">同期を解除する</button>' : "",
+      onOk: function (token) {
+        dlgOk.textContent = "確認中...";
+        dlgOk.disabled = true;
+        fetch("https://api.github.com/user", {
+          headers: { "Authorization": "token " + token, "Accept": "application/vnd.github+json" }
+        }).then(function (res) {
+          dlgOk.disabled = false;
+          if (!res.ok) { dialogError("トークンが無効です (HTTP " + res.status + ")"); return; }
+          /* classicトークンはスコープがヘッダに載る。gist権限が無いと保存時に失敗するので先に検出。
+             fine-grainedトークン等でヘッダが無い場合はチェックをスキップ */
+          var scopes = res.headers.get("X-OAuth-Scopes");
+          if (scopes !== null) {
+            var list = scopes.split(",").map(function (s) { return s.trim(); });
+            if (list.indexOf("gist") === -1) {
+              dialogError("このトークンにgist権限がありません。作成時に「gist」にチェックを入れてください");
+              return;
+            }
+          }
+          localStorage.setItem(LS.token, token);
+          wizardStep2();
+        }).catch(function () {
+          dlgOk.disabled = false;
+          dialogError("通信エラー。ネット接続を確認してください");
+        });
+      }
+    });
+    var unlink = document.getElementById("unlink-btn");
+    if (unlink) unlink.onclick = function () {
+      localStorage.removeItem(LS.token);
+      localStorage.removeItem(LS.pass);
+      localStorage.removeItem(LS.gist);
+      localStorage.removeItem(LS.updated);
+      passwordBad = false;
+      closeDialog();
+      setStatus("未設定", "");
+      document.getElementById("sync-now-btn").style.display = "none";
+      document.getElementById("sync-btn").textContent = "同期の設定";
+    };
+  }
+
+  function wizardStep2() {
+    showDialog({
+      title: "同期の設定 2/3",
+      body: "②暗号化パスワードを決めてください(両端末で同じものを入力)。\nクラウド上のデータはこのパスワードで暗号化され、他人には読めなくなります。\n※自動同期のため、パスワードはこの端末の中に保存されます(暗号化が守るのはクラウド上のデータのみです)。\n※忘れるとクラウドのデータを取り出せなくなるので必ず控えてください",
+      input: true,
+      onOk: function (pass) {
+        localStorage.setItem(LS.pass, pass);
+        passwordBad = false;
+        wizardStep3();
+      }
+    });
+  }
+
+  function wizardStep3() {
+    dlgOk.textContent = "検索中...";
+    dlgOk.disabled = true;
+    findGist().then(function (id) {
+      dlgOk.disabled = false;
+      if (id) {
+        localStorage.setItem(LS.gist, id);
+        showDialog({
+          title: "同期の設定 3/3",
+          body: "③クラウドに既存の同期データが見つかりました。\nどちらを残しますか?\n\nOK: クラウドのデータをこの端末に取り込む\nキャンセル: この端末の内容でクラウドを上書きする",
+          okText: "クラウドを取り込む",
+          cancelText: "この端末で上書き",
+          onOk: function () {
+            closeDialog();
+            finishSetup();
+            syncNow(true);
+          },
+          onCancel: function () {
+            finishSetup();
+            pushSync();
+          }
+        });
+      } else {
+        showDialog({
+          title: "同期の設定 3/3",
+          body: "③クラウド側に同期データはまだありません。\nOKを押すと、この端末の内容を暗号化して新しく保存します(非公開のGistが1つ作成されます)。",
+          onOk: function () {
+            closeDialog();
+            finishSetup();
+            pushSync();
+          }
+        });
+      }
+    }).catch(function (e) {
+      dlgOk.disabled = false;
+      dialogError("Gistの検索に失敗: " + e.message.slice(0, 60));
+    });
+  }
+
+  function finishSetup() {
+    document.getElementById("sync-now-btn").style.display = "";
+    document.getElementById("sync-btn").textContent = "同期設定を変更";
+  }
+
+  document.getElementById("sync-btn").addEventListener("click", startWizard);
+  document.getElementById("sync-now-btn").addEventListener("click", function () {
+    passwordBad = false;
+    syncNow(false);
+  });
+
+  /* ---------- 起動時 ---------- */
+  restoreLocal();          /* まず前回のローカル内容を復元 */
+  update();
+  if (isConfigured()) {
+    finishSetup();
+    syncNow(false);        /* 開いたら自動で双方向同期(新しい方に揃える) */
+  }
+
+  /* 30秒ごとに自動同期(画面が見えている間のみ) */
+  setInterval(function () {
+    if (isConfigured() && document.visibilityState === "visible" && !syncing && !pushTimer) {
+      syncNow(false);
+    }
+  }, 30000);
+
+  /* タブに戻ってきたら即同期 / 離れるときは未送信分を即送信 */
+  document.addEventListener("visibilitychange", function () {
+    if (!isConfigured()) return;
+    if (document.visibilityState === "visible") {
+      syncNow(false);
+    } else if (pushTimer) {
+      clearTimeout(pushTimer);
+      pushTimer = null;
+      pushSync();
+    }
+  });
+
+  /* ページを閉じる直前も未送信分を送信(ベストエフォート) */
+  window.addEventListener("pagehide", function () {
+    if (!isConfigured()) return;
+    if (pushTimer) {
+      clearTimeout(pushTimer);
+      pushTimer = null;
+      pushSync();
+    }
+  });
+})();
+</script>
+</body>
+</html>
