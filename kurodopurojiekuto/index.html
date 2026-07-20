@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>更新おまとめ係 — プロジェクト差し替えを楽に</title>
+<style>
+  :root {
+    --paper: #f2f4f3;
+    --card: #ffffff;
+    --ink: #1f2a33;
+    --ink-soft: #5d6b75;
+    --line: #cfd6da;
+    --stamp: #c73e3a;
+    --tape: #3d5a99;      /* 更新係はインディゴ帯 */
+    --ok-bg: #eef2fa;
+    --new: #b07d18;
+    --chg: #3d5a99;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px 64px;
+    line-height: 1.6;
+  }
+  .sheet { width: 100%; max-width: 620px; }
+  header {
+    background: var(--card);
+    border: 1.5px solid var(--ink);
+    border-radius: 6px;
+    padding: 18px 20px 16px;
+    position: relative;
+    margin-bottom: 20px;
+  }
+  header::before {
+    content: "";
+    position: absolute;
+    top: -1.5px; left: -1.5px; right: -1.5px;
+    height: 8px;
+    background: var(--tape);
+    border-radius: 6px 6px 0 0;
+  }
+  .eyebrow { font-size: 11px; letter-spacing: 0.18em; color: var(--ink-soft); margin-top: 4px; }
+  h1 { font-size: 22px; font-weight: 700; }
+  h1 small { display: block; font-size: 13px; font-weight: 400; color: var(--ink-soft); margin-top: 4px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 14px;
+    margin-top: 16px;
+  }
+  .card > label.small, .lbl {
+    display: block;
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+    letter-spacing: 0.06em;
+  }
+  input[type="text"] {
+    width: 100%;
+    font-size: 15px;
+    padding: 10px 12px;
+    border: 1.5px solid var(--line);
+    border-radius: 6px;
+    font-family: inherit;
+    color: var(--ink);
+    outline: none;
+    background: #fff;
+  }
+  input[type="text"]:focus { border-color: var(--tape); }
+  #memo {
+    width: 100%;
+    font-size: 13.5px;
+    font-family: inherit;
+    line-height: 1.6;
+    padding: 10px 12px;
+    border: 1.5px solid var(--line);
+    border-radius: 6px;
+    min-height: 76px;
+    color: var(--ink);
+    outline: none;
+    resize: vertical;
+  }
+  #memo:focus { border-color: var(--tape); }
+
+  .pickrow { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .pick {
+    flex: 1;
+    min-width: 150px;
+    border: 2px dashed var(--line);
+    border-radius: 6px;
+    background: #fff;
+    padding: 18px 12px;
+    text-align: center;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    transition: border-color .15s, background .15s;
+  }
+  .pick:hover, .pick.dragover { border-color: var(--tape); background: var(--ok-bg); }
+  .pick .sub { display: block; font-size: 11.5px; font-weight: 400; color: var(--ink-soft); margin-top: 4px; }
+  input[type="file"] { display: none; }
+  button, .pick, input { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+
+  details.rules { margin-top: 12px; }
+  details.rules summary {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    user-select: none;
+  }
+  details.rules textarea {
+    width: 100%;
+    margin-top: 8px;
+    font-size: 13px;
+    font-family: ui-monospace, Menlo, monospace;
+    padding: 10px;
+    border: 1.5px solid var(--line);
+    border-radius: 6px;
+    min-height: 130px;
+    color: var(--ink);
+    outline: none;
+  }
+  details.rules textarea:focus { border-color: var(--tape); }
+  details.rules .note { font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
+
+  .summary {
+    display: none;
+    margin-top: 16px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .summary.show { display: block; }
+  .sum-head {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    background: #f7f8fa;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .sum-head b { color: var(--ink); }
+  .diffline { padding: 8px 14px; font-size: 12.5px; border-bottom: 1px solid #eceff0; color: var(--ink-soft); }
+  .diffline .n { color: var(--new); font-weight: 700; }
+  .diffline .c { color: var(--chg); font-weight: 700; }
+  .diffline .r { color: var(--stamp); font-weight: 700; }
+  ul.files { list-style: none; max-height: 300px; overflow-y: auto; }
+  ul.files li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid #eceff0;
+    font-size: 13px;
+  }
+  ul.files li:last-child { border-bottom: none; }
+  .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  .badge {
+    flex: none;
+    font-size: 10.5px;
+    border-radius: 999px;
+    padding: 1px 8px;
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+  }
+  .badge.new { color: var(--new); border-color: var(--new); }
+  .badge.chg { color: var(--chg); border-color: var(--chg); }
+  .fsize { color: var(--ink-soft); font-size: 11.5px; flex: none; }
+  .remove {
+    background: none;
+    border: none;
+    color: var(--ink-soft);
+    font-size: 17px;
+    cursor: pointer;
+    padding: 8px 10px;
+    margin: -4px -6px -4px 0;
+    line-height: 1;
+    border-radius: 6px;
+    min-width: 38px;
+    min-height: 38px;
+  }
+  .remove:hover { color: var(--stamp); background: #faecec; }
+  .excl-note { padding: 8px 14px; font-size: 11.5px; color: var(--ink-soft); background: #fbfbf8; }
+
+  .actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn {
+    flex: 1;
+    min-width: 200px;
+    padding: 15px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    letter-spacing: 0.06em;
+    border-radius: 6px;
+    cursor: pointer;
+    border: none;
+    transition: transform .08s;
+    display: none;
+  }
+  .btn.show { display: block; }
+  .btn:active { transform: scale(0.985); }
+  .btn.primary { background: var(--ink); color: #fff; }
+  .btn.primary:hover { background: #34434f; }
+  .btn.secondary { background: #fff; color: var(--ink); border: 1.5px solid var(--ink); }
+  .btn.secondary:hover { background: #f4f6f5; }
+  .btn:disabled { background: var(--line); border-color: var(--line); color: #fff; cursor: default; }
+
+  .done {
+    margin-top: 16px;
+    display: none;
+    background: var(--ok-bg);
+    border: 1px solid var(--tape);
+    border-radius: 6px;
+    padding: 16px 18px;
+    position: relative;
+  }
+  .done.show { display: block; animation: pop .25s ease-out; }
+  @keyframes pop { from { transform: scale(0.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .done.show { animation: none; } }
+  .done .stamp {
+    position: absolute;
+    top: 12px; right: 14px;
+    width: 54px; height: 54px;
+    border: 2.5px solid var(--stamp);
+    border-radius: 50%;
+    color: var(--stamp);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+    transform: rotate(-12deg);
+    opacity: 0.85;
+  }
+  .done h2 { font-size: 15px; margin-bottom: 8px; }
+  .done ol { padding-left: 20px; font-size: 13.5px; }
+  .done ol li { margin-bottom: 6px; }
+  .done .fn { font-weight: 700; word-break: break-all; }
+  .done .old { color: var(--stamp); }
+  .done .newf { color: var(--tape); }
+  .done .hint { font-size: 12px; color: var(--ink-soft); margin-top: 8px; }
+
+  footer { margin-top: 22px; font-size: 11.5px; color: var(--ink-soft); text-align: center; }
+  @media (max-width: 460px) {
+    body { padding: 14px 10px 48px; }
+    header { padding: 14px 14px 12px; }
+    h1 { font-size: 19px; }
+    .done .stamp { width: 46px; height: 46px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <header>
+    <div class="eyebrow">CLAUDE プロジェクト 更新伝票</div>
+    <h1>更新おまとめ係
+      <small>フォルダを渡すだけ → 除外・差分チェック・日付入りファイル名まで自動</small>
+    </h1>
+  </header>
+
+  <div class="card">
+    <label class="small" for="proj">プロジェクト名(ファイル名と差分記録に使います)</label>
+    <input type="text" id="proj" placeholder="例: keyring" autocomplete="off">
+    <label class="small" for="memo" style="margin-top:12px">申し送りメモ(命令書)— 連結txtの冒頭 / ZIPのHANDOFF.txtに入ります</label>
+    <textarea id="memo" placeholder="例: ◯◯アプリのソース一式。現在△△まで実装済み。既知のバグは□□。次は◇◇を実装したい。"></textarea>
+    <div class="pickrow">
+      <button class="pick" id="pickFolder">📁 フォルダごと選択<span class="sub">中身を自動収集(対応ブラウザ)</span></button>
+      <button class="pick" id="pickFiles">📄 ファイルを選択<span class="sub">複数選択OK / ここにドロップも可</span></button>
+    </div>
+    <input type="file" id="folderInput" webkitdirectory multiple>
+    <input type="file" id="filesInput" multiple>
+    <details class="rules">
+      <summary>自動除外ルールを編集(コード読解に不要なものを除外)</summary>
+      <textarea id="rules"></textarea>
+      <div class="note">1行1ルール。「名前/」=そのフォルダを除外、「*.拡張子」=その種類を除外、それ以外は部分一致。編集内容は保存されます。</div>
+    </details>
+  </div>
+
+  <div class="summary" id="summary">
+    <div class="sum-head">
+      <span>収録 <b id="count">0</b> 件 / <b id="totalSize">0 KB</b></span>
+      <span id="exclCount"></span>
+    </div>
+    <div class="diffline" id="diffline">差分を計算中…</div>
+    <ul class="files" id="fileList"></ul>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" id="makeTxt">連結txtを作成(プロジェクト用)</button>
+    <button class="btn secondary" id="makeZip">.zip.txtを作成(チャット用)</button>
+  </div>
+
+  <div class="done" id="done">
+    <div class="stamp">更新<br>準備OK</div>
+    <h2>あとはこれだけ!(入れ替えチェックリスト)</h2>
+    <ol id="checklist"></ol>
+    <div class="hint">📱 iPhoneの場合、保存先は「ファイル」アプリ →「ダウンロード」です。</div>
+  </div>
+
+  <footer>完全オフライン動作。差分記録はこの端末のブラウザ内にのみ保存されます。</footer>
+</div>
+
+<script>
+"use strict";
+(() => {
+  const $ = id => document.getElementById(id);
+
+  const DEFAULT_RULES = [
+    ".git/", "node_modules/", "DerivedData/", "xcuserdata", "build/", "Pods/",
+    ".DS_Store", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.ico",
+    "*.icns", "*.pdf", "*.zip", "*.jar", "*.mp4", "*.mp3"
+  ].join("\n");
+
+  let items = [];        // {path, file, size, hash, status}
+  let exclCount = 0;
+  let prevState = {};    // path -> hash(前回出力時)
+  let hashing = 0;       // 進行中カウンタ(世代管理)
+
+  /* ===== 設定の保存/復元 ===== */
+  $("rules").value = localStorage.getItem("cup_rules") || DEFAULT_RULES;
+  $("rules").addEventListener("input", () => localStorage.setItem("cup_rules", $("rules").value));
+  $("proj").value = localStorage.getItem("cup_proj") || "";
+  $("proj").addEventListener("input", () => {
+    localStorage.setItem("cup_proj", $("proj").value);
+    loadPrev(); loadMemo(); refreshStatuses();
+  });
+  function projKey() { return ($("proj").value.trim() || "default").replace(/\s+/g, "_"); }
+  function loadPrev() {
+    try { prevState = JSON.parse(localStorage.getItem("cup_prev_" + projKey()) || "{}"); }
+    catch (e) { prevState = {}; }
+  }
+  loadPrev();
+  function loadMemo() { $("memo").value = localStorage.getItem("cup_memo_" + projKey()) || ""; }
+  $("memo").addEventListener("input", () => localStorage.setItem("cup_memo_" + projKey(), $("memo").value));
+  loadMemo();
+
+  /* ===== ユーティリティ ===== */
+  function fmtSize(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+    return (n / 1048576).toFixed(1) + " MB";
+  }
+  function today() {
+    const d = new Date();
+    return String(d.getFullYear()) + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+  }
+  async function sha256hex(u8) {
+    const d = await crypto.subtle.digest("SHA-256", u8);
+    return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+  function decodeText(u8) {
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(u8); } catch (e) {}
+    try { return new TextDecoder("shift_jis", { fatal: true }).decode(u8); } catch (e) {}
+    return null;
+  }
+
+  /* ===== 除外判定 ===== */
+  function parseRules() {
+    return $("rules").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  }
+  function isExcluded(path, rules) {
+    const lower = path.toLowerCase();
+    const segs = lower.split("/");
+    for (const r of rules) {
+      const rl = r.toLowerCase();
+      if (rl.startsWith("*.")) {
+        if (lower.endsWith(rl.slice(1))) return true;
+      } else if (rl.endsWith("/")) {
+        if (segs.slice(0, -1).some(s => s + "/" === rl)) return true;
+      } else {
+        if (lower.includes(rl)) return true;
+      }
+    }
+    return false;
+  }
+
+  /* ===== ファイル収集 ===== */
+  async function addEntries(list) {
+    // list: [{path, file}]
+    const rules = parseRules();
+    let excluded = 0;
+    for (const { path, file } of list) {
+      if (isExcluded(path, rules)) { excluded++; continue; }
+      if (items.some(x => x.path === path && x.size === file.size)) continue;
+      items.push({ path, file, size: file.size, hash: null, status: "…" });
+    }
+    exclCount += excluded;
+    $("done").classList.remove("show");
+    render();
+    await computeHashes();
+  }
+  async function computeHashes() {
+    const gen = ++hashing;
+    for (const it of items) {
+      if (it.hash) continue;
+      const u8 = new Uint8Array(await it.file.arrayBuffer());
+      if (gen !== hashing) return; // 新しい選択が始まったら中断
+      it.hash = await sha256hex(u8);
+    }
+    refreshStatuses();
+  }
+  function refreshStatuses() {
+    for (const it of items) {
+      if (!it.hash) { it.status = "…"; continue; }
+      if (!(it.path in prevState)) it.status = "new";
+      else if (prevState[it.path] !== it.hash) it.status = "chg";
+      else it.status = "same";
+    }
+    render();
+  }
+
+  /* ===== 表示 ===== */
+  function render() {
+    const list = $("fileList");
+    list.textContent = "";
+    let total = 0;
+    const sorted = [...items].sort((a, b) => a.path.localeCompare(b.path, "ja"));
+    for (const it of sorted) {
+      total += it.size;
+      const li = document.createElement("li");
+      const badge = document.createElement("span");
+      badge.className = "badge" + (it.status === "new" ? " new" : it.status === "chg" ? " chg" : "");
+      badge.textContent = it.status === "new" ? "新規" : it.status === "chg" ? "変更" : it.status === "same" ? "同一" : "…";
+      const name = document.createElement("span");
+      name.className = "fname";
+      name.textContent = it.path;
+      name.title = it.path;
+      const size = document.createElement("span");
+      size.className = "fsize";
+      size.textContent = fmtSize(it.size);
+      const rm = document.createElement("button");
+      rm.className = "remove";
+      rm.textContent = "×";
+      rm.setAttribute("aria-label", it.path + " を外す");
+      rm.addEventListener("click", () => {
+        items = items.filter(x => x !== it);
+        render();
+      });
+      li.append(badge, name, size, rm);
+      list.appendChild(li);
+    }
+    $("count").textContent = items.length;
+    $("totalSize").textContent = fmtSize(total);
+    $("exclCount").textContent = exclCount ? `自動除外 ${exclCount} 件` : "";
+    const has = items.length > 0;
+    $("summary").classList.toggle("show", has);
+    $("makeTxt").classList.toggle("show", has);
+    $("makeZip").classList.toggle("show", has);
+    renderDiff();
+  }
+  function renderDiff() {
+    const dl = $("diffline");
+    if (!items.length) { dl.textContent = ""; return; }
+    if (items.some(it => !it.hash)) { dl.textContent = "差分を計算中…"; return; }
+    const cur = new Set(items.map(it => it.path));
+    const removed = Object.keys(prevState).filter(p => !cur.has(p));
+    const n = items.filter(it => it.status === "new").length;
+    const c = items.filter(it => it.status === "chg").length;
+    if (!Object.keys(prevState).length) {
+      dl.textContent = "初回の出力です(次回から前回との差分が表示されます)";
+      return;
+    }
+    dl.innerHTML = "";
+    dl.append("前回の出力との差分: ");
+    const sn = document.createElement("span"); sn.className = "n"; sn.textContent = `新規 ${n}`;
+    const sc = document.createElement("span"); sc.className = "c"; sc.textContent = `変更 ${c}`;
+    const sr = document.createElement("span"); sr.className = "r"; sr.textContent = `削除 ${removed.length}`;
+    dl.append(sn, " / ", sc, " / ", sr, ` / 同一 ${items.length - n - c}`);
+  }
+
+  /* ===== 選択UI ===== */
+  $("pickFolder").addEventListener("click", () => $("folderInput").click());
+  $("pickFiles").addEventListener("click", () => $("filesInput").click());
+  $("folderInput").addEventListener("change", () => {
+    const list = [...$("folderInput").files].map(f => ({ path: f.webkitRelativePath || f.name, file: f }));
+    $("folderInput").value !== null && addEntries(list);
+    $("folderInput").value = "";
+  });
+  $("filesInput").addEventListener("change", () => {
+    const list = [...$("filesInput").files].map(f => ({ path: f.name, file: f }));
+    addEntries(list);
+    $("filesInput").value = "";
+  });
+  // ドラッグ&ドロップ(フォルダ対応・PC向け)
+  const dz = $("pickFiles");
+  ["dragenter", "dragover"].forEach(ev => document.body.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("dragover"); }));
+  ["dragleave", "drop"].forEach(ev => document.body.addEventListener(ev, e => { e.preventDefault(); if (ev === "dragleave" && e.target !== document.body) return; dz.classList.remove("dragover"); }));
+  document.body.addEventListener("drop", async e => {
+    dz.classList.remove("dragover");
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    const out = [];
+    const entries = [...dt.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    if (entries.length) {
+      for (const en of entries) await walk(en, "", out);
+    } else {
+      for (const f of dt.files) out.push({ path: f.name, file: f });
+    }
+    if (out.length) addEntries(out);
+  });
+  function walk(entry, prefix, out) {
+    return new Promise(resolve => {
+      if (entry.isFile) {
+        entry.file(f => { out.push({ path: prefix + entry.name, file: f }); resolve(); }, () => resolve());
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const readAll = acc => reader.readEntries(async ents => {
+          if (!ents.length) {
+            for (const e2 of acc) await walk(e2, prefix + entry.name + "/", out);
+            resolve();
+          } else readAll(acc.concat(ents));
+        }, () => resolve());
+        readAll([]);
+      } else resolve();
+    });
+  }
+
+  /* ===== 連結txt生成 ===== */
+  async function buildBundle() {
+    const BAR = "=".repeat(58);
+    const sorted = [...items].sort((a, b) => a.path.localeCompare(b.path, "ja"));
+    const cur = new Set(items.map(it => it.path));
+    const removed = Object.keys(prevState).filter(p => !cur.has(p));
+    const head = [];
+    head.push(BAR);
+    head.push("連結ファイル(更新おまとめ係)");
+    head.push("プロジェクト: " + ($("proj").value.trim() || "(未設定)"));
+    head.push("作成日時: " + new Date().toLocaleString("ja-JP"));
+    head.push("収録ファイル数: " + sorted.length);
+    head.push(BAR);
+    const memo = $("memo").value.trim();
+    if (memo) {
+      head.push("");
+      head.push("---- 申し送りメモ(最優先で読んでください) ----");
+      head.push(memo);
+    }
+    if (Object.keys(prevState).length) {
+      head.push("");
+      head.push("---- 前回の出力からの変更 ----");
+      const n = sorted.filter(it => it.status === "new");
+      const c = sorted.filter(it => it.status === "chg");
+      if (!n.length && !c.length && !removed.length) head.push("(変更なし)");
+      n.forEach(it => head.push("[新規] " + it.path));
+      c.forEach(it => head.push("[変更] " + it.path));
+      removed.forEach(p => head.push("[削除] " + p));
+    }
+    head.push("");
+    head.push("---- 目次 ----");
+    sorted.forEach((it, i) => head.push(`${i + 1}. ${it.path}(${fmtSize(it.size)})`));
+    head.push("");
+    const parts = [head.join("\n")];
+    let binCount = 0;
+    for (let i = 0; i < sorted.length; i++) {
+      const it = sorted[i];
+      const u8 = new Uint8Array(await it.file.arrayBuffer());
+      const text = decodeText(u8);
+      parts.push(`\n${BAR}\n== FILE ${i + 1}/${sorted.length}: ${it.path}(${fmtSize(it.size)})\n${BAR}\n`);
+      if (text === null) {
+        binCount++;
+        parts.push("(バイナリのため本文省略。必要なら除外ルールを見直すか、.zip.txt出力を使ってください)\n");
+      } else {
+        parts.push(text.endsWith("\n") ? text : text + "\n");
+      }
+    }
+    return { blob: new Blob(parts, { type: "text/plain;charset=utf-8" }), binCount };
+  }
+
+  /* ===== ZIP生成(claude-packと同方式) ===== */
+  const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; } return t; })();
+  function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  const canDeflate = typeof CompressionStream === "function";
+  async function deflateRaw(u8) { const s = new Blob([u8]).stream().pipeThrough(new CompressionStream("deflate-raw")); return new Uint8Array(await new Response(s).arrayBuffer()); }
+  function buildZip(zitems) {
+    const d = new Date();
+    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const date = (((d.getFullYear() - 1980) & 0x7f) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const parts = [], central = []; let offset = 0;
+    for (const f of zitems) {
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint16(8, f.method, true); lh.setUint16(10, time, true); lh.setUint16(12, date, true);
+      lh.setUint32(14, f.crc, true); lh.setUint32(18, f.stored.length, true); lh.setUint32(22, f.usize, true);
+      lh.setUint16(26, f.nameB.length, true); lh.setUint16(28, 0, true);
+      parts.push(lh.buffer, f.nameB, f.stored);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+      ch.setUint16(8, 0x0800, true); ch.setUint16(10, f.method, true);
+      ch.setUint16(12, time, true); ch.setUint16(14, date, true);
+      ch.setUint32(16, f.crc, true); ch.setUint32(20, f.stored.length, true); ch.setUint32(24, f.usize, true);
+      ch.setUint16(28, f.nameB.length, true); ch.setUint32(42, offset, true);
+      central.push({ header: ch.buffer, nameB: f.nameB });
+      offset += 30 + f.nameB.length + f.stored.length;
+    }
+    const cdStart = offset; let cdSize = 0;
+    for (const c of central) { parts.push(c.header, c.nameB); cdSize += 46 + c.nameB.length; }
+    const eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 0x06054b50, true); eocd.setUint16(8, zitems.length, true); eocd.setUint16(10, zitems.length, true);
+    eocd.setUint32(12, cdSize, true); eocd.setUint32(16, cdStart, true);
+    parts.push(eocd.buffer);
+    return new Blob(parts, { type: "application/zip" });
+  }
+
+  /* ===== 出力と入れ替えチェックリスト ===== */
+  function download(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+  function saveState(outName) {
+    const state = {};
+    for (const it of items) state[it.path] = it.hash;
+    localStorage.setItem("cup_prev_" + projKey(), JSON.stringify(state));
+    const oldName = localStorage.getItem("cup_lastout_" + projKey()) || "";
+    localStorage.setItem("cup_lastout_" + projKey(), outName);
+    prevState = state;
+    refreshStatuses();
+    return oldName;
+  }
+  function showChecklist(kind, newName, oldName, note) {
+    const ol = $("checklist");
+    ol.textContent = "";
+    const steps = [];
+    if (kind === "txt") {
+      if (oldName && oldName !== newName) {
+        steps.push(["Claudeのプロジェクトのファイル欄で、古い ", ["old", oldName], " を削除"]);
+      } else {
+        steps.push(["Claudeのプロジェクトのファイル欄で、古い連結txtがあれば削除"]);
+      }
+      steps.push(["「＋」から新しい ", ["newf", newName], " をアップロード", note]);
+      steps.push(["完了!このプロジェクト内の全チャットが最新コードを参照します"]);
+    } else {
+      steps.push([["newf", newName], " をチャットに添付", note]);
+      steps.push(["「これはZIPです。中に " + items.length + " 個ファイルがあります」と一言添える"]);
+    }
+    for (const s of steps) {
+      const li = document.createElement("li");
+      for (const part of s) {
+        if (typeof part === "string") li.append(part);
+        else if (part) {
+          const sp = document.createElement("span");
+          sp.className = "fn " + part[0];
+          sp.textContent = part[1];
+          li.appendChild(sp);
+        }
+      }
+      ol.appendChild(li);
+    }
+    $("done").classList.add("show");
+    $("done").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  async function ready(btn) {
+    if (!items.length) return false;
+    if (items.some(it => !it.hash)) {
+      btn.textContent = "ハッシュ計算中…少し待ってからもう一度";
+      setTimeout(() => { $("makeTxt").textContent = "連結txtを作成(プロジェクト用)"; $("makeZip").textContent = ".zip.txtを作成(チャット用)"; }, 1500);
+      return false;
+    }
+    return true;
+  }
+  $("makeTxt").addEventListener("click", async () => {
+    const btn = $("makeTxt");
+    if (!(await ready(btn))) return;
+    btn.disabled = true; btn.textContent = "作成中…";
+    try {
+      const r = await buildBundle();
+      const name = projKey() + "_" + today() + ".txt";
+      download(r.blob, name);
+      const oldName = saveState(name);
+      showChecklist("txt", name, oldName, r.binCount ? `(バイナリ${r.binCount}件は本文省略)` : "");
+    } catch (e) { alert("作成に失敗しました: " + e.message); }
+    finally { btn.disabled = false; btn.textContent = "連結txtを作成(プロジェクト用)"; }
+  });
+  $("makeZip").addEventListener("click", async () => {
+    const btn = $("makeZip");
+    if (!(await ready(btn))) return;
+    btn.disabled = true; btn.textContent = "作成中…";
+    try {
+      const enc = new TextEncoder();
+      const zitems = [];
+      const memo = $("memo").value.trim();
+      if (memo) {
+        const raw = enc.encode("申し送りメモ(最優先で読んでください)\n\n" + memo + "\n");
+        zitems.push({ nameB: enc.encode("HANDOFF.txt"), stored: raw, method: 0, crc: crc32(raw), usize: raw.length });
+      }
+      for (const it of items) {
+        const raw = new Uint8Array(await it.file.arrayBuffer());
+        let stored = raw, method = 0;
+        if (canDeflate && raw.length > 64) {
+          const comp = await deflateRaw(raw);
+          if (comp.length < raw.length) { stored = comp; method = 8; }
+        }
+        zitems.push({ nameB: enc.encode(it.path), stored, method, crc: crc32(raw), usize: raw.length });
+      }
+      const name = projKey() + "_" + today() + ".zip.txt";
+      download(buildZip(zitems), name);
+      // 注: .zip.txtはチャット用のため、差分の基準点(前回出力)は更新しない
+      showChecklist("zip", name, "", "");
+    } catch (e) { alert("作成に失敗しました: " + e.message); }
+    finally { btn.disabled = false; btn.textContent = ".zip.txtを作成(チャット用)"; }
+  });
+})();
+</script>
+</body>
+</html>
