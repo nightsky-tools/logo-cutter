@@ -285,7 +285,7 @@ function hash36(s){
 // 星座の判定:①「○○座の皆さん」の行を最優先 ②なければ本文で最初に登場した星座名
 function detectSign(b){
   for(const line of String(b).split("\n")){
-    if(!line.includes("皆さん")) continue;
+    if(!line.includes("皆さん") && !line.includes("みなさん")) continue;
     for(const s of SIGN_ORDER){ if(line.includes(s)) return s; }
   }
   let best = null, pos = Infinity;
@@ -510,19 +510,31 @@ async function decryptMsg(pass, msg, cache){
 
 // ---- 解析(貼り付けテキスト → 投稿)----
 function isHeaderLine(line){
-  if(!line.includes("皆さん")) return false;
+  if(!line.includes("皆さん") && !line.includes("みなさん")) return false;
   return SIGN_ORDER.some(s => line.includes(s));
 }
-function parseText(raw, now){
-  const rough = String(raw).replace(/\r/g,"").split(/\n\s*\n+/).map(b=>b.trim()).filter(b=>b);
+// 緩い見出し判定:「♈牡羊座」「【牡羊座】」「牡羊座さん」など短い星座行。
+// 本文中の星座言及(長い文)を誤検出しないよう、全体が1件に潰れたときだけ使う。
+function isHeaderLineLoose(line){
+  const t = line.trim();
+  if(!t || t.length > 14) return false;
+  return SIGN_ORDER.some(s => t.includes(s));
+}
+// 改行の正規化:\r\n・\r・U+2028/U+2029(iOSメモ等の行区切り文字)を \n に揃える。
+// これをしないと空行を検出できず、貼り付け全体が1件に潰れる。
+function normalizeNewlines(s){
+  return String(s).replace(/\r\n?/g, "\n").replace(/[\u2028\u2029\u000b\u000c\u0085]/g, "\n");
+}
+function splitBlocks(norm, headerFn){
+  const rough = norm.split(/\n\s*\n+/).map(b=>b.trim()).filter(b=>b);
   const blocks = [];
   for(const b of rough){
     const lines = b.split("\n");
-    const headCount = lines.filter(isHeaderLine).length;
+    const headCount = lines.filter(headerFn).length;
     if(headCount <= 1){ blocks.push(b); continue; }
     let cur = [];
     for(const line of lines){
-      if(isHeaderLine(line) && cur.some(l=>l.trim())){
+      if(headerFn(line) && cur.some(l=>l.trim())){
         blocks.push(cur.join("\n").trim());
         cur = [];
       }
@@ -530,8 +542,18 @@ function parseText(raw, now){
     }
     if(cur.some(l=>l.trim())) blocks.push(cur.join("\n").trim());
   }
+  return blocks.filter(b=>b);
+}
+function parseText(raw, now){
+  const norm = normalizeNewlines(raw);
+  let blocks = splitBlocks(norm, isHeaderLine);
+  // 全体が1件に潰れた場合のみ、緩い見出し判定で再分割を試す(既存の正常な分割結果は変えない)
+  if(blocks.length <= 1){
+    const loose = splitBlocks(norm, l => isHeaderLine(l) || isHeaderLineLoose(l));
+    if(loose.length > blocks.length) blocks = loose;
+  }
   const t = numOr(now, Date.now());
-  return blocks.filter(b=>b).slice(0, LIMITS.posts).map((b, i) => ({
+  return blocks.slice(0, LIMITS.posts).map((b, i) => ({
     id: uid(), ts: t, seq: i,
     sign: detectSign(b) || "その他", text: b, copied: false
   }));
