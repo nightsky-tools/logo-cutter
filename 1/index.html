@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>マガジン記事保管庫 v1.0</title>
+<style>
+  :root{
+    --night:#0d1226; --night-2:#141a30; --card:#171e36; --edge:#2b3558;
+    --ink:#edf0f8; --dim:#93a0c0; --moon:#b8c8e8; --gold:#e6c883;
+    --ok:#7ec9a2; --bad:#d97b7b;
+    --serif:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    --sans:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(900px 480px at 88% -8%, #1c2748 0%, transparent 60%),
+      radial-gradient(700px 420px at -8% 104%, #131c38 0%, transparent 55%),
+      var(--night);
+    color:var(--ink); font-family:var(--sans); min-height:100vh;
+    padding:20px 14px 60px; max-width:840px; margin:0 auto; line-height:1.7;
+  }
+  h1{font-family:var(--serif);font-weight:600;font-size:1.3rem;letter-spacing:.05em}
+  h1 small{display:block;font-family:var(--sans);font-size:.66rem;color:var(--dim);letter-spacing:.14em;margin-top:2px}
+  .lede{color:var(--dim);font-size:.78rem;margin:8px 0 16px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  button{font-family:var(--sans);font-size:.82rem;border-radius:10px;border:1px solid var(--edge);
+    background:var(--night-2);color:var(--ink);padding:9px 14px;cursor:pointer}
+  button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  button.accent{background:linear-gradient(180deg,#2a3a66,#1e2a4e);border-color:#3c4c80;font-weight:700}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .chip{border-radius:999px;padding:6px 13px;font-size:.78rem}
+  .chip.on{border-color:var(--gold);color:var(--gold)}
+  .card{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:13px 14px;margin-bottom:10px}
+  .card .t{font-size:.9rem;font-weight:600}
+  .card .m{font-size:.72rem;color:var(--dim);margin-top:3px}
+  .card .row{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
+  .empty{color:var(--dim);font-size:.82rem;text-align:center;padding:34px 0;border:1px dashed var(--edge);border-radius:14px}
+  #viewer,#compare{display:none}
+  .body-view{background:var(--night-2);border:1px solid var(--edge);border-radius:12px;padding:13px;
+    font-size:.82rem;white-space:pre-wrap;word-break:break-word;max-height:52vh;overflow:auto;margin-top:10px}
+  .cmp-col{margin-top:12px}
+  .cmp-col h3{font-size:.82rem;color:var(--moon);margin-bottom:6px}
+  .dup{background:var(--card);border:1px solid #6b5636;border-radius:12px;padding:12px;margin-top:12px;font-size:.78rem}
+  .dup b{color:var(--gold)}
+  .dup .ln{color:var(--dim);padding:2px 0}
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#20304e;color:var(--ink);
+    border:1px solid #3c4c80;border-radius:999px;padding:10px 18px;font-size:13px;z-index:50;max-width:92vw;
+    opacity:0;transition:opacity .3s;pointer-events:none}
+  #toast.err{background:#4a2733;border-color:#7a4450}
+  footer{margin-top:26px;color:var(--dim);font-size:.68rem;text-align:center;line-height:1.9}
+  input[type=file]{display:none}
+</style>
+</head>
+<body>
+<h1>マガジン記事保管庫<small>星野ソラの月だより ・ ARTICLE VAULT v1.0</small></h1>
+<p class="lede">記事をコピーしてこのページを開くだけで自動格納(タイトルから種別・日付を判定)。同じ種別の前号と並べて同文化チェックができます。</p>
+
+<div class="bar" id="mainBar">
+  <button class="accent" id="ingestBtn">コピー中の記事を取り込む</button>
+  <button id="exportBtn">全データを書き出し</button>
+  <button id="importBtn">ファイルから復元</button>
+  <input type="file" id="importFile" accept=".json,application/json">
+</div>
+<div class="chips" id="kindChips"></div>
+<div id="list"></div>
+
+<div id="viewer">
+  <div class="bar">
+    <button id="vBack">← 一覧へ</button>
+    <button class="accent" id="vCopy">本文をコピー</button>
+    <button id="vCompare">前号と比較</button>
+    <button id="vDelete">削除</button>
+  </div>
+  <div class="card"><div class="t" id="vTitle"></div><div class="m" id="vMeta"></div></div>
+  <div class="body-view" id="vBody"></div>
+</div>
+
+<div id="compare">
+  <div class="bar"><button id="cBack">← 記事へ戻る</button></div>
+  <div class="card"><div class="t">前号比較(同文化チェック)</div>
+    <div class="m">検品MA相当の目視比較用。特に第2章・第3章の書き出しが前号と似ていないかを見る。</div></div>
+  <div class="dup" id="dupBox"></div>
+  <div class="cmp-col"><h3 id="cNowTitle"></h3><div class="body-view" id="cNowBody"></div></div>
+  <div class="cmp-col"><h3 id="cPrevTitle"></h3><div class="body-view" id="cPrevBody"></div></div>
+</div>
+
+<div id="toast"></div>
+<footer>マガジン記事保管庫 v1.0 ｜ 保存キー: mag-article-vault-v1(月次の記事保管庫とは完全に別領域)<br>
+自動取り込みの作法はツール群共通: 空振りは静かに・同じ内容は一度だけ・他アプリのコピー指紋(nightsky-last-copy-fp)は取り込まない</footer>
+
+<script>
+/* =========================================================
+   マガジン記事保管庫 v1.0(2026-07-21 初版)
+   ・対象: 星野ソラの月だより記事(新月/満月/カレンダー/水星逆行)
+   ・保存: localStorage "mag-article-vault-v1"(月次のarticle-vault-v1とは別キー。
+     同じサイトに置いても月次の記事保管庫・チェッカーとは干渉しない)
+   ・自動取り込み: 記事保管庫と同じクリップボード方式(focus時+開いた時)。
+     タイトル(【M/D 〜新月】等)から種別・年月日を判定して格納。
+     同じ種別・同じ日付の再取り込みは「更新」として上書き。
+   ・前号比較: 同種別で直前の日付の記事と並べ、12字以上の共通行を機械抽出
+     (同文化の目視チェック補助。判定はしない=検品の領分)。
+   ========================================================= */
+const KEY = "mag-article-vault-v1";
+const $ = id => document.getElementById(id);
+const KINDS = ["新月", "満月", "カレンダー", "水星逆行"];
+let state = { articles: [] };
+let currentId = null;
+let filterKind = null;
+let lastAutoFp = null;
+
+function cfgFp(t){ let h = 0; for(let i = 0; i < t.length; i++){ h = ((h << 5) - h + t.charCodeAt(i)) | 0; } return h; }
+let toastTimer;
+function toast(msg, err){
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = err ? "err" : "";
+  t.style.opacity = "1";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ t.style.opacity = "0"; }, 2400);
+}
+function load(){
+  try{ const s = JSON.parse(localStorage.getItem(KEY) || "null"); if(s && Array.isArray(s.articles)) state = s; }catch(e){}
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(state)); }
+  catch(e){ toast("保存に失敗(容量不足の可能性)。書き出しでバックアップを", true); }
+}
+
+/* ---- 記事の判定(タイトルと本文から種別・年月日) ---- */
+function z2h(s){ return s.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/：/g, ":").replace(/／/g, "/"); }
+function parseArticleMeta(raw){
+  const s = z2h(raw);
+  const titleM = s.match(/note記事タイトル\s*[::]\s*(【[^\n]+)/) || s.match(/^\s*(【[^\n]+)/m);
+  const title = titleM ? titleM[1].trim() : null;
+  if(!title) return null;
+  const yearM = s.match(/(20\d{2})年/);
+  const year = yearM ? +yearM[1] : null;
+  let m;
+  if((m = title.match(/^【(\d{1,2})\/(\d{1,2})〜(\d{1,2})\/(\d{1,2})\s*水星逆行】/)))
+    return { kind:"水星逆行", year, month:+m[1], day:+m[2], endMonth:+m[3], endDay:+m[4], title };
+  if((m = title.match(/^【(\d{1,2})\/(\d{1,2})\s*[^】]*?(新月|満月)/)))
+    return { kind:m[3], year, month:+m[1], day:+m[2], title };
+  if((m = title.match(/^【(\d{1,2})月の月カレンダー】/)))
+    return { kind:"カレンダー", year, month:+m[1], day:1, title };
+  return null;
+}
+function looksLikeArticle(s){
+  // 記事らしさ: 対応タイトル+■章見出し。表・レポート・命令書は弾く
+  if(/^\|\s*項目\s*\|/m.test(s)) return false;
+  if(/【マガジン記事スキャナ/.test(s)) return false;
+  if(/^# .*命令書/m.test(s)) return false;
+  return !!parseArticleMeta(s) && /■/.test(s);
+}
+function sortKeyOf(a){ return (a.year||0)*10000 + a.month*100 + a.day; }
+
+/* ---- 取り込み ---- */
+function ingestText(t, silent){
+  if(!t || !t.trim()) { if(!silent) toast("クリップボードが空です", true); return false; }
+  if(!looksLikeArticle(t)){ if(!silent) toast("マガジン記事の形式(【〜】タイトル+■章)ではありません", true); return false; }
+  const meta = parseArticleMeta(t);
+  const chars = t.replace(/\s/g, "").length;
+  const existing = state.articles.find(a => a.kind === meta.kind && a.year === meta.year && a.month === meta.month && a.day === meta.day);
+  if(existing){
+    if(existing.body === t){ if(!silent) toast("同じ内容が格納済みです"); return false; }
+    Object.assign(existing, meta, { body: t, chars, savedAt: Date.now() });
+    save(); render();
+    toast(`更新: ${meta.title}(${chars.toLocaleString()}字)`);
+    return true;
+  }
+  state.articles.push(Object.assign({ id: "a" + Date.now(), body: t, chars, savedAt: Date.now() }, meta));
+  save(); render();
+  toast(`格納: ${meta.title}(${chars.toLocaleString()}字)`);
+  return true;
+}
+async function autoIngest(){
+  const ae = document.activeElement && document.activeElement.tagName;
+  if(ae === "TEXTAREA" || ae === "INPUT") return;
+  let t; try{ t = await navigator.clipboard.readText(); }catch(e){ return; }
+  if(!t || !t.trim()) return;
+  const fp = cfgFp(t);
+  if(lastAutoFp === fp) return;
+  try{ if(localStorage.getItem("nightsky-last-copy-fp") === String(fp)) return; }catch(e){}
+  if(!looksLikeArticle(t)) return;
+  lastAutoFp = fp;
+  ingestText(t, true);
+}
+
+/* ---- 一覧 ---- */
+function fmtDate(a){
+  const y = a.year ? a.year + "年" : "";
+  return a.kind === "水星逆行"
+    ? `${y}${a.month}/${a.day}〜${a.endMonth}/${a.endDay}`
+    : a.kind === "カレンダー" ? `${y}${a.month}月` : `${y}${a.month}/${a.day}`;
+}
+function render(){
+  $("viewer").style.display = "none";
+  $("compare").style.display = "none";
+  $("mainBar").style.display = "flex";
+  $("kindChips").style.display = "flex";
+  const chips = $("kindChips");
+  chips.innerHTML = "";
+  [null, ...KINDS].forEach(k => {
+    const b = document.createElement("button");
+    b.className = "chip" + ((filterKind === k) ? " on" : "");
+    const n = k ? state.articles.filter(a => a.kind === k).length : state.articles.length;
+    b.textContent = (k || "すべて") + `(${n})`;
+    b.onclick = () => { filterKind = k; render(); };
+    chips.appendChild(b);
+  });
+  const list = $("list");
+  list.style.display = "block";
+  list.innerHTML = "";
+  const arr = state.articles.filter(a => !filterKind || a.kind === filterKind)
+    .slice().sort((x, y) => sortKeyOf(y) - sortKeyOf(x));
+  if(!arr.length){
+    list.innerHTML = `<div class="empty">まだ記事がありません。<br>記事をコピーしてこのページを開き直すと自動で入ります。</div>`;
+    return;
+  }
+  arr.forEach(a => {
+    const c = document.createElement("div");
+    c.className = "card";
+    c.innerHTML = `<div class="t"></div><div class="m"></div><div class="row"><button class="op">開く</button></div>`;
+    c.querySelector(".t").textContent = a.title;
+    c.querySelector(".m").textContent = `${a.kind} ・ ${fmtDate(a)} ・ ${a.chars.toLocaleString()}字 ・ 格納 ${new Date(a.savedAt).toLocaleDateString("ja-JP")}`;
+    c.querySelector(".op").onclick = () => openViewer(a.id);
+    list.appendChild(c);
+  });
+}
+
+/* ---- 閲覧 ---- */
+function openViewer(id){
+  const a = state.articles.find(x => x.id === id);
+  if(!a) return;
+  currentId = id;
+  $("list").style.display = "none";
+  $("mainBar").style.display = "none";
+  $("kindChips").style.display = "none";
+  $("compare").style.display = "none";
+  $("viewer").style.display = "block";
+  $("vTitle").textContent = a.title;
+  $("vMeta").textContent = `${a.kind} ・ ${fmtDate(a)} ・ ${a.chars.toLocaleString()}字`;
+  $("vBody").textContent = a.body;
+}
+
+/* ---- 前号比較(同種別・直前の日付) ---- */
+function prevOf(a){
+  return state.articles
+    .filter(x => x.kind === a.kind && x.id !== a.id && sortKeyOf(x) < sortKeyOf(a))
+    .sort((x, y) => sortKeyOf(y) - sortKeyOf(x))[0] || null;
+}
+function chapterHead(body, n){
+  const m = z2h(body).match(new RegExp("■\\s*" + n + "[..]?[^\\n]*\\n([\\s\\S]*?)(?=\\n■|$)"));
+  return m ? m[1].trim().split("\n").slice(0, 3).join("\n").slice(0, 400) : "(章が見つからない)";
+}
+function commonLines(a, b){
+  const norm = s => s.split("\n").map(l => l.trim()).filter(l => l.replace(/\s/g, "").length >= 12);
+  const setB = new Set(norm(b));
+  const seen = new Set();
+  return norm(a).filter(l => setB.has(l) && !seen.has(l) && seen.add(l)).slice(0, 20);
+}
+function openCompare(){
+  const a = state.articles.find(x => x.id === currentId);
+  const p = prevOf(a);
+  if(!p){ toast("同じ種別の前号がまだありません"); return; }
+  $("viewer").style.display = "none";
+  $("compare").style.display = "block";
+  $("cNowTitle").textContent = "今号: " + a.title;
+  $("cPrevTitle").textContent = "前号: " + p.title;
+  $("cNowBody").textContent = "【第2章の書き出し】\n" + chapterHead(a.body, 2) + "\n\n【第3章の書き出し】\n" + chapterHead(a.body, 3);
+  $("cPrevBody").textContent = "【第2章の書き出し】\n" + chapterHead(p.body, 2) + "\n\n【第3章の書き出し】\n" + chapterHead(p.body, 3);
+  const dups = commonLines(a.body, p.body);
+  $("dupBox").innerHTML = dups.length
+    ? `<b>両方に同じ行(12字以上)が ${dups.length}件</b>(固定文言M・見出し等の正当な一致も含む。判定は検品で)` + dups.map(() => `<div class="ln"></div>`).join("")
+    : `<b>12字以上の共通行なし。</b>書き出しの型が似ていないかは下の並記で目視確認。`;
+  if(dups.length){
+    const lns = $("dupBox").querySelectorAll(".ln");
+    dups.forEach((d, i) => { lns[i].textContent = "・" + d; });
+  }
+}
+
+/* ---- 操作の配線 ---- */
+$("ingestBtn").onclick = async () => {
+  let t; try{ t = await navigator.clipboard.readText(); }
+  catch(e){ toast("読み取れません。iPhoneは「ペースト」の許可をタップしてください", true); return; }
+  ingestText(t, false);
+};
+$("exportBtn").onclick = () => {
+  const text = JSON.stringify(state, null, 1);
+  try{ localStorage.setItem("nightsky-last-copy-fp", String(cfgFp(text))); }catch(e){}
+  const blob = new Blob([text], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "mag-article-vault-" + new Date().toISOString().slice(0, 10) + ".json";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast("書き出しました(ファイルに保存してください)");
+};
+$("importBtn").onclick = () => $("importFile").click();
+$("importFile").onchange = (e) => {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const s = JSON.parse(r.result);
+      if(!s || !Array.isArray(s.articles)) throw 0;
+      state = s; save(); render();
+      toast(`復元しました(${state.articles.length}件)`);
+    }catch(err){ toast("復元できません(書き出したJSONを選んでください)", true); }
+  };
+  r.readAsText(f);
+  e.target.value = "";
+};
+$("vBack").onclick = render;
+$("vCopy").onclick = async () => {
+  const a = state.articles.find(x => x.id === currentId);
+  try{ localStorage.setItem("nightsky-last-copy-fp", String(cfgFp(a.body))); }catch(e){}
+  try{ await navigator.clipboard.writeText(a.body); toast("本文をコピーしました"); }
+  catch(e){ toast("コピーできません", true); }
+};
+$("vCompare").onclick = openCompare;
+$("vDelete").onclick = () => {
+  const a = state.articles.find(x => x.id === currentId);
+  if(!confirm(`削除しますか?\n${a.title}\n(この操作は戻せません。心配なら先に書き出しを)`)) return;
+  state.articles = state.articles.filter(x => x.id !== currentId);
+  save(); render();
+  toast("削除しました");
+};
+$("cBack").onclick = () => { $("compare").style.display = "none"; $("viewer").style.display = "block"; };
+
+load();
+render();
+window.addEventListener("focus", autoIngest);
+autoIngest();
+</script>
+</body>
+</html>
