@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>マガジン記事スキャナ v1.7</title>
+<title>マガジン記事スキャナ v1.8</title>
 <style>
   :root {
     --night: #0c0f22; --panel: #14182f; --panel-edge: #232849;
@@ -94,10 +94,10 @@
 <div class="wrap">
   <header>
     <h1>マガジン記事スキャナ</h1>
-    <div class="sub">検品命令書 v1.0 準拠 ・ A〜C機械判定 / D〜F注意検出 / 入稿用分割 ・ v1.7(新月・満月記事専用)</div>
+    <div class="sub">検品命令書 v1.2 準拠 ・ A〜C機械判定 / D〜F注意検出 / 入稿用分割 ・ v1.8(新月・満月・カレンダー・水星逆行対応)</div>
   </header>
 
-  <label for="tableIn">① ジェネレーター出力のMarkdown表(v1.4形式)</label>
+  <label for="tableIn">① ジェネレーター出力のMarkdown表(v1.4/v1.5形式・自動取り込みあり)</label>
   <textarea id="tableIn" placeholder="| 項目 | 内容 | から始まる表を貼り付け"></textarea>
 
   <label for="articleIn">② 記事全文(メタブロック・タイトル・画像プロンプト込み)</label>
@@ -121,6 +121,29 @@
 </div>
 
 <script>
+/* =========================================================
+   【v1.8 変更履歴】(生成命令書v1.6・検品命令書v1.2対応 2026-07-20)
+   ・水星逆行記事に対応: 逆行用手動表(生成§1)のパース、A-1/A-2を
+     開始・終了の両方照合、A-5で主役の水星は捏造判定から除外、
+     C-2逆行タイトル規則、C-5はMercury照合、D-9(M-6不安訴求)走査。
+     48時間期限の導出は月相記事のみに限定。
+   ・月初カレンダー記事に対応(v1.7までの非対応を解消・生成§10):
+     「まとめてコピー」の複数イベント表をパースし、A区分を全イベント
+     照合。B-2章別/B-5星座字数はスキップ(3章・2,000〜3,000字判定)。
+     C-2カレンダー題名規則、C-5はphases of the moon照合。
+   ・D-1に過去構文9語の走査を追加(本家スキャナv2.5のDICT.PAST_WORDS
+     と同一。主語の意味判定は検品チャット)。
+   ・SEASON_WORDSを本家スキャナv2.5のDICT.SEASON_WORDS(39語)との
+     和集合に拡張(本家側を変更したら本欄も同時改訂)。
+   ・A〜C既存ロジック・FIXED_COPY_M・判定基準は無変更。
+   【v1.8 同日修正】
+   ・逆行表キーの全角括弧（）に対応(拾えず照合が空振りするバグの修正)。
+   ・日時照合を空白非依存に(「9月2日10:15」等の空白なし表記でも一致)。
+   ・カレンダー判定をメタ種別/タイトルの明示に限定(本文中の「カレンダー」
+     の語での誤発動を解消)。
+   ・A-6/7の文言を実態に合わせ(48時間導出は月相記事のみ)、逆行記事に
+     期間長の参考行を追加(検品A-7の転記元・判定には不使用)。
+   ========================================================= */
 const $ = id => document.getElementById(id);
 const esc = x => String(x).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const strip = s => s.replace(/[\s\u3000]/g, "");
@@ -157,7 +180,27 @@ function parseTable(src) {
   }
   t.prev = rows["直前の対になる月相"] || null;
   t.next = rows["直後の対になる月相"] || null;
+  // v1.8: 水星逆行記事の手動表(生成命令書v1.6 §1)
+  t.retroStartDT = rows["逆行開始(JST・分単位)"] || rows["逆行開始（JST・分単位）"] || null;
+  t.retroStartSign = rows["開始時の星座と度数"] || null;
+  t.retroEndDT = rows["逆行終了(JST・分単位)"] || rows["逆行終了（JST・分単位）"] || null;
+  t.retroEndSign = rows["終了時の星座と度数"] || null;
+  if (t.retroStartDT && !t.kind) t.kind = "水星逆行";
   return t;
+}
+
+// v1.8: カレンダー記事用。「まとめてコピー」出力(複数イベント表)を種別行で分割してパース
+function parseTables(src) {
+  const blocks = [];
+  let cur = [];
+  src.split("\n").forEach(line => {
+    if (/^\|\s*種別\s*\|/.test(line) && cur.some(l => /^\|\s*種別\s*\|/.test(l))) {
+      blocks.push(cur.join("\n")); cur = [];
+    }
+    cur.push(line);
+  });
+  if (cur.length) blocks.push(cur.join("\n"));
+  return blocks.map(parseTable).filter(x => x.kind && x.datetime);
 }
 
 // ---------- 記事のパース ----------
@@ -195,7 +238,18 @@ function parseArticle(src) {
 }
 
 // ---------- 判定 ----------
-const SEASON_WORDS = ["春めい","夏らし","秋めい","冬の","新緑","紅葉","梅雨","桜","初雪","猛暑","残暑","初詣","クリスマス","お盆","年末年始","七夕","花火大会","衣替え"];
+// v1.8: 本家スキャナv2.5 DICT.SEASON_WORDS(39語)+マガジン独自語の和集合。本家側の変更時は同時改訂
+const SEASON_WORDS = [
+  "この夏","真夏","夏バテ","夏の疲れ","残暑","猛暑","梅雨","春風","花冷え","新緑",
+  "秋の夜長","紅葉","木枯らし","冬本番","年の瀬","年末","年内","年明け","年始",
+  "来年","今年中","この1年","この一年","年を越","年をまた","年度末","新年度",
+  "新学期","新生活","師走","正月","お盆","クリスマス","初詣","ゴールデンウィーク","連休",
+  "春","夏","秋","冬",
+  "春めい","夏らし","秋めい","冬の","桜","初雪","年末年始","七夕","花火大会","衣替え"];
+// v1.8: 過去構文9語(本家スキャナv2.5 DICT.PAST_WORDSと同一。主語判定は検品チャット)
+const PAST_WORDS = ["てきました","てきてい","てきた","これまで","先月まで","ここ数ヶ月","ここ数カ月","ここ数か月","ここ数ケ月"];
+// v1.8: M-6(逆行記事の不安訴求・生成命令書v1.6)
+const RETRO_FEAR = ["壊れる","壊れて","トラブルが必ず","最悪"];
 const ASSERT_WORDS = ["必ず叶","絶対に叶","が起こります","起きます。"];
 const FEAR_WORDS = ["危険", "凶", "災い", "不吉", "祟り"];
 const ASPECT_SYN = [
@@ -228,19 +282,52 @@ function scan(t, art) {
   const push = (sec, id, ok, msg) => R[sec].push({ id, ok, msg }); // ok: true/false/"warn"
   const raw = z2h(art.raw);
   const normRaw = raw.replace(/(\d+)時(\d+)分/g, "$1:$2");
+  const isRetro = /水星逆行/.test(t.kind || "") || /水星逆行/.test(art.metaKind || "") || /水星逆行/.test(art.title || "");
+  const isCal = !!t.events;
+  const nrStrip = strip(normRaw);
+  const dtHit = v => { if (!v) return false;
+    const a = strip(v.replace(/^\d+年/,"")), b = strip(v);
+    return nrStrip.includes(a) || nrStrip.includes(b); }; // v1.8修正: 空白の有無に依存しない照合
+  const sdHit = v => { if(!v) return false; const sd = v.replace(/\(.+\)/, "").trim().replace(/\s+/g, ""); return strip(normRaw).includes(sd); };
 
   // ===== A. 天文照合 =====
+  if (isCal) {
+    // v1.8: カレンダー記事=全イベントを照合
+    t.events.forEach((ev, i) => {
+      const n = i + 1;
+      push("A", `A-1 イベント${n}`, dtHit(ev.datetime), `日時 表:${ev.datetime}` + (dtHit(ev.datetime) ? "" : " → 記事内に一致なし"));
+      if (ev.signdeg) push("A", `A-2 イベント${n}`, sdHit(ev.signdeg), `星座度数 表:${ev.signdeg}` + (sdHit(ev.signdeg) ? "" : " → 記事内に一致なし"));
+      if (ev.eclipse) push("A", `A-3 イベント${n}`, raw.includes(ev.eclipse), `食 表:${ev.eclipse}` + (raw.includes(ev.eclipse) ? "" : " → 記事に種別名の明示なし(§2-C: 食は種別併記)"));
+    });
+  } else if (isRetro) {
+    // v1.8: 逆行記事=開始・終了の両方を照合(検品A-1/A-2)
+    if (!t.retroStartDT || !t.retroEndDT) push("A","A-1",false,"逆行表に開始・終了の日時がそろっていない(生成§1の手動表を確認)");
+    else {
+      push("A","A-1 開始", dtHit(t.retroStartDT), `逆行開始 表:${t.retroStartDT}` + (dtHit(t.retroStartDT) ? "" : " → 記事内に一致なし"));
+      push("A","A-1 終了", dtHit(t.retroEndDT), `逆行終了 表:${t.retroEndDT}` + (dtHit(t.retroEndDT) ? "" : " → 記事内に一致なし"));
+    }
+    if (t.retroStartSign) push("A","A-2 開始", sdHit(t.retroStartSign), `開始時 表:${t.retroStartSign}` + (sdHit(t.retroStartSign) ? "" : " → 記事内に一致なし"));
+    if (t.retroEndSign) push("A","A-2 終了", sdHit(t.retroEndSign), `終了時 表:${t.retroEndSign}` + (sdHit(t.retroEndSign) ? "" : " → 記事内に一致なし"));
+    { // v1.8修正: 期間長を算出して参考表示(検品A-7の期間検算の転記元。判定には使わない)
+      const pd = s => { const m = String(s).match(/(\d+)年(\d+)月(\d+)日/); return m ? new Date(+m[1], +m[2]-1, +m[3]) : null; };
+      const d1 = pd(t.retroStartDT), d2 = pd(t.retroEndDT);
+      if (d1 && d2) { const days = Math.round((d2 - d1) / 86400000);
+        push("A","A-7", true, `参考: 逆行期間 ${days}日間(約${Math.round(days/7)}週間)。記事に期間の言及があれば検品A-7でこの値と突き合わせる`); }
+    }
+  } else {
   if (!t.datetime) { push("A","A-1",false,"表に日時がない(表の貼り付けを確認)"); }
   else {
-    push("A","A-1", normRaw.includes(t.datetime.replace(/^\d+年/,"")) || normRaw.includes(t.datetime),
-      `日時 表:${t.datetime}` + (normRaw.includes(t.datetime.replace(/^\d+年/,"")) ? "" : " → 記事内に一致なし"));
+    push("A","A-1", dtHit(t.datetime),
+      `日時 表:${t.datetime}` + (dtHit(t.datetime) ? "" : " → 記事内に一致なし")); // v1.8修正: 空白非依存
   }
   if (t.signdeg) {
     const sd = t.signdeg.replace(/\(.+\)/, "").trim().replace(/\s+/g, "");
     push("A","A-2", strip(normRaw).includes(sd), `星座度数 表:${sd}` + (strip(normRaw).includes(sd) ? "" : " → 記事内に一致なし"));
   }
+  }
   const eclWords = raw.match(/(皆既|金環|部分|半影)?(日食|月食)/g) || [];
-  if (!t.eclipse) {
+  if (isCal) { /* v1.8: カレンダーはイベント別にA-3判定済み */ }
+  else if (!t.eclipse) {
     push("A","A-3", eclWords.length ? "warn" : true,
       eclWords.length ? `表は食なしだが記事に食の語(${[...new Set(eclWords)].join("、")})。次月相への言及なら可、文脈確認` : "食なし・記事にも食の記述なし");
   } else {
@@ -266,6 +353,7 @@ function scan(t, art) {
   // A-5 逆行・留
   let retroIssues = [];
   PLANETS.forEach(p => {
+    if (isRetro && p === "水星") return; // v1.8: 逆行記事の主役は表の開始・終了で照合済み(検品A-5)
     const re = new RegExp(p + "[^。]{0,12}逆行|逆行[^。]{0,8}" + p);
     if (re.test(raw) && !t.retro.includes(p) && !t.stations.some(s => s.body === p))
       retroIssues.push(`${p}の逆行に言及しているが表の逆行欄・留欄にない`);
@@ -277,22 +365,27 @@ function scan(t, art) {
     (s.match(/\d+月\d+日/g) || []).forEach(x => allowedMD.add(x));
     (s.match(/\d+:\d+/g) || []).forEach(x => allowedHM.add(normHM(x))); };
   addDT(t.datetime); addDT(t.prev); addDT(t.next);
+  addDT(t.retroStartDT); addDT(t.retroEndDT); // v1.8
+  if (isCal) t.events.forEach(ev => { addDT(ev.datetime); addDT(ev.prev); addDT(ev.next);
+    ev.aspects.forEach(a => addDT(a.date)); ev.stations.forEach(s => addDT(s.date)); }); // v1.8
   t.aspects.forEach(a => addDT(a.date)); t.stations.forEach(s => addDT(s.date));
-  const h48 = t.datetime ? addHours48(t.datetime) : null;
+  const h48 = (!isRetro && !isCal && t.datetime) ? addHours48(t.datetime) : null; // v1.8: 48時間導出は月相記事のみ
   if (h48) { allowedMD.add(h48.md); allowedHM.add(normHM(h48.hm)); }
-  [t.signdeg, t.prev, t.next].forEach(s => (String(s).match(/\d+度(\d+分)?/g) || []).forEach(d => allowedDeg.add(d)));
+  [t.signdeg, t.prev, t.next, t.retroStartSign, t.retroEndSign].forEach(s => (String(s).match(/\d+度(\d+分)?/g) || []).forEach(d => allowedDeg.add(d)));
+  if (isCal) t.events.forEach(ev => [ev.signdeg, ev.prev, ev.next].forEach(s => (String(s).match(/\d+度(\d+分)?/g) || []).forEach(d => allowedDeg.add(d)))); // v1.8
   const badMD = [...new Set((normRaw.match(/\d+月\d+日/g) || []))].filter(x => !allowedMD.has(x));
   const badHM = [...new Set((normRaw.match(/\d+:\d+/g) || []).map(normHM))].filter(x => !allowedHM.has(x));
   const badDeg = [...new Set((normRaw.match(/\d+度\d+分|\d+度(?![\d分])/g) || []))].filter(x => !allowedDeg.has(x));
+  const permText = h48 ? "表+48時間期限" : "表"; // v1.8修正: 48時間導出は月相記事のみのため文言を実態に合わせる
   push("A","A-6/7", (badMD.length || badHM.length) ? false : true,
     (badMD.length || badHM.length)
-      ? `表から導出できない日付・時刻: ${[...badMD, ...badHM].join("、")}(48時間期限含め許容集合と不一致)`
-      : "記事内の全日付・時刻が表+48時間期限の許容集合内");
+      ? `表から導出できない日付・時刻: ${[...badMD, ...badHM].join("、")}(${permText}の許容集合と不一致)`
+      : `記事内の全日付・時刻が${permText}の許容集合内`);
   push("A","A-8", badDeg.length ? "warn" : true,
     badDeg.length ? `表にない度数表記: ${badDeg.join("、")}(導出可能か文脈確認)` : "度数の捏造なし");
 
   // ===== B. 字数・構成 =====
-  const isCalendar = /カレンダー/.test(art.metaKind || "") || /カレンダー/.test(art.title || "");
+  const isCalendar = isCal || /カレンダー/.test(art.metaKind || "") || /カレンダー/.test(art.title || "");
   const needCh = isCalendar ? 3 : 5;
   push("B","B-1/B-6", art.chapters.length === needCh,
     `章数 ${art.chapters.length}/${needCh}` + (art.chapters.length < needCh ? "(不足・途中切れの可能性)" : art.chapters.length > needCh ? "(過剰)" : ""));
@@ -337,14 +430,29 @@ function scan(t, art) {
     (art.metaKind && art.metaChars) ? "メタブロックあり(必須項目そろい)" :
     "メタブロックはあるが必須項目(種別/文字数)が読み取れない");
   if (art.title) {
+    let ok = false, msg = "";
+    if (isRetro) { // v1.8: 逆行記事の命名規則(生成§7)
+      const rm = art.title.match(/^【(\d+\/\d+)〜(\d+\/\d+)\s*水星逆行】(.+)$/);
+      if (!rm) msg = `命名規則不一致(逆行形式【M/D〜M/D 水星逆行】): ${art.title}`;
+      else {
+        const benefit = rm[3].trim();
+        if (strip(benefit).length > 20) msg = `ベネフィット文${strip(benefit).length}字(20字以内)`;
+        else { ok = true; msg = `${art.title}(ベネフィット${strip(benefit).length}字)`; }
+      }
+    } else if (isCalendar) { // v1.8: カレンダー記事の命名規則(生成§7)
+      const cm = art.title.match(/^【(\d+)月の月カレンダー】(.+)$/);
+      if (!cm) msg = `命名規則不一致(【M月の月カレンダー】形式): ${art.title}`;
+      else { ok = true; msg = art.title + (cm[2].trim() === "新月・満月と今月のテーマ" ? "(基本形どおり)" : "(基本形と異なる後半・文脈確認)"); }
+    } else {
     const tm = art.title.match(/^【(\d+\/\d+)\s*(.+?)(新月|満月)(・(皆既|金環|部分|半影)?(日食|月食))?】(.+)$/);
-    let ok = !!tm, msg = "";
+    ok = !!tm;
     if (!tm) msg = `命名規則不一致: ${art.title}`;
     else {
       const benefit = tm[7].trim();
       if (strip(benefit).length > 20) { ok = false; msg = `ベネフィット文${strip(benefit).length}字(20字以内)`; }
       else if (t.eclipse && !tm[4]) { ok = false; msg = "食なのにタイトルに食種別がない"; }
       else msg = `${art.title}(ベネフィット${strip(benefit).length}字)`;
+    }
     }
     push("C","C-2", ok, msg);
   } else push("C","C-2", false, "タイトル行が見つからない");
@@ -354,9 +462,16 @@ function scan(t, art) {
       `watercolor:${/watercolor art style/i.test(p)?"○":"×"} / 8k:${/8k/i.test(p)?"○":"×"}`);
     const neg = p.match(/\bno\s+\w+|\bwithout\s+\w+|\bnot\s+\w+/gi);
     push("C","C-4", neg ? false : true, neg ? `否定形表現: ${neg.join(", ")}` : "否定形なし");
+    if (isRetro) { // v1.8: 逆行記事=水星が主題(生成§6・検品C-5)
+      push("C","C-5", /mercury/i.test(p), "水星(Mercury)" + (/mercury/i.test(p) ? " をプロンプトに含む" : " がプロンプトにない"));
+    } else if (isCalendar) { // v1.8: カレンダー=月の満ち欠け(生成§6)
+      push("C","C-5", /phases of the moon|moon phases/i.test(p) ? true : "warn",
+        /phases of the moon|moon phases/i.test(p) ? "phases of the moon をプロンプトに含む" : "phases of the moon がプロンプトにない(生成§6の主題指定を確認)");
+    } else {
     const sign = t.signdeg ? SIGNS.find(s => t.signdeg.includes(s)) : null;
     if (sign) push("C","C-5", new RegExp(SIGN_EN[sign], "i").test(p),
       `${sign}(${SIGN_EN[sign]})` + (new RegExp(SIGN_EN[sign],"i").test(p) ? " をプロンプトに含む" : " がプロンプトにない"));
+    }
   } else { push("C","C-3", false, "画像プロンプトが見つからない"); }
   // C-6: 固定文言Mの完全一致(生成命令書v1.5 §8「一字一句このまま」)
   if (raw.includes("【固定文言M】")) {
@@ -371,9 +486,21 @@ function scan(t, art) {
   push("C","C-7", art.chapters.length > 0 && art.chapters.every(c => c.heading.length > 0), "■見出し形式");
 
   // ===== D〜F. 注意検出(語彙ベース) =====
+  // v1.8: D-1 過去構文9語(A-5(a)の機械化・主語判定は検品チャット)
+  PAST_WORDS.forEach(w => {
+    let i = 0;
+    while ((i = raw.indexOf(w, i)) !== -1) {
+      const a = Math.max(0, i - 14);
+      push("D","D-1","warn",`過去構文の可能性: 「${w}」…${raw.slice(a, i + w.length + 10).replace(/\n/g," ")}…(主語が読者なら違反)`);
+      i += w.length;
+    }
+  });
   SEASON_WORDS.forEach(w => { if (raw.includes(w)) push("D","D-2","warn",`季節語の可能性: 「${w}」`); });
   ASSERT_WORDS.forEach(w => { if (raw.includes(w)) push("D","D-5","warn",`断定表現の可能性: 「${w}」`); });
   if (t.eclipse) FEAR_WORDS.forEach(w => { if (raw.includes(w)) push("E","E-3","warn",`恐怖訴求の可能性: 「${w}」`); });
+  if (isRetro) { // v1.8: D-9 M-6不安訴求(逆行記事のみ・生成命令書v1.6)
+    FEAR_WORDS.concat(RETRO_FEAR).forEach(w => { if (raw.includes(w)) push("D","D-9","warn",`M-6 不安訴求の可能性: 「${w}」`); });
+  }
   if (t.eclipse && t.visibility) {
     const promotes = /見上げ|観測しま|空を眺め/.test(raw);
     if (promotes && /見えない/.test(t.visibility) && !/見える/.test(t.visibility))
@@ -430,7 +557,9 @@ function render(R) {
   return textLines.join("\n");
 }
 
+function cfgFp(t){ let h = 0; for(let i = 0; i < t.length; i++){ h = ((h << 5) - h + t.charCodeAt(i)) | 0; } return h; } // 保管庫群と同一の指紋方式
 function copyText(text, btn, idleLabel) {
+  try{ localStorage.setItem("nightsky-last-copy-fp", String(cfgFp(text))); }catch(e){} // 自分のコピーは自動取り込みの対象外にする(ツール群共通の作法)
   const done = () => {
     btn.classList.add("done");
     btn.textContent = "コピーしました";
@@ -511,19 +640,36 @@ $("splitBtn").addEventListener("click", () => {
 
 let lastReport = "";
 $("runBtn").addEventListener("click", () => {
+  fillTableFromShared(); // 同日追加: ①が空なら共有保存領域から自動補完
   const tSrc = $("tableIn").value.trim(), aSrc = $("articleIn").value.trim();
   if (!tSrc || !aSrc) {
     alert("入力不備: ジェネレーター表と記事全文の2点セットが必須です(検品命令書§1)");
     return;
   }
-  if (/カレンダー/.test(aSrc.slice(0, 400))) {
-    alert("月初カレンダー記事はv1.1では非対応です(複数イベントの表照合が必要なため)。新月・満月記事のみスキャンできます");
-    return;
-  }
-  const t = parseTable(tSrc);
-  if (!t.datetime || !t.kind) {
-    alert("表のパースに失敗しました。ジェネレーターv1.4の「Markdownをコピー」の出力をそのまま貼ってください");
-    return;
+  let t;
+  // v1.8修正: カレンダー判定はメタ種別またはタイトルの明示のみ(本文中の「カレンダー」の語では誤発動しない)
+  const calMeta = (aSrc.match(/種別[::]\s*([^\/\n]+)/) || ["",""])[1];
+  const isCalArticle = /カレンダー/.test(calMeta) || /【\d+月の月カレンダー】/.test(z2h(aSrc));
+  if (isCalArticle) {
+    // v1.8: カレンダー記事対応(生成§10の未対応を解消)。①には「まとめてコピー」の当月全イベント表を貼る
+    const events = parseTables(tSrc);
+    if (!events.length) {
+      alert("表のパースに失敗しました。カレンダー記事は①にジェネレーターの「この月の新月・満月をまとめてコピー」の出力を貼ってください(検品命令書§1)");
+      return;
+    }
+    t = { kind: "カレンダー", events,
+          eclipse: null, visibility: null, datetime: null, signdeg: null,
+          retro: [...new Set(events.flatMap(e => e.retro))],
+          stations: events.flatMap(e => e.stations),
+          aspects: events.flatMap(e => e.aspects),
+          prev: null, next: null,
+          retroStartDT: null, retroStartSign: null, retroEndDT: null, retroEndSign: null };
+  } else {
+    t = parseTable(tSrc);
+    if (!t.kind || (!t.datetime && !t.retroStartDT)) {
+      alert("表のパースに失敗しました。月相記事はジェネレーターv1.4の「Markdownをコピー」、水星逆行記事は生成命令書v1.6 §1の手動表をそのまま貼ってください");
+      return;
+    }
   }
   lastReport = render(scan(t, parseArticle(aSrc)));
   if ($("report").scrollIntoView) $("report").scrollIntoView({ behavior: "smooth" });
@@ -543,6 +689,101 @@ $("copyReport").addEventListener("click", e => {
     document.body.removeChild(ta);
   }
 });
+
+/* ---- クリップボード自動取り込み(v1.8同日追加) ----
+   ジェネレーターv1.4で「Markdownをコピー」→ このページを開く(戻る)だけで①に表が入る。
+   記事(note記事タイトル行やメタ付き)をコピーしていれば②に入る。
+   記事保管庫と同じ方式: 空欄にのみ入れる・同じ内容は一度だけ・自分のコピー(指紋一致)は無視。
+   iPhoneでは初回に「ペースト」の許可バブルが出ることがある(タップで許可)。 */
+let lastAutoFp = null;
+function miniToast(msg){
+  let el = document.getElementById("autoToast");
+  if(!el){
+    el = document.createElement("div");
+    el.id = "autoToast";
+    el.style.cssText = "position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#20304e;color:#edf0f8;border:1px solid #3c4c80;border-radius:999px;padding:10px 18px;font-size:13px;z-index:50;max-width:90vw;transition:opacity .3s";
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = "1";
+  clearTimeout(el._t);
+  el._t = setTimeout(()=>{ el.style.opacity = "0"; }, 2200);
+}
+function classifyClip(x){
+  if(/\|\s*種別\s*\|/.test(x) || /\|\s*逆行開始/.test(x)) return "table";
+  if(/note記事タイトル\s*[::]/.test(x) || /^<!--\s*種別/m.test(x)) return "article";
+  return null;
+}
+async function autoIngest(){
+  const ae = document.activeElement && document.activeElement.tagName;
+  if(ae === "TEXTAREA" || ae === "INPUT") return; // 入力中は邪魔しない(記事保管庫と同じ)
+  let x; try{ x = await navigator.clipboard.readText(); }catch(e){ return; }
+  if(!x || !x.trim()) return;
+  const fp = cfgFp(x);
+  if(lastAutoFp === fp) return;
+  try{ if(localStorage.getItem("nightsky-last-copy-fp") === String(fp)) return; }catch(e){}
+  const kind = classifyClip(x);
+  if(!kind) return;
+  const box = $(kind === "table" ? "tableIn" : "articleIn");
+  if(box.value.trim()) return; // 空欄にのみ自動で入れる(手入力を上書きしない)
+  box.value = x;
+  lastAutoFp = fp;
+  miniToast(kind === "table" ? "① にコピー中の表を自動で入れました" : "② にコピー中の記事を自動で入れました");
+}
+/* ---- 共有保存領域からの完全自動取り込み(ジェネレーターv1.5連携・同日追加) ----
+   ジェネレーターv1.5で該当月を一度でも表示していれば、②の記事のタイトル
+   (【M/D 〜新月/満月】・【M月の月カレンダー】)から該当の表を探して①へ自動で入れる。
+   コピーボタンすら不要。同じ場所(サイト)に置いたツール同士でのみ働く。 */
+let lastGenCopiedFp = null;
+function fillTableFromShared(){
+  if ($("tableIn").value.trim()) return false;
+  // 1) ジェネレーターで最後にコピーされた表(明示の選択を最優先)
+  try {
+    const gc = JSON.parse(localStorage.getItem("nightsky-gen-copied") || "null");
+    if (gc && gc.md && lastGenCopiedFp !== gc.fp && classifyClip(gc.md) === "table") {
+      $("tableIn").value = gc.md; lastGenCopiedFp = gc.fp;
+      miniToast("① にジェネレーターでコピーした表を自動で入れました");
+      return true;
+    }
+  } catch (e) {}
+  // 2) 記事のタイトルから該当月・該当イベントを照合(コピー不要の完全自動)
+  let feed; try { feed = JSON.parse(localStorage.getItem("nightsky-gen-feed") || "null"); } catch (e) { return false; }
+  if (!feed || !feed.months) return false;
+  const a = z2h($("articleIn").value);
+  if (!a.trim()) return false;
+  const ym = a.match(/(\d{4})年(\d{1,2})月/);
+  const m1 = a.match(/【(\d{1,2})\/(\d{1,2})\s*[^】]*?(新月|満月)/);
+  let md = null, label = "";
+  if (m1) {
+    const mo = +m1[1], dy = +m1[2], kind = m1[3];
+    for (const [k, v] of Object.entries(feed.months)) {
+      if (+k.slice(5) !== mo) continue;
+      if (ym && +k.slice(0, 4) !== +ym[1]) continue;
+      const ev = (v.events || []).find(e => e.kind === kind && e.day === dy);
+      if (ev) { md = ev.md; label = k + " " + kind; }
+    }
+  } else {
+    const mc = a.match(/【(\d{1,2})月の月カレンダー】/);
+    if (mc) {
+      for (const [k, v] of Object.entries(feed.months)) {
+        if (+k.slice(5) !== +mc[1]) continue;
+        if (ym && +k.slice(0, 4) !== +ym[1]) continue;
+        md = v.all_md; label = k + " まとめ";
+      }
+    }
+  }
+  if (!md) return false;
+  $("tableIn").value = md;
+  miniToast("① に該当月の表を自動で入れました(" + label + ")");
+  return true;
+}
+const _autoIngestBase = autoIngest;
+autoIngest = async function(){
+  await _autoIngestBase();
+  fillTableFromShared();
+};
+window.addEventListener("focus", autoIngest);
+autoIngest();
 </script>
 </body>
 </html>
