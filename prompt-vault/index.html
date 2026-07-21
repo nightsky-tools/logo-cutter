@@ -1,3 +1,5 @@
+== FILE 6/6: 命令書保管庫.html(146.8 KB)
+==========================================================
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -1384,7 +1386,57 @@ function openFiller(i){
   });
   hideOverlay("viewer");
   showOverlay("filler");
+  autoFillFromClipboard(); // 2026-07-21追加: 開いた時点でコピー中の表・記事・レポートを自動差し込み
 }
+/* ---- 差し込み画面のクリップボード自動取り込み(2026-07-21追加) ----
+   ジェネレーター等でコピー→この画面を開く(戻る)だけで該当欄に入る。
+   記事保管庫の自動取り込みと同じ作法: 空欄にのみ・同じ内容は一度だけ・
+   自分(保管庫)のコピーは指紋(nightsky-last-copy-fp)で無視。 */
+let lastAutoFillFp = null;
+function classifyClipForFill(x){
+  if(/\|\s*種別\s*\|/.test(x) || /\|\s*逆行開始/.test(x)) return {kind:"table", kw:/表|ジェネレーター/};
+  if(/note記事タイトル\s*[::]/.test(x) || /^<!--\s*種別/m.test(x)) return {kind:"article", kw:/記事/};
+  if(/【マガジン記事スキャナ/.test(x) || /A-6\/7/.test(x)) return {kind:"report", kw:/スキャナ|レポート/};
+  return null;
+}
+async function autoFillFromClipboard(){
+  const ae = document.activeElement && document.activeElement.tagName;
+  if(ae === "TEXTAREA" || ae === "INPUT") return;
+  // 最優先: ジェネレーターv1.5でコピーされた表(共有保存領域・許可バブルなしで読める)
+  try{
+    const gc = JSON.parse(localStorage.getItem("nightsky-gen-copied") || "null");
+    if(gc && gc.md && lastAutoFillFp !== gc.fp){
+      const fieldEls0 = Array.from(document.querySelectorAll("#fBody .fill-field"));
+      const t0 = fieldEls0.find(w => /表|ジェネレーター/.test(w.querySelector(".ff-label").textContent) && !w.querySelector(".ff-text").value.trim());
+      if(t0){
+        t0.querySelector(".ff-text").value = gc.md;
+        lastAutoFillFp = gc.fp;
+        captureDraft();
+        toast("ジェネレーターの表を自動で差し込みました:「" + t0.querySelector(".ff-label").textContent + "」");
+        return;
+      }
+    }
+  }catch(e){}
+  let x; try{ x = await navigator.clipboard.readText(); }catch(e){ return; }
+  if(!x || !x.trim()) return;
+  const fp = cfgFp(x);
+  if(lastAutoFillFp === fp) return;
+  try{ if(hasLocalStorage && localStorage.getItem("nightsky-last-copy-fp") === String(fp)) return; }catch(e){}
+  const c = classifyClipForFill(x);
+  if(!c) return;
+  const fieldEls = Array.from(document.querySelectorAll("#fBody .fill-field"));
+  let target = fieldEls.find(w => c.kw.test(w.querySelector(".ff-label").textContent) && !w.querySelector(".ff-text").value.trim());
+  if(!target && fieldEls.length === 1 && !fieldEls[0].querySelector(".ff-text").value.trim()) target = fieldEls[0];
+  if(!target) return;
+  target.querySelector(".ff-text").value = x;
+  lastAutoFillFp = fp;
+  captureDraft();
+  toast("コピー中の内容を自動で差し込みました:「" + target.querySelector(".ff-label").textContent + "」");
+}
+window.addEventListener("focus", ()=>{
+  const f = document.getElementById("filler");
+  if(f && f.classList.contains("open")) autoFillFromClipboard();
+});
 // 完成文から区切り記号の行を取り除く(差し込み・連続コピー共通)
 function cleanFilledText(outText){
   outText = outText
@@ -3117,4 +3169,3 @@ let bootDone = false;
 })();
 </script>
 </body>
-</html>
