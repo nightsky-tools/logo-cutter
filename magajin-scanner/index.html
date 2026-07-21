@@ -143,6 +143,11 @@
      の語での誤発動を解消)。
    ・A-6/7の文言を実態に合わせ(48時間導出は月相記事のみ)、逆行記事に
      期間長の参考行を追加(検品A-7の転記元・判定には不使用)。
+   ・7/29実記事の実走で発見: 画像プロンプトの「【画像プロンプト】」
+     見出し形式を受理対象に追加(従来の■形式も引き続き受理)。
+   ・同実走反映: A-8で度数の分の桁落ち(20度2分等・2桁化で表に一致)を
+     ✗(表記不一致)に昇格。D-1で第4章内の過去構文9語を✗に昇格
+     (生成2-Aの現在形規定・主語判定不要の機械判定化)。
    ========================================================= */
 const $ = id => document.getElementById(id);
 const esc = x => String(x).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -216,6 +221,7 @@ function parseArticle(src) {
   }
   art.title = (src.match(/note記事タイトル\s*[::]\s*(.+)/) || src.match(/タイトル\s*[::]\s*(【.+)/) || [])[1]?.trim() || null;
   const pm = src.match(/■\s*タイトル画像プロンプト\s*\n([\s\S]*?)(?=\n■|\n━|$)/) ||
+             src.match(/【画像プロンプト】\s*\n([\s\S]*?)(?=\n■|\n【|$)/) ||
              src.match(/タイトル画像プロンプト\s*[::]?\s*\n?([A-Za-z][\s\S]*?)(?=\n■|\n━|$)/);
   art.prompt = pm ? pm[1].trim() : null;
   // 章分割(画像プロンプト見出しを除く■行)。字数計測から固定文言Mを除外(C-6は art.raw で判定)
@@ -381,8 +387,12 @@ function scan(t, art) {
     (badMD.length || badHM.length)
       ? `表から導出できない日付・時刻: ${[...badMD, ...badHM].join("、")}(${permText}の許容集合と不一致)`
       : `記事内の全日付・時刻が${permText}の許容集合内`);
-  push("A","A-8", badDeg.length ? "warn" : true,
-    badDeg.length ? `表にない度数表記: ${badDeg.join("、")}(導出可能か文脈確認)` : "度数の捏造なし");
+  // 7/29実走反映: 分が1桁で、2桁化すると表に一致するもの=桁落ち(表記不一致・要修正)
+  const padDeg = badDeg.filter(x => { const m = x.match(/^(\d+)度(\d)分$/); return m && allowedDeg.has(`${m[1]}度0${m[2]}分`); });
+  const otherDeg = badDeg.filter(x => !padDeg.includes(x));
+  if (padDeg.length) push("A","A-8", false, `度数の桁落ち: ${padDeg.join("、")} → 表の表記(分は2桁)へ修正(生成§1の転記規則)`);
+  push("A","A-8" + (padDeg.length ? "b" : ""), otherDeg.length ? "warn" : true,
+    otherDeg.length ? `表にない度数表記: ${otherDeg.join("、")}(導出可能か文脈確認)` : "度数の捏造なし(桁落ちを除く)");
 
   // ===== B. 字数・構成 =====
   const isCalendar = isCal || /カレンダー/.test(art.metaKind || "") || /カレンダー/.test(art.title || "");
@@ -487,11 +497,17 @@ function scan(t, art) {
 
   // ===== D〜F. 注意検出(語彙ベース) =====
   // v1.8: D-1 過去構文9語(A-5(a)の機械化・主語判定は検品チャット)
+  const ch4 = art.chapters.find(c => /12星座|ワンポイント/.test(c.heading));
+  const ch4start = ch4 ? raw.indexOf("■ " + ch4.heading) : -1;
+  const ch4end = ch4start >= 0 ? (raw.indexOf("\n■", ch4start + 1) === -1 ? raw.length : raw.indexOf("\n■", ch4start + 1)) : -1;
   PAST_WORDS.forEach(w => {
     let i = 0;
     while ((i = raw.indexOf(w, i)) !== -1) {
       const a = Math.max(0, i - 14);
-      push("D","D-1","warn",`過去構文の可能性: 「${w}」…${raw.slice(a, i + w.length + 10).replace(/\n/g," ")}…(主語が読者なら違反)`);
+      const inCh4 = ch4start >= 0 && i > ch4start && i < ch4end;
+      // 7/29実走反映: 第4章は主語を問わず9語禁止(生成2-Aの現在形規定)=機械判定✗。他章は従来どおり主語判定へ
+      push("D","D-1", inCh4 ? false : "warn",
+        (inCh4 ? "✗第4章の過去構文(現在形規定違反): " : "過去構文の可能性: ") + `「${w}」…${raw.slice(a, i + w.length + 10).replace(/\n/g," ")}…` + (inCh4 ? " → 現在形へ(例: 合わせてきた→合わせがちな)" : "(主語が読者なら違反)"));
       i += w.length;
     }
   });
