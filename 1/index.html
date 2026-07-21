@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<title>マガジン記事保管庫 v1.0</title>
+<title>マガジン記事保管庫 v1.1</title>
 <style>
   :root{
     --night:#0d1226; --night-2:#141a30; --card:#171e36; --edge:#2b3558;
@@ -55,15 +55,18 @@
 </style>
 </head>
 <body>
-<h1>マガジン記事保管庫<small>星野ソラの月だより ・ ARTICLE VAULT v1.0</small></h1>
+<h1>マガジン記事保管庫<small>星野ソラの月だより ・ ARTICLE VAULT v1.1</small></h1>
 <p class="lede">記事をコピーしてこのページを開くだけで自動格納(タイトルから種別・日付を判定)。同じ種別の前号と並べて同文化チェックができます。</p>
 
 <div class="bar" id="mainBar">
   <button class="accent" id="ingestBtn">コピー中の記事を取り込む</button>
   <button id="exportBtn">全データを書き出し</button>
   <button id="importBtn">ファイルから復元</button>
+  <button id="syncSetupBtn">同期の設定</button>
+  <button id="syncNowBtn">今すぐ同期</button>
   <input type="file" id="importFile" accept=".json,application/json">
 </div>
+<div class="lede" id="syncStatus" style="margin:-6px 0 10px"></div>
 <div class="chips" id="kindChips"></div>
 <div id="list"></div>
 
@@ -88,7 +91,7 @@
 </div>
 
 <div id="toast"></div>
-<footer>マガジン記事保管庫 v1.0 ｜ 保存キー: mag-article-vault-v1(月次の記事保管庫とは完全に別領域)<br>
+<footer>マガジン記事保管庫 v1.1 ｜ 保存キー: mag-article-vault-v1(月次の記事保管庫とは完全に別領域)<br>
 自動取り込みの作法はツール群共通: 空振りは静かに・同じ内容は一度だけ・他アプリのコピー指紋(nightsky-last-copy-fp)は取り込まない</footer>
 
 <script>
@@ -127,6 +130,7 @@ function load(){
 function save(){
   try{ localStorage.setItem(KEY, JSON.stringify(state)); }
   catch(e){ toast("保存に失敗(容量不足の可能性)。書き出しでバックアップを", true); }
+  schedulePush(); // 同期設定済みなら数秒後に自動送信(v1.1)
 }
 
 /* ---- 記事の判定(タイトルと本文から種別・年月日) ---- */
@@ -325,6 +329,8 @@ $("vCompare").onclick = openCompare;
 $("vDelete").onclick = () => {
   const a = state.articles.find(x => x.id === currentId);
   if(!confirm(`削除しますか?\n${a.title}\n(この操作は戻せません。心配なら先に書き出しを)`)) return;
+  state.tombs = state.tombs || {};
+  state.tombs[artKey(a)] = Date.now(); // 同期用の墓標(他端末での復活防止)
   state.articles = state.articles.filter(x => x.id !== currentId);
   save(); render();
   toast("削除しました");
@@ -335,6 +341,186 @@ load();
 render();
 window.addEventListener("focus", autoIngest);
 autoIngest();
+
+/* =========================================================
+   クラウド同期(v1.1追加)― 記事保管庫の同期と同じ方式
+   ・GitHubトークン(gist権限)+暗号化パスワード → 非公開gistへ
+     AES-GCM(PBKDF2 31万回)で暗号化して保存。平文は送らない。
+   ・マージ: 記事は(種別×年月日)キーで新しい方が勝ち(LWW)。
+     削除は墓標(tombs)で他端末に伝播し、復活しない。
+   ・自動: 保存の3秒後に送信予約/開いた時・前面復帰時に受信。
+   ・復号できない時は絶対にクラウドを上書きしない(同期停止)。
+   ========================================================= */
+const SYNC_KEY = "mag-sync-config-v1";
+const GIST_FILE = "mag-article-vault.enc";
+let sync = null, syncBusy = false, syncHalted = false, pushTimer = null, lastSyncPullAt = 0;
+try{ const r = localStorage.getItem(SYNC_KEY); if(r) sync = JSON.parse(r); }catch(e){}
+function saveSyncConfig(){ try{ localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); }catch(e){} }
+function setSyncStatus(msg, err){
+  const el = $("syncStatus");
+  el.textContent = msg || "";
+  el.style.color = err ? "var(--bad)" : "var(--dim)";
+}
+const enc = new TextEncoder(), dec = new TextDecoder();
+const b64 = a => btoa(String.fromCharCode(...new Uint8Array(a)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function deriveKey(pass, salt){
+  const km = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name:"PBKDF2", salt, iterations:310000, hash:"SHA-256" }, km,
+    { name:"AES-GCM", length:256 }, false, ["encrypt","decrypt"]);
+}
+async function encryptText(plain, pass){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(pass, salt);
+  const ct = await crypto.subtle.encrypt({ name:"AES-GCM", iv }, key, enc.encode(plain));
+  return JSON.stringify({ v:1, salt:b64(salt), iv:b64(iv), ct:b64(ct) });
+}
+async function decryptText(payload, pass){
+  const o = JSON.parse(payload);
+  const key = await deriveKey(pass, unb64(o.salt));
+  const pt = await crypto.subtle.decrypt({ name:"AES-GCM", iv:unb64(o.iv) }, key, unb64(o.ct));
+  return dec.decode(pt);
+}
+function artKey(a){ return [a.kind, a.year||0, a.month, a.day].join("|"); }
+function payloadOf(st){
+  const arts = {};
+  for(const a of st.articles){ const k = artKey(a); if(!arts[k] || (arts[k].savedAt||0) < (a.savedAt||0)) arts[k] = a; }
+  return { v:1, articles: arts, tombs: st.tombs || {} };
+}
+function mergePayloads(a, b){
+  const out = { v:1, articles:{}, tombs:{} };
+  for(const k of new Set([...Object.keys(a.tombs||{}), ...Object.keys(b.tombs||{})]))
+    out.tombs[k] = Math.max(Number((a.tombs||{})[k])||0, Number((b.tombs||{})[k])||0);
+  for(const k of new Set([...Object.keys(a.articles||{}), ...Object.keys(b.articles||{})])){
+    const x = (a.articles||{})[k], y = (b.articles||{})[k];
+    const win = (!x) ? y : (!y) ? x : (((x.savedAt||0) >= (y.savedAt||0)) ? x : y);
+    if(win && (win.savedAt||0) > (out.tombs[k]||0)) out.articles[k] = win;
+  }
+  return out;
+}
+function fingerprint(p){
+  const norm = { articles:{}, tombs:p.tombs||{} };
+  for(const k of Object.keys(p.articles||{}).sort()){ const a = p.articles[k]; norm.articles[k] = [a.savedAt||0, (a.body||"").length, a.title||""]; }
+  return JSON.stringify(norm);
+}
+function adoptPayload(p){
+  state = { articles: Object.values(p.articles||{}), tombs: p.tombs||{} };
+  try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
+}
+function gistHeaders(){ return { "Authorization":"Bearer "+sync.token, "Accept":"application/vnd.github+json", "Content-Type":"application/json" }; }
+async function pullCloud(){
+  const res = await fetch("https://api.github.com/gists/"+sync.gistId, { headers: gistHeaders() });
+  if(res.status === 401) throw new Error("token");
+  if(res.status === 404) throw new Error("gist");
+  if(!res.ok) throw new Error("http"+res.status);
+  const g = await res.json();
+  const f = g.files && g.files[GIST_FILE];
+  if(!f) return null;
+  let content = f.content;
+  if(f.truncated){ const r2 = await fetch(f.raw_url); if(!r2.ok) throw new Error("http"+r2.status); content = await r2.text(); }
+  try{ return JSON.parse(await decryptText(content, sync.pass)); }
+  catch(e){ throw new Error("pass"); }
+}
+async function pushCloud(payload){
+  const content = await encryptText(JSON.stringify(payload), sync.pass);
+  const res = await fetch("https://api.github.com/gists/"+sync.gistId, {
+    method:"PATCH", headers: gistHeaders(),
+    body: JSON.stringify({ files: { [GIST_FILE]: { content } } })
+  });
+  if(res.status === 401) throw new Error("token");
+  if(!res.ok) throw new Error("http"+res.status);
+}
+function syncErrMsg(e){
+  const m = e && e.message || "";
+  if(m === "token") return "同期エラー: トークンが無効です(設定をやり直してください)";
+  if(m === "gist") return "同期エラー: 同期IDが見つかりません";
+  if(m === "pass") return "同期停止: 暗号化パスワードが違うため復号できません(クラウドは上書きしていません)";
+  return "同期エラー: " + m;
+}
+async function syncNow(showToastMsg){
+  if(!sync || !sync.gistId){ if(showToastMsg) toast("先に「同期の設定」を押してください", true); return; }
+  if(syncBusy) return;
+  syncBusy = true;
+  setSyncStatus("同期中…");
+  try{
+    let cloud;
+    try{ cloud = await pullCloud(); }
+    catch(e){
+      if(e.message === "pass"){ syncHalted = true; setSyncStatus(syncErrMsg(e), true); if(showToastMsg) toast("同期を停止しました(パスワードを確認)", true); return; }
+      throw e;
+    }
+    syncHalted = false;
+    const local = payloadOf(state);
+    const remote = cloud && cloud.articles ? cloud : { v:1, articles:{}, tombs:{} };
+    const merged = mergePayloads(local, remote);
+    const fpL = fingerprint(local), fpR = fingerprint(remote), fpM = fingerprint(merged);
+    let changedLocal = false, pushed = false;
+    if(fpM !== fpL){ adoptPayload(merged); changedLocal = true; render(); }
+    if(fpM !== fpR){ await pushCloud(merged); pushed = true; }
+    lastSyncPullAt = Date.now();
+    setSyncStatus("同期済み " + new Date().toLocaleTimeString("ja-JP") + "(記事" + Object.keys(merged.articles).length + "件)");
+    if(showToastMsg){
+      if(changedLocal && pushed) toast("両方の変更を統合して同期しました");
+      else if(changedLocal) toast("クラウドの新しいデータを取り込みました");
+      else if(pushed) toast("同期しました");
+      else toast("同期済みです(変更なし)");
+    }
+  }catch(e){
+    setSyncStatus(syncErrMsg(e), true);
+    if(showToastMsg) toast("同期に失敗しました", true);
+  }finally{ syncBusy = false; }
+}
+function schedulePush(){
+  if(!sync || !sync.gistId || syncHalted) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(()=> syncNow(false), 3000);
+}
+async function setupSync(){
+  if(sync && sync.gistId){
+    const off = confirm("同期は設定済みです。\n同期ID: " + sync.gistId + "\n\nOK=設定をやり直す / キャンセル=閉じる\n(解除したい場合は次の画面で空欄のままOK)");
+    if(!off) return;
+  }
+  const token = prompt("同期の設定 1/3\n①GitHubのアクセストークンを貼り付けてください(gist権限のもの)。\n作り方: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → gistにチェック\n\n※空欄でOK=同期を解除", sync ? sync.token : "");
+  if(token === null) return;
+  if(!token.trim()){
+    sync = null; localStorage.removeItem(SYNC_KEY);
+    setSyncStatus("同期を解除しました(この端末からトークン・パスワードを削除。クラウドの暗号化データは残ります)");
+    toast("同期を解除しました"); return;
+  }
+  const pass = prompt("同期の設定 2/3\n②暗号化パスワードを決めてください(両端末で同じものを入力)。\nクラウド上のデータはこのパスワードで暗号化され、他人には読めなくなります。\n※自動同期のため、パスワードはこの端末の中に保存されます。\n※忘れるとクラウドのデータを取り出せなくなるので必ず控えてください", sync ? (sync.pass||"") : "");
+  if(pass === null) return;
+  if(!pass.trim()){ toast("暗号化パスワードは必須です", true); return; }
+  const gid = prompt("同期の設定 3/3\n③もう1台で設定済みなら「同期ID」を入力。\nこの端末が1台目なら空欄のままOKを押してください(新規作成します)", sync ? sync.gistId : "");
+  if(gid === null) return;
+  sync = { token: token.trim(), pass: pass, gistId: (gid||"").trim() };
+  if(!sync.gistId){
+    setSyncStatus("同期先を作成中…");
+    try{
+      const content = await encryptText(JSON.stringify(payloadOf(state)), sync.pass);
+      const res = await fetch("https://api.github.com/gists", {
+        method:"POST", headers: gistHeaders(),
+        body: JSON.stringify({ description:"マガジン記事保管庫 同期データ(暗号化)", public:false, files:{ [GIST_FILE]:{ content } } })
+      });
+      if(res.status === 401) throw new Error("token");
+      if(!res.ok) throw new Error("http"+res.status);
+      const g = await res.json();
+      sync.gistId = g.id;
+      saveSyncConfig();
+      setSyncStatus("同期済み(新規作成)");
+      alert("同期を開始しました。\nもう1台に入力する同期ID:\n\n" + g.id);
+      return;
+    }catch(e){ setSyncStatus(syncErrMsg(e), true); toast("同期先の作成に失敗しました", true); sync.gistId = ""; saveSyncConfig(); return; }
+  }
+  saveSyncConfig();
+  syncNow(true);
+}
+$("syncSetupBtn").onclick = setupSync;
+$("syncNowBtn").onclick = () => syncNow(true);
+document.addEventListener("visibilitychange", () => {
+  if(document.visibilityState === "visible" && sync && sync.gistId && Date.now() - lastSyncPullAt > 30000) syncNow(false);
+});
+if(sync && sync.gistId){ setSyncStatus("同期設定あり(接続中…)"); syncNow(false); }
 </script>
 </body>
 </html>
