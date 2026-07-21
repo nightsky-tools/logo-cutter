@@ -145,8 +145,11 @@
      期間長の参考行を追加(検品A-7の転記元・判定には不使用)。
    ・7/29実記事の実走で発見: 画像プロンプトの「【画像プロンプト】」
      見出し形式を受理対象に追加(従来の■形式も引き続き受理)。
-   ・同実走反映: A-8で度数の分の桁落ち(20度2分等・2桁化で表に一致)を
-     ✗(表記不一致)に昇格。D-1で第4章内の過去構文9語を✗に昇格
+   ・8/13実走反映: メタの文字数申告の読み取りを寛容化(「本文実測」等の
+     前置き語つきでも数値を取得)。
+   ・同実走反映(同日訂正): A-8で「値は表と同じだが表記が違う度数」を
+     ✗(表記不一致)に昇格。※当初「表は分2桁」と誤認したが実ジェネレー
+     ターは2桁詰めをしないため、正は「表のまま転記」。D-1で第4章内の過去構文9語を✗に昇格
      (生成2-Aの現在形規定・主語判定不要の機械判定化)。
    ========================================================= */
 const $ = id => document.getElementById(id);
@@ -217,7 +220,7 @@ function parseArticle(src) {
   if (art.meta) {
     art.metaKind = (art.meta.match(/種別[::]\s*([^\/\n]+)/) || [])[1]?.trim().replace(/\(.+\)/, "") || null;
     art.metaEclipse = (art.meta.match(/食[::]\s*([^\/\n]+)/) || [])[1]?.trim() || null;
-    art.metaChars = (art.meta.match(/文字数[::]\s*[約]?([\d,]+)/) || [])[1]?.replace(/,/g, "") || null;
+    art.metaChars = (art.meta.match(/文字数[::][^\d\n]*([\d,]+)/) || [])[1]?.replace(/,/g, "") || null; // 8/13実走反映: 「本文実測 」等の前置き語を許容
   }
   art.title = (src.match(/note記事タイトル\s*[::]\s*(.+)/) || src.match(/タイトル\s*[::]\s*(【.+)/) || [])[1]?.trim() || null;
   const pm = src.match(/■\s*タイトル画像プロンプト\s*\n([\s\S]*?)(?=\n■|\n━|$)/) ||
@@ -387,12 +390,14 @@ function scan(t, art) {
     (badMD.length || badHM.length)
       ? `表から導出できない日付・時刻: ${[...badMD, ...badHM].join("、")}(${permText}の許容集合と不一致)`
       : `記事内の全日付・時刻が${permText}の許容集合内`);
-  // 7/29実走反映: 分が1桁で、2桁化すると表に一致するもの=桁落ち(表記不一致・要修正)
-  const padDeg = badDeg.filter(x => { const m = x.match(/^(\d+)度(\d)分$/); return m && allowedDeg.has(`${m[1]}度0${m[2]}分`); });
-  const otherDeg = badDeg.filter(x => !padDeg.includes(x));
-  if (padDeg.length) push("A","A-8", false, `度数の桁落ち: ${padDeg.join("、")} → 表の表記(分は2桁)へ修正(生成§1の転記規則)`);
-  push("A","A-8" + (padDeg.length ? "b" : ""), otherDeg.length ? "warn" : true,
-    otherDeg.length ? `表にない度数表記: ${otherDeg.join("、")}(導出可能か文脈確認)` : "度数の捏造なし(桁落ちを除く)");
+  // 7/29実走反映(同日訂正): 値は表と同じだが表記が違う(桁の増減)=表記不一致・要修正。生成§1「表のまま転記」
+  const normDeg = x => { const m = x.match(/^(\d+)度(?:(\d+)分)?$/); return m ? (+m[1]) + "度" + (m[2] ? (+m[2]) + "分" : "") : x; };
+  const allowedNorm = new Set([...allowedDeg].map(normDeg));
+  const mismatchDeg = badDeg.filter(x => allowedNorm.has(normDeg(x)));
+  const otherDeg = badDeg.filter(x => !mismatchDeg.includes(x));
+  if (mismatchDeg.length) push("A","A-8", false, `度数の表記が表と不一致: ${mismatchDeg.join("、")} → 表の表記のまま転記へ修正(生成§1)`);
+  push("A","A-8" + (mismatchDeg.length ? "b" : ""), otherDeg.length ? "warn" : true,
+    otherDeg.length ? `表にない度数表記: ${otherDeg.join("、")}(導出可能か文脈確認)` : "度数の捏造なし(表記不一致を除く)");
 
   // ===== B. 字数・構成 =====
   const isCalendar = isCal || /カレンダー/.test(art.metaKind || "") || /カレンダー/.test(art.title || "");
