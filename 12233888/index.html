@@ -68,7 +68,33 @@ pre{background:#141930;border:1px solid #3A415C;border-radius:10px;padding:14px;
     <pre id="blockPre"></pre>
     <p style="font-size:11.5px;color:#8D93AC;margin:10px 0 0;line-height:1.7">このまま命令書の【検算済み出生図ブロック】欄に貼り付けて使えます。⚠マークが付いた天体は、納品前にSwiss Ephemeris等での再検算をおすすめします。</p>
   </section>
+  <section class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 class="display" style="margin:0">顧客名簿</h2>
+      <button class="copybtn" id="saveClientBtn">このお客様を保存</button>
+    </div>
+    <p class="note" style="font-size:11.5px;color:#8D93AC;line-height:1.7;margin:10px 0 0">保存したお客様を呼び出すと、入力が復元され、<strong>前回保存時の計算結果と今回の計算結果を全文照合</strong>します。1文字でも違えば警告が出るので、同じお客様に別の配置を伝えてしまう事故を防げます。</p>
+    <div id="clientList"></div>
+    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+      <button class="toggle" id="syncSetupBtn">端末間同期を設定</button>
+      <button class="toggle" id="syncNowBtn" style="display:none">今すぐ同期</button>
+      <button class="toggle" id="syncOffBtn" style="display:none;color:#E08A7A;border-color:#E08A7A">同期を解除</button>
+      <button class="toggle" id="exportBtn">名簿を書き出す</button>
+      <button class="toggle" id="importBtn">読み込む</button>
+      <input type="file" id="importFile" accept=".json" style="display:none">
+    </div>
+    <p class="note" id="syncStatus" style="font-size:11.5px;margin:8px 0 0"></p>
+    <p class="note" style="font-size:11.5px;color:#8D93AC;line-height:1.7;margin:8px 0 0">※名簿はこのブラウザ内に保存されます(ダウンロードして自分の端末で開いた場合のみ持続)。同期はGitHubのgist+暗号化パスワード方式(台帳と同じ)。</p>
+  </section>
 </div>
+<style>
+.clientItem{background:#141930;border:1px solid #3A415C;border-radius:8px;padding:9px 11px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13.5px}
+.clientMeta{color:#8D93AC;font-size:11.5px;margin-top:2px}
+.match-ok{color:#9CC79A;font-weight:600}
+.match-ng{color:#E08A7A;font-weight:600}
+.mini{background:#1E2440;color:#EAE6DB;border:1px solid #3A415C;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer}
+.mini.danger{color:#E08A7A;border-color:#E08A7A}
+</style>
 <script>
 /* ===== SHARED-BEGIN(HTML版と文字単位で同一) ===== */
 /* ================= 検証済みエフェメリス v2 =================
@@ -415,6 +441,238 @@ $("copyBtn").addEventListener("click", async ()=>{
   setTimeout(()=>{ $("copyBtn").textContent="コピー"; $("copyBtn").classList.remove("done"); }, 1600);
 });
 render();
+
+/* ===== 顧客名簿(保存+再計算照合) ===== */
+const CLIENTS_KEY = "natal_clients_v1";
+function loadClients(){ try { return JSON.parse(localStorage.getItem(CLIENTS_KEY)) || []; } catch(e){ return []; } }
+function saveClients(list){ localStorage.setItem(CLIENTS_KEY, JSON.stringify(list)); markNatalUpdated(); scheduleNatalPush(); }
+function markNatalUpdated(){ localStorage.setItem("natal_updated", String(Date.now())); }
+const escT = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+function snapshotCurrent(){
+  const q = currentQuery();
+  const result = computeResult(q);
+  if (!result || result.rangeError){ alert("先に有効な出生データを入力してください(1900〜2050年)"); return null; }
+  const block = buildBlock({mode:result.mode, bodies:result.bodies, asc:result.asc, mc:result.mc,
+    ascStable:result.ascStable, name:q.name, date:q.date, time:q.time, tz:q.tz,
+    placeName:q.placeName, lat:q.lat, lon:q.lon});
+  return {
+    name: q.name || "(名前未入力)", date: q.date, hasTime: state.hasTime, time: q.time, tz: q.tz,
+    cityIdx: state.cityIdx, customLoc: state.customLoc,
+    lat: +document.getElementById("lat").value, lon: +document.getElementById("lon").value,
+    savedAt: Date.now(), block
+  };
+}
+function saveClient(){
+  const snap = snapshotCurrent();
+  if (!snap) return;
+  const list = loadClients();
+  const i = list.findIndex(c => c.name === snap.name && c.date === snap.date);
+  if (i >= 0){
+    if (!confirm(`${snap.name} 様(${snap.date})は保存済みです。上書きしますか?\n(前回の計算結果との照合記録も更新されます)`)) return;
+    list[i] = snap;
+  } else list.push(snap);
+  saveClients(list); renderClients();
+  document.getElementById("syncStatus").innerHTML = '<span style="color:#9CC79A">保存しました: ' + escT(snap.name) + ' 様</span>';
+}
+function verifyClient(c){
+  // 入力を復元
+  state.hasTime = c.hasTime; state.customLoc = c.customLoc; state.cityIdx = c.cityIdx;
+  $("name").value = c.name === "(名前未入力)" ? "" : c.name;
+  $("date").value = c.date; $("tz").value = c.tz; $("time").value = c.time;
+  $("lat").value = c.lat; $("lon").value = c.lon;
+  $("city").value = c.customLoc ? "custom" : c.cityIdx;
+  render();
+  // 再計算して前回ブロックと全文照合
+  const snap = snapshotCurrent();
+  return snap && snap.block === c.block;
+}
+function renderClients(){
+  const list = loadClients().slice().sort((a,b)=>b.savedAt-a.savedAt);
+  document.getElementById("clientList").innerHTML = list.map((c,i)=>`
+    <div class="clientItem">
+      <div>
+        <div>${escT(c.name)} 様</div>
+        <div class="clientMeta">${c.date}${c.hasTime?` ${c.time}`:"(時刻不明)"} ／ 保存 ${new Date(c.savedAt).toLocaleDateString("ja-JP")}</div>
+        <div class="clientMeta" id="match-${i}"></div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="mini" data-act="load" data-i="${i}">呼び出し</button>
+        <button class="mini danger" data-act="del" data-i="${i}">削除</button>
+      </div>
+    </div>`).join("") || '<p class="note" style="font-size:12px;margin-top:10px">保存されたお客様はまだいません。</p>';
+  document.getElementById("clientList").onclick = e => {
+    const act = e.target.dataset.act; if (!act) return;
+    const sorted = loadClients().slice().sort((a,b)=>b.savedAt-a.savedAt);
+    const c = sorted[+e.target.dataset.i];
+    if (act === "del"){
+      if (!confirm(`${c.name} 様を名簿から削除しますか?`)) return;
+      saveClients(loadClients().filter(x => !(x.name===c.name && x.date===c.date && x.savedAt===c.savedAt)));
+      renderClients(); return;
+    }
+    const same = verifyClient(c);
+    const el = document.getElementById("match-" + e.target.dataset.i);
+    if (el) el.innerHTML = same
+      ? '<span class="match-ok">✓ 前回保存時の計算結果と全文一致(同じ内容を伝えられます)</span>'
+      : '<span class="match-ng">⚠ 前回保存時と計算結果が異なります。前回の内容を優先するか、差を確認してから連絡してください(前回分は「書き出す」で確認できます)</span>';
+  };
+}
+document.getElementById("saveClientBtn").addEventListener("click", saveClient);
+document.getElementById("exportBtn").addEventListener("click", ()=>{
+  const blob = new Blob([JSON.stringify(loadClients(), null, 2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const d = new Date(); 
+  a.download = `顧客名簿_${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+});
+document.getElementById("importBtn").addEventListener("click", ()=>document.getElementById("importFile").click());
+document.getElementById("importFile").addEventListener("change", e=>{
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{ try {
+    const data = JSON.parse(r.result);
+    if (!Array.isArray(data)) throw 0;
+    saveClients(data); renderClients(); alert(`${data.length}件を読み込みました`);
+  } catch(err){ alert("読み込めませんでした。書き出したJSONファイルを選んでください。"); } };
+  r.readAsText(f);
+});
+
+/* ===== 端末間同期(台帳と同一方式・鍵とファイル名のみ別) ===== */
+/* 同期コア(純関数・台帳に組み込む本体) */
+const subtle = crypto.subtle;
+const _rand = n => crypto.getRandomValues(new Uint8Array(n));
+const b64 = a => btoa(String.fromCharCode(...new Uint8Array(a)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function deriveKey(pass, salt){
+  const km = await subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return subtle.deriveKey({name:"PBKDF2", salt, iterations:150000, hash:"SHA-256"}, km,
+    {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+}
+async function encryptJSON(pass, obj){
+  const salt = _rand(16), iv = _rand(12);
+  const key = await deriveKey(pass, salt);
+  const ct = await subtle.encrypt({name:"AES-GCM", iv}, key, new TextEncoder().encode(JSON.stringify(obj)));
+  return JSON.stringify({v:1, salt:b64(salt), iv:b64(iv), ct:b64(ct)});
+}
+async function decryptJSON(pass, packed){
+  const p = JSON.parse(packed);
+  if (p.v !== 1) throw new Error("未対応の形式");
+  const key = await deriveKey(pass, unb64(p.salt));
+  const pt = await subtle.decrypt({name:"AES-GCM", iv:unb64(p.iv)}, key, unb64(p.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+/* 同期判定: 更新時刻の新しい方を採用(last-write-wins) */
+function decideSync(localMeta, remoteMeta){
+  if (!remoteMeta) return "push";
+  if (!localMeta || !localMeta.updatedAt) return "pull";
+  if (remoteMeta.updatedAt > localMeta.updatedAt) return "pull";
+  if (remoteMeta.updatedAt < localMeta.updatedAt) return "push";
+  return "none";
+}
+
+
+const SYNC_KEY = "natal_sync_v1";
+const GIST_FILE = "natal_clients.enc";
+function syncCfg(){ try { return JSON.parse(localStorage.getItem(SYNC_KEY)); } catch(e){ return null; } }
+function saveSyncCfg(c){ if (c) localStorage.setItem(SYNC_KEY, JSON.stringify(c)); else localStorage.removeItem(SYNC_KEY); }
+function setStatus(msg, isErr){ document.getElementById("syncStatus").innerHTML = msg ? (isErr?'<span style="color:#E08A7A">':'<span style="color:#9CC79A">') + escT(msg) + "</span>" : ""; }
+const gh = {
+  headers(tok){ return {Authorization:"Bearer "+tok, Accept:"application/vnd.github+json", "Content-Type":"application/json"}; },
+  async create(tok, content){
+    const r = await fetch("https://api.github.com/gists", {method:"POST", headers:this.headers(tok),
+      body: JSON.stringify({description:"顧客名簿(暗号化)", public:false, files:{[GIST_FILE]:{content}}})});
+    if (!r.ok) throw new Error("gist作成失敗(" + r.status + ")。トークンのgist権限を確認してください");
+    return (await r.json()).id;
+  },
+  async get(tok, id){
+    const r = await fetch("https://api.github.com/gists/" + id, {headers:this.headers(tok)});
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error("gist取得失敗(" + r.status + ")");
+    const g = await r.json();
+    const f = g.files[GIST_FILE];
+    return f ? f.content : null;
+  },
+  async patch(tok, id, content){
+    const r = await fetch("https://api.github.com/gists/" + id, {method:"PATCH", headers:this.headers(tok),
+      body: JSON.stringify({files:{[GIST_FILE]:{content}}})});
+    if (!r.ok) throw new Error("gist更新失敗(" + r.status + ")");
+  }
+};
+function localPayload(){ return { list: loadClients(), updatedAt: +(localStorage.getItem("natal_updated") || 0) }; }
+let syncBusy = false;
+async function syncNow(){
+  const cfg = syncCfg();
+  if (!cfg || syncBusy) return;
+  syncBusy = true;
+  try {
+    setStatus("同期中…");
+    const remoteRaw = await gh.get(cfg.token, cfg.gistId);
+    let remote = null;
+    if (remoteRaw){
+      try { remote = await decryptJSON(cfg.pass, remoteRaw); }
+      catch(e){ throw new Error("復号できません。暗号化パスワードが両端末で一致しているか確認してください"); }
+    }
+    const local = localPayload();
+    const act = decideSync(local.updatedAt ? local : null, remote);
+    if (act === "pull"){
+      localStorage.setItem(CLIENTS_KEY, JSON.stringify(remote.list));
+      localStorage.setItem("natal_updated", String(remote.updatedAt));
+      renderClients();
+    } else if (act === "push"){
+      if (!local.updatedAt){ markNatalUpdated(); local.updatedAt = +(localStorage.getItem("natal_updated")); }
+      await gh.patch(cfg.token, cfg.gistId, await encryptJSON(cfg.pass, local));
+    }
+    setStatus("同期済み " + new Date().toLocaleTimeString("ja-JP") + (act==="pull"?"(クラウドの新しい名簿を取得)":act==="push"?"(この端末の名簿を送信)":""));
+  } catch(e){ setStatus("同期エラー: " + e.message, true); }
+  syncBusy = false;
+}
+let pushTimer = null;
+function scheduleNatalPush(){
+  if (!syncCfg()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(syncNow, 1500);
+}
+async function setupSync(){
+  const token = prompt("同期の設定 1/3\n\n①GitHubのアクセストークンを貼り付けてください(gist権限のもの)。\n作り方: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → gistにチェック");
+  if (!token) return;
+  const pass = prompt("同期の設定 2/3\n\n②暗号化パスワードを決めてください(両端末で同じものを入力)。\nクラウド上のデータはこのパスワードで暗号化され、他人には読めなくなります。\n※自動同期のため、パスワードはこの端末の中に保存されます(暗号化が守るのはクラウド上のデータのみです)。\n※忘れるとクラウドのデータを取り出せなくなるので必ず控えてください");
+  if (!pass) return;
+  const existing = prompt("同期の設定 3/3\n\n③2台目の設定なら、1台目に表示された同期ID(gist ID)を貼り付けてください。\n1台目(初回)なら空欄のままOKを押してください。") || "";
+  try {
+    setStatus("設定中…");
+    let gistId = existing.trim();
+    if (gistId){
+      const c = await gh.get(token.trim(), gistId);
+      if (c === null) throw new Error("その同期IDのデータが見つかりません");
+      await decryptJSON(pass, c);
+    } else {
+      markNatalUpdated();
+      gistId = await gh.create(token.trim(), await encryptJSON(pass, localPayload()));
+    }
+    saveSyncCfg({token: token.trim(), pass, gistId});
+    updateSyncButtons();
+    alert("同期を設定しました。\n\n【同期ID(2台目の設定で使います)】\n" + gistId);
+    await syncNow();
+  } catch(e){ setStatus("設定エラー: " + e.message, true); }
+}
+function updateSyncButtons(){
+  const on = !!syncCfg();
+  document.getElementById("syncSetupBtn").style.display = on ? "none" : "";
+  document.getElementById("syncNowBtn").style.display = on ? "" : "none";
+  document.getElementById("syncOffBtn").style.display = on ? "" : "none";
+}
+document.getElementById("syncSetupBtn").addEventListener("click", setupSync);
+document.getElementById("syncNowBtn").addEventListener("click", syncNow);
+document.getElementById("syncOffBtn").addEventListener("click", ()=>{
+  if (!confirm("この端末の同期設定を解除しますか?(クラウド上のデータと他の端末はそのまま残ります)")) return;
+  saveSyncCfg(null); updateSyncButtons(); setStatus("");
+});
+renderClients();
+updateSyncButtons();
+if (syncCfg()) syncNow(); // 開いたら自動で最新化
+
 </script>
 </body>
 </html>
