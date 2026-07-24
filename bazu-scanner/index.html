@@ -721,6 +721,8 @@ const SB = (function(){
       const next = s[end];
       if (next === undefined) continue;
       if (FMT_BADNEXT.indexOf(next) >= 0) continue;
+      /* 「自分で」の直後では切らない(動作主のでと動詞を離さない) */
+      if (m[0] === "で" && s.slice(Math.max(0, m.index - 2), m.index) === "自分") continue;
       out.push({ pos: end, pen: FMT_PEN[m[0]] || 0 });
     }
     return out;
