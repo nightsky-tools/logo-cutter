@@ -820,6 +820,27 @@ const SB = (function(){
     return out;
   }
 
+  /* 「」内の単独読点: 読点除去後のスパンが行長上限以下なら削除(短い引用)、超えるなら残す(改行対象) */
+  function fmtSlimQuoteCommas(sent){
+    let out = "", i = 0;
+    while (i < sent.length){
+      if (sent[i] === "「"){
+        let depth = 1, j = i + 1;
+        while (j < sent.length && depth > 0){
+          if (sent[j] === "「") depth++;
+          else if (sent[j] === "」") depth--;
+          j++;
+        }
+        let span = sent.slice(i, j);
+        const cleaned = span.replace(/(?<!、)、(?!、)/g, "");
+        if (cleaned.length <= FMT_MAX) span = cleaned;
+        out += span;
+        i = j;
+      } else { out += sent[i]; i++; }
+    }
+    return out;
+  }
+
   function formatBreaks(raw){
     fmtLastNotes = [];
     const out = [];
@@ -908,6 +929,7 @@ const SB = (function(){
           if (!/か。$/.test(sent)) sent = sent.replace(/。+$/, "");
           if (!sent) return;
           sent = sent.replace(/(?<!、)、(?=[「『（(“])/g, "");
+        sent = fmtSlimQuoteCommas(sent);
           sent.split(/(?<!、)、(?!、)/).forEach(function(l){
             if (!l) return;
             if (l.indexOf("「") < 0 && l.indexOf("」") < 0){
@@ -926,6 +948,7 @@ const SB = (function(){
         }
         /* 開き括弧直前の単独読点は削除 */
         sent = sent.replace(/(?<!、)、(?=[「『（(“])/g, "");
+        sent = fmtSlimQuoteCommas(sent);
         if (sent.indexOf("「") >= 0 || sent.indexOf("」") >= 0){
           /* 「」を含む文: 読点位置で改行 */
           sent.split(/(?<!、)、(?!、)/).forEach(function(l){ if (l) pushLines(l); });
