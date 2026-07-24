@@ -705,13 +705,13 @@ const SB = (function(){
   const SHIME = "心と体をゆっくり休ませてあげてくださいね。";
 
   /* ---------- 改行整形(読点→改行・実投稿準拠) ---------- */
-  const FMT_MAX = 24;  /* 行長の上限(これを超える行は分割) */
+  const FMT_MAX = 23;  /* 行長の上限(これを超える行は分割) */
   const FMT_TOL = 0;   /* 超過の許容なし(24字上限) */
   const FMT_MIN = 7;   /* 分割後の各行の最短長 */
   /* 多字助詞を先に。は/が/を/も は弱い境界としてペナルティ */
   const FMT_PARTICLE = /(ながら|ように|のに|ので|から|けど|たら|には|のは|とは|ても|まま|まで|て|に|で|と|は|が|を|も)/g;
   const FMT_WEAK = { "は":6, "が":6, "を":6, "も":6 };
-  const FMT_BADNEXT = "。、!?！？」』）)てにでとはがをものたりらるれつい";
+  const FMT_BADNEXT = "。、!?！？」』）)てにでとはがをものたりらるれついしき";
 
   function fmtCandidates(s){
     const out = []; let m;
@@ -825,7 +825,7 @@ const SB = (function(){
     const out = [];
     /* 「」が連続する箇所(」「)は間で改行して出力 */
     function pushLines(s){
-      s.replace(/」「/g, "」\n「").replace(/こそ「/g, "こそ\n「").split("\n").forEach(function(x){
+      s.replace(/」「/g, "」\n「").replace(/(こそ|から)「/g, "$1\n「").split("\n").forEach(function(x){
         if (!x) return;
         if (x.indexOf("「") < 0 && x.indexOf("」") < 0){
         fmtBalanceSplit(x).forEach(function(y){ out.push(y); });
