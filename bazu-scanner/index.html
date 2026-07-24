@@ -278,6 +278,14 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
       <ul class="results" id="resultsList"></ul>
     </div>
 
+    <div class="card" id="repairCard" style="display:none">
+      <span class="sec-title">修正指示(コピーしてAIに貼るだけ)</span>
+      <div class="copyblock">
+        <div class="cb-head"><span>エラー修正用プロンプト</span><button data-copy="repairPre">コピー</button></div>
+        <pre id="repairPre" style="max-height:260px;overflow:auto"></pre>
+      </div>
+    </div>
+
     <div class="card">
       <span class="sec-title">投稿用コピー(2ブロック)</span>
       <div class="copyblock">
@@ -334,6 +342,18 @@ const SB = (function(){
     return (typeof id === "string" && ID_RE.test(id)) ? id : uid(); /* §1-9: 不一致なら再生成 */
   }
   function normPhrase(s){ return String(s).replace(/[、。\s]/g, ""); }
+  /* 癒し行動カテゴリの正規トークン。「飲み物」は6カテゴリ外だが連続検知のため同列で履歴に記録する */
+  const CAT_TOKENS = ["香り","光","音","触感","視覚","身体","飲み物"];
+  function cleanCats(v){
+    if (typeof v !== "string") return "";
+    const seen = [];
+    v.split(",").forEach(function(c){
+      c = c.trim();
+      if (CAT_TOKENS.indexOf(c) >= 0 && seen.indexOf(c) < 0) seen.push(c);
+    });
+    seen.sort(); /* 決定的直列化のため順序固定 */
+    return seen.join(",");
+  }
   function ngKey(it){ return it.cat + "\t" + it.word; }
   function histKey(it){ return it.sign + "\t" + normPhrase(it.phrase); }
   function emptyState(){ return { v: 2, ng: [], ngT: [], hist: [], histT: [], gT: [], salv: [] }; }
@@ -430,7 +450,7 @@ const SB = (function(){
       if (!phrase) return;
       const sign = cleanStr(x.sign, 10) || "?";
       const date = (typeof x.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.date)) ? x.date : "----";
-      const it = { id: sanId(x.id), sign: sign, phrase: phrase, date: date, ts: num0(x.ts) };
+      const it = { id: sanId(x.id), sign: sign, phrase: phrase, date: date, cats: cleanCats(x.cats), ts: num0(x.ts) };
       const k = histKey(it), p = hm.get(k);
       if (!p || it.ts > p.ts || (it.ts === p.ts && it.id < p.id)) hm.set(k, it);
     });
@@ -479,7 +499,7 @@ const SB = (function(){
   }
 
   function contentOf(list, it){
-    return list === "ng" ? JSON.stringify([it.word, it.cat]) : JSON.stringify([it.sign, it.phrase, it.date]);
+    return list === "ng" ? JSON.stringify([it.word, it.cat]) : JSON.stringify([it.sign, it.phrase, it.date, it.cats || ""]);
   }
   function mergeList(list, aItems, bItems, tombMapM, gts, salvOut, now){
     const keyFn = list === "ng" ? ngKey : histKey;
@@ -537,7 +557,7 @@ const SB = (function(){
       v: 2,
       ng: st.ng.slice().sort(byKey(ngKey)).map(function(x){ return { id: x.id, word: x.word, cat: x.cat, ts: x.ts }; }),
       ngT: st.ngT,
-      hist: st.hist.slice().sort(byKey(histKey)).map(function(x){ return { id: x.id, sign: x.sign, phrase: x.phrase, date: x.date, ts: x.ts }; }),
+      hist: st.hist.slice().sort(byKey(histKey)).map(function(x){ return { id: x.id, sign: x.sign, phrase: x.phrase, date: x.date, cats: x.cats || "", ts: x.ts }; }),
       histT: st.histT,
       gT: st.gT,
       salv: st.salv
@@ -670,6 +690,7 @@ const SB = (function(){
   return {
     NG_MAX: NG_MAX, HIST_MAX: HIST_MAX, TOMB_MAX: TOMB_MAX, PBKDF2_ITER: PBKDF2_ITER,
     uid: uid, normPhrase: normPhrase, ngKey: ngKey, histKey: histKey,
+    CAT_TOKENS: CAT_TOKENS, cleanCats: cleanCats,
     emptyState: emptyState, sanitizeState: sanitizeState,
     tombTs: tombTs, effTombOf: effTombOf, aliveList: aliveList,
     mergeState: mergeState, canonical: canonical, sameState: sameState,
@@ -703,6 +724,136 @@ const SB = (function(){
   const HARD_KANJI = ["芻","鬱","躊","躇","朧","儚","瞞","縋","憔","悴","慟","杞","咽","逡","忸","怩","靄","靭","賽","篩","燻","翳"];
   const UKENAOSHI = ["そう思って","そんなふうに","そんな風に","と感じて","そう感じて"];
   const SHIME = "心と体をゆっくり休ませてあげてくださいね。";
+
+  /* ---------- 癒し行動カテゴリ辞書(命令書v1.8 禁止事項9対応) ---------- */
+  /* HEAL-LOGIC-BEGIN (純関数層・Nodeテスト対象) */
+  const HEAL_CATS = {
+    "香り": ["香り","アロマ","ハンドクリーム","お香","ボディソープ","ボディクリーム","ルームスプレー","石けん","石鹸","柔軟剤"],
+    "光":   ["照明","明かり","灯り","キャンドル","間接照明","ライト"],
+    "音":   ["音楽","曲","歌","プレイリスト","メロディ","オルゴール"],
+    "触感": ["肌触り","手ざわり","手触り","さわり心地","タオル","パジャマ","クッション","ぬいぐるみ","ブランケット","シーツ"],
+    "視覚": ["夜空","星空","観葉植物","月を眺め","空を見上げ","星を数え","星の数","緑"],
+    "身体": ["ストレッチ","シャワー","伸ばして","伸びをして","肩を回","首を回","深呼吸","マッサージ"]
+  };
+  /* 「照明を落とす」系の判定語(定番化ペア検出用) */
+  const LIGHT_DIM = ["照明を落と","照明をひとつ","明かりを落と","灯りを落と","明かりをひとつ","電気を消し","部屋を暗く"];
+  /* 飲み物提案の判定語(禁止事項8: 定番化のため非推奨・連続不可) */
+  const DRINK_WORDS = ["飲み物","ドリンク","お茶","麦茶","ハーブティー","紅茶","コーヒー","ココア","ミルク","ジュース","炭酸","スムージー","お水を"];
+
+  /* 段落4(今日お家に帰ったら〜)の抽出。
+     整形エンジンが「今日お家に帰ったら」→「今日帰ったら」に短縮するため
+     両方の表記をマーカーとして扱う。
+     空行区切りがあれば該当段落を採用。なければマーカー位置から
+     最終段落の固定句(今日だけは/証拠です)の手前までで近似する。
+     既知の限界: 空行なし本文では回収文の一部が混入しうる(過検出側に倒す) */
+  const P4_MARKERS = ["今日お家に帰ったら","今日帰ったら"];
+  function p4Index(text){
+    for (let i = 0; i < P4_MARKERS.length; i++){
+      const s = text.indexOf(P4_MARKERS[i]);
+      if (s >= 0) return s;
+    }
+    return -1;
+  }
+  function extractActionPara(body){
+    const paras = String(body).split(/\n\s*\n+/);
+    if (paras.length > 1){
+      const hit = paras.filter(function(p){ return p4Index(p) >= 0; });
+      if (hit.length) return hit.join("\n");
+    }
+    const s = p4Index(String(body));
+    if (s < 0) return null;
+    const rest = String(body).slice(s);
+    const cuts = ["今日だけは","証拠です"].map(function(w){ return rest.indexOf(w); }).filter(function(i){ return i > 0; });
+    return cuts.length ? rest.slice(0, Math.min.apply(null, cuts)) : rest;
+  }
+
+  /* 段落4の癒し行動を辞書照合で判定する。検出できた事実のみ返し、推測はしない */
+  function checkHealActions(body){
+    const p4 = extractActionPara(body);
+    if (p4 === null) return { found:false, cats:[], catWords:{}, pairHits:[], drink:false, hotDrink:false };
+    const cats = [], catWords = {};
+    Object.keys(HEAL_CATS).forEach(function(cat){
+      const hits = HEAL_CATS[cat].filter(function(w){ return p4.indexOf(w) >= 0; });
+      if (hits.length){ cats.push(cat); catWords[cat] = hits; }
+    });
+    const dim = LIGHT_DIM.some(function(w){ return p4.indexOf(w) >= 0; });
+    const pairHits = [];
+    if (dim && p4.indexOf("ハンドクリーム") >= 0) pairHits.push("照明を落とす+ハンドクリーム");
+    if (dim && (p4.indexOf("香り") >= 0 || p4.indexOf("アロマ") >= 0)) pairHits.push("照明を落とす+好きな香り");
+    const drinkHits = DRINK_WORDS.filter(function(w){ return p4.indexOf(w) >= 0; });
+    const hotDrink = p4.indexOf("温かい飲み物") >= 0 || p4.indexOf("あたたかい飲み物") >= 0;
+    if (drinkHits.length) cats.push("飲み物");
+    return { found:true, cats:cats, catWords:catWords, pairHits:pairHits, drink:drinkHits.length > 0, drinkHits:drinkHits, hotDrink:hotDrink };
+  }
+
+  /* 直前投稿のカテゴリ文字列と今回のカテゴリ配列の重なりを返す */
+  function catOverlap(prevCatsStr, curCatsArr){
+    const pc = String(prevCatsStr).split(",");
+    return curCatsArr.filter(function(c){ return pc.indexOf(c) >= 0; });
+  }
+
+  /* ---------- 修正指示プロンプト生成(修正モード追補v1.9準拠) ---------- */
+  /* エラー項目名(前方一致)→修正手順。追補v1.9の項目別手順と同一内容を保つこと */
+  const FIX_GUIDE = [
+    ["星座名", "誤字・欠字のみ修正する。掴みの言葉は変えない。"],
+    ["掴みの読点", "読点を「、、、」3つに修正する。掴みの言葉は変えない。"],
+    ["本文の読点", "「、、」等の誤入力のみ除去する。文章は変えない。"],
+    ["季節描写", "指摘された語を含む提案を、命令書v1.8手順2の季節許可リストから別の行動に差し替える。"],
+    ["カスタム禁止ワード", "指摘語を含む表現を別の言い回しに差し替える。"],
+    ["締め文", "最終段落の締めを固定文「今日だけは〜を完全にやめて、心と体をゆっくり休ませてあげてくださいね。」の型に復元する。"],
+    ["締めの型", "最終段落に「今日だけは〜を完全にやめて」の型を復元する。"],
+    ["接続", "3行目を命令書v1.8手順3の接続タイプ判定からやり直し、掴みの文の続きとして再構築する。問いかけブロック内のみ変更可。"],
+    ["心理学用語", "指摘語を平易な話し言葉に置き換える。"],
+    ["「無理に」の回数", "「無理に」を1回だけ残し、他は別表現に言い換える。"],
+    ["記法・絵文字", "マークダウン記法・絵文字を除去する。文章は変えない。"],
+    ["不可視文字", "見えない文字を除去する。文章は変えない。"],
+    ["文字数", "問いかけブロックか段落2の密度で400〜450字に調整する。掴み・段落3の型・段落4の行動・締めの固定文では調整しない。"],
+    ["癒し行動(段落4)", "「今日お家に帰ったら」で始まる段落4を命令書v1.8の型どおりに再構築する。"],
+    ["定番化ペア", "ペアの片方を別カテゴリの癒し行動に差し替えてペアを解消する。"],
+    ["飲み物提案", "飲み物以外のカテゴリ(香り/光/音/触感/視覚/身体)の癒し行動に差し替える。"],
+    ["カテゴリ連続", "指摘に表示された直前投稿のカテゴリと重ならないカテゴリ(香り/光/音/触感/視覚/身体)を選び、段落4の癒し行動だけを差し替える。星座のテーマや掴みとの相性で選ぶこと。"],
+    ["掴みの重複", "本文修正では解消できない。本文は出力せず、同じ悩みテーマで代替の掴み案を3つ提示してユーザーの選択を待つ。"]
+  ];
+  function guideFor(name){
+    for (let i = 0; i < FIX_GUIDE.length; i++){
+      if (String(name).indexOf(FIX_GUIDE[i][0]) === 0) return FIX_GUIDE[i][1];
+    }
+    return "指摘内容に沿って該当箇所のみ修正する。";
+  }
+  /* スキャナのエラーから、AIに貼るだけの修正指示文を組み立てる。
+     検査結果に無い情報は書かない(捏造防止のため事実の列挙のみ) */
+  function buildFixPrompt(results, hook, body){
+    const errs = results.filter(function(r){ return r.level === "err"; });
+    if (!errs.length) return "";
+    const warns = results.filter(function(r){ return r.level === "warn"; }).length;
+    const hookDup = errs.some(function(r){ return String(r.name).indexOf("掴みの重複") === 0; });
+    const L = [];
+    L.push("以下はバズ投稿スキャナの検査結果です。修正モード追補v1.9に従って処理してください。");
+    if (hookDup){
+      L.push("掴みが過去投稿と重複しているため、本文修正では解消できません。修正版の本文は出力せず、同じ悩みテーマで代替の掴み案を3つ提示してください。");
+    } else {
+      L.push("エラー箇所だけを修正した完成版を、1つのコードブロックで出力してください。");
+    }
+    L.push("");
+    L.push("【修正の大原則】");
+    L.push("・エラーで指摘された箇所以外は一字も変えない(掴みと締めの固定文は不可侵)");
+    if (warns) L.push("・警告" + warns + "件は修正対象外(指示があるまで直さない)");
+    L.push("・「検査済み」「合格確認済み」等は書かない。合否はスキャナの再検査で確定する");
+    L.push("");
+    L.push("【エラーと修正手順】");
+    errs.forEach(function(r, i){
+      L.push((i + 1) + ". " + r.name);
+      L.push("   指摘: " + r.detail);
+      L.push("   手順: " + guideFor(r.name));
+    });
+    L.push("");
+    L.push("【元投稿】");
+    L.push(String(hook));
+    L.push("");
+    L.push(String(body));
+    return L.join("\n");
+  }
+  /* HEAL-LOGIC-END */
 
   /* ---------- 改行整形(読点→改行・実投稿準拠) ---------- */
   const FMT_MAX = 22;  /* 行長の上限(これを超える行は分割) */
@@ -1368,12 +1519,22 @@ const SB = (function(){
     similar.sort((a,b) => b.sim - a.sim);
     return { exacts, similar, self };
   }
-  function addHistory(sign, phrase){
+  function addHistory(sign, phrase, cats){
     const st = loadState();
-    const it = { id: SB.uid(), sign: sign || "?", phrase: phrase, date: localDate(), ts: Date.now() };
+    const catsClean = SB.cleanCats(cats || "");
+    const it = { id: SB.uid(), sign: sign || "?", phrase: phrase, date: localDate(), cats: catsClean, ts: Date.now() };
     const k = SB.histKey(it);
     it.ts = Math.max(it.ts, SB.effTombOf(st, "hist", k) + 1); /* 未来墓標に負けない(§3-4と同旨) */
-    if (SB.aliveList(st, "hist").some(function(h){ return SB.histKey(h) === k; })) return;
+    const ex = SB.aliveList(st, "hist").find(function(h){ return SB.histKey(h) === k; });
+    if (ex){
+      if ((ex.cats || "") === catsClean) return;
+      /* 同一掴みの再検査で段落4が変わった場合はカテゴリを上書き(tsを進めてLWWで勝たせる) */
+      const upd = { id: ex.id, sign: ex.sign, phrase: ex.phrase, date: ex.date, cats: catsClean, ts: Math.max(Date.now(), ex.ts + 1) };
+      st.hist = st.hist.filter(function(x){ return SB.histKey(x) !== k; }).concat([upd]);
+      saveState(st);
+      renderHist();
+      return;
+    }
     st.hist = st.hist.concat([it]);
     saveState(st);
     renderHist();
@@ -1393,7 +1554,7 @@ const SB = (function(){
       w.style.flex = "1";
       const c = document.createElement("span");
       c.className = "cat";
-      c.textContent = h.sign + " " + h.date;
+      c.textContent = h.sign + " " + h.date + (h.cats ? " ・" + h.cats : "");
       const del = document.createElement("button");
       del.textContent = "×";
       del.setAttribute("aria-label", h.phrase + " を削除");
@@ -1414,7 +1575,7 @@ const SB = (function(){
       const st2 = loadState();
       const tts = SB.tombTs(st2.histT, k);
       st2.histT = st2.histT.filter(function(t){ return t.k !== k; }); /* §3-7 */
-      const back = { id: it.id, sign: it.sign, phrase: it.phrase, date: it.date, ts: Math.max(Date.now(), tts + 1) };
+      const back = { id: it.id, sign: it.sign, phrase: it.phrase, date: it.date, cats: it.cats || "", ts: Math.max(Date.now(), tts + 1) };
       st2.hist = st2.hist.filter(function(x){ return SB.histKey(x) !== k; }).concat([back]);
       saveState(st2);
       renderHist();
@@ -1634,6 +1795,30 @@ const SB = (function(){
       push("ok","不可視文字","混入なし。");
     }
 
+    /* 12. 癒し行動(段落4): 定番化ペア・飲み物・カテゴリ判定 */
+    const heal = checkHealActions(body);
+    if (!heal.found){
+      push("err","癒し行動(段落4)","「今日お家に帰ったら(整形後: 今日帰ったら)」の段落が見つかりません。固定フォーマット違反。");
+    } else {
+      if (heal.pairHits.length){
+        push("err","定番化ペア","恒久禁止ペアを検出: " + heal.pairHits.map(w=>"「"+w+"」").join(" ") + "。別の癒し行動に差し替えてください。");
+      } else {
+        push("ok","定番化ペア","恒久禁止ペア(照明+ハンドクリーム / 照明+好きな香り)なし。");
+      }
+      if (heal.hotDrink){
+        push("err","飲み物提案","「温かい飲み物」は使用禁止です。");
+      } else if (heal.drink){
+        push("warn","飲み物提案","飲み物系の語を検出: " + heal.drinkHits.map(w=>"「"+w+"」").join(" ") + "。定番化のため非推奨。直前の投稿も飲み物なら不可。");
+      }
+      const realCats = heal.cats.filter(c => c !== "飲み物");
+      if (realCats.length){
+        const det = realCats.map(c => c + "(" + heal.catWords[c].join("・") + ")").join(" / ");
+        push("ok","癒し行動カテゴリ","検出: " + det + "。6カテゴリローテーション対象。");
+      } else {
+        push("warn","癒し行動カテゴリ","カテゴリを判定できませんでした(辞書外の癒し行動の可能性)。目視で確認してください。");
+      }
+    }
+
     /* 11. 文字数 */
     const len = body.replace(/\s/g,"").length;
     let range, okLen;
@@ -1643,7 +1828,7 @@ const SB = (function(){
     if (okLen) push("ok","文字数(本文)",len + "字 / 基準 " + range + "字。");
     else push("err","文字数(本文)",len + "字。基準 " + range + "字から外れています。");
 
-    return { results: R, len };
+    return { results: R, len, heal };
   }
 
   /* ---------- 描画 ---------- */
@@ -1660,7 +1845,7 @@ const SB = (function(){
     }
     const version = document.querySelector("input[name=ver]:checked").value;
     const { hook, body } = splitPost(formatted);
-    const { results, len } = runChecks(hook, body, version);
+    const { results, len, heal } = runChecks(hook, body, version);
     if (fmtLastNotes.length) results.unshift({ level:"ok", name:"自動修正", detail: fmtLastNotes.join(" / ") });
 
     /* 掴みの重複検知(履歴照合)と自動保存 */
@@ -1683,7 +1868,26 @@ const SB = (function(){
       } else {
         results.push({ level:"ok", name:"掴みの重複", detail:"過去の掴みとの重複・類似なし。" });
       }
-      addHistory(sign, phrase);
+      /* 癒し行動カテゴリ: 直前投稿との連続チェック(命令書v1.8 禁止事項9) */
+      if (heal.found && heal.cats.length){
+        const today = localDate();
+        const aliveH = SB.aliveList(loadState(), "hist"); /* ts昇順 */
+        const prev = aliveH.filter(function(h){ return !(h.sign === sign && h.date === today); }).pop();
+        if (prev && prev.cats){
+          const dup = catOverlap(prev.cats, heal.cats);
+          if (dup.length){
+            results.push({ level:"err", name:"カテゴリ連続",
+              detail:"直前の投稿(" + prev.sign + " " + prev.date + "・" + prev.cats + ")と同カテゴリ「" + dup.join("・") + "」の連続使用。別カテゴリに差し替えてください。" });
+          } else {
+            results.push({ level:"ok", name:"カテゴリ連続",
+              detail:"直前の投稿(" + prev.sign + "・" + prev.cats + ")と別カテゴリ。ローテーションOK。" });
+          }
+        } else if (prev){
+          results.push({ level:"warn", name:"カテゴリ連続",
+            detail:"直前の投稿(" + prev.sign + " " + prev.date + ")にカテゴリ記録がありません(カテゴリ機能追加前のデータ)。目視で確認してください。" });
+        }
+      }
+      addHistory(sign, phrase, heal.found ? heal.cats.join(",") : "");
     }
 
     const errs = results.filter(r => r.level === "err").length;
@@ -1728,6 +1932,16 @@ const SB = (function(){
     const cleanRe = /[\u200B\u200C\u200E\u200F\u2060\uFEFF\u202A-\u202E\u2066-\u2069\u00AD]/g;
     document.getElementById("hookPre").textContent = hook.replace(cleanRe, "");
     document.getElementById("bodyPre").textContent = body.replace(cleanRe, "");
+    /* 修正指示: エラーがあるときだけ生成して表示 */
+    const repairCard = document.getElementById("repairCard");
+    if (errs > 0){
+      document.getElementById("repairPre").textContent =
+        buildFixPrompt(results, hook.replace(cleanRe, ""), body.replace(cleanRe, ""));
+      repairCard.style.display = "";
+    } else {
+      document.getElementById("repairPre").textContent = "";
+      repairCard.style.display = "none";
+    }
     document.getElementById("verdictCard").classList.add("show");
     document.getElementById("resultArea").classList.add("show");
     document.getElementById("resultArea").scrollIntoView({behavior:"smooth", block:"start"});
