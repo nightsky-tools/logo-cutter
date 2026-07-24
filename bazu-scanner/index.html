@@ -730,6 +730,13 @@ const SB = (function(){
 
   /* 文全体を行長が均等になる助詞位置で分割 */
   function fmtBalanceSplit(s){
+    /* 型: 「〜すべてお休み。」は「すべてお休み。」を独立行にする */
+    if (s.length > FMT_MAX && /すべてお休み。$/.test(s) && s.length > 7 + FMT_MIN){
+      const out = [];
+      fmtBalanceSplit(s.slice(0, s.length - 7)).forEach(function(x){ out.push(x); });
+      out.push("すべてお休み。");
+      return out;
+    }
     const len = s.length;
     if (len <= FMT_MAX + FMT_TOL) return [s];
     const n = Math.ceil(len / FMT_MAX);
@@ -804,6 +811,21 @@ const SB = (function(){
     if (seg.length <= FMT_MAX) return [seg];
     if (/^今の星の動きは「/.test(seg)) return [seg];
     const q = seg.indexOf("「");
+    if (q === 0){
+      /* 「で始まる長い引用: 引用内の助詞位置で分割 */
+      const cands0 = fmtCandidates(seg).filter(function(c){ return c.pos >= FMT_MIN && seg.length - c.pos >= FMT_MIN; });
+      if (!cands0.length) return [seg];
+      const mid0 = seg.length / 2;
+      let b0 = null, s0 = Infinity;
+      cands0.forEach(function(c){
+        const sc = Math.abs(c.pos - mid0) + c.pen;
+        if (sc <= s0){ s0 = sc; b0 = c.pos; }
+      });
+      if (b0 === null) return [seg];
+      const out0 = [seg.slice(0, b0)];
+      fmtSplitBracketSeg(seg.slice(b0)).forEach(function(x){ out0.push(x); });
+      return out0;
+    }
     if (q < FMT_MIN) return [seg];
     const cands = fmtCandidates(seg).filter(function(c){ return c.pos <= q && c.pos >= FMT_MIN && seg.length - c.pos >= FMT_MIN; });
     if (!cands.length) return [seg];
@@ -857,7 +879,7 @@ const SB = (function(){
           out.push(x.replace(/^[\s\S]*」と(?=伝えています)/, ""));
           return;
         }
-        if (x.length > FMT_MAX && x.indexOf("「") > 0){
+        if (x.length > FMT_MAX && x.indexOf("「") >= 0){
           fmtSplitBracketSeg(x).forEach(function(y){ out.push(y); });
           return;
         }
@@ -880,7 +902,9 @@ const SB = (function(){
         if (fmtIsProtected(a) || fmtIsProtected(b)) continue;
         if (/[。？?！!」』]$/.test(a) || /(?<!、)、/.test(a)) continue;
         if (a.indexOf("「") >= 0 || a.indexOf("」") >= 0 || b.indexOf("「") >= 0 || b.indexOf("」") >= 0) continue;
-        if (a.length < 2 || a.length > 9) continue;
+        const oyasumi = /すべてお休み。$/.test(b);
+      if (!oyasumi && (a.length < 2 || a.length > 9)) continue;
+      if (oyasumi && a.length < 2) continue;
         lines[k] = a + b;
         lines.splice(k + 1, 1);
         k--;
