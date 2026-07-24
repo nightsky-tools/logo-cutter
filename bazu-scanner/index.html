@@ -709,7 +709,7 @@ const SB = (function(){
   const FMT_TOL = 0;   /* 超過の許容なし(24字上限) */
   const FMT_MIN = 7;   /* 分割後の各行の最短長 */
   /* 多字助詞を先に。は/が/を/も は弱い境界としてペナルティ */
-  const FMT_PARTICLE = /(ながら|ように|のに|ので|から|けど|たら|には|のは|とは|ても|まま|て|に|で|と|は|が|を|も)/g;
+  const FMT_PARTICLE = /(ながら|ように|のに|ので|から|けど|たら|には|のは|とは|ても|まま|まで|て|に|で|と|は|が|を|も)/g;
   const FMT_WEAK = { "は":6, "が":6, "を":6, "も":6 };
   const FMT_BADNEXT = "。、!?！？」』）)てにでとはがをものたりらるれつい";
 
@@ -799,6 +799,27 @@ const SB = (function(){
     return { line: line, changed: changed };
   }
 
+  /* 24字超の「」行: 最初の「より前の部分を助詞位置で分割する */
+  function fmtSplitBracketSeg(seg){
+    if (seg.length <= FMT_MAX) return [seg];
+    if (/^今の星の動きは「/.test(seg)) return [seg];
+    const q = seg.indexOf("「");
+    if (q < FMT_MIN) return [seg];
+    const cands = fmtCandidates(seg).filter(function(c){ return c.pos <= q && c.pos >= FMT_MIN && seg.length - c.pos >= FMT_MIN; });
+    if (!cands.length) return [seg];
+    const mid = seg.length / 2;
+    let best = null, bs = Infinity;
+    cands.forEach(function(c){
+      const sc = Math.abs(c.pos - mid) + c.pen;
+      if (sc < bs){ bs = sc; best = c.pos; }
+    });
+    if (best === null) return [seg];
+    const out = [];
+    fmtBalanceSplit(seg.slice(0, best)).forEach(function(x){ out.push(x); });
+    fmtSplitBracketSeg(seg.slice(best)).forEach(function(x){ out.push(x); });
+    return out;
+  }
+
   function formatBreaks(raw){
     fmtLastNotes = [];
     const out = [];
@@ -810,9 +831,13 @@ const SB = (function(){
         fmtBalanceSplit(x).forEach(function(y){ out.push(y); });
         return;
       }
-      if (x.length > FMT_MAX && /」と伝えています。?$/.test(x)){
+      if (/」と伝えています。?$/.test(x) && !/^」と伝えています。?$/.test(x)){
           out.push(x.replace(/」と伝えています/, "」と\n伝えています").split("\n")[0]);
           out.push(x.replace(/^[\s\S]*」と(?=伝えています)/, ""));
+          return;
+        }
+        if (x.length > FMT_MAX && x.indexOf("「") > 0){
+          fmtSplitBracketSeg(x).forEach(function(y){ out.push(y); });
           return;
         }
         out.push(x);
