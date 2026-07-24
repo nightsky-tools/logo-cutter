@@ -705,7 +705,7 @@ const SB = (function(){
   const SHIME = "心と体をゆっくり休ませてあげてくださいね。";
 
   /* ---------- 改行整形(読点→改行・実投稿準拠) ---------- */
-  const FMT_MAX = 23;  /* 行長の上限(これを超える行は分割) */
+  const FMT_MAX = 22;  /* 行長の上限(これを超える行は分割) */
   const FMT_TOL = 0;   /* 超過の許容なし(24字上限) */
   const FMT_MIN = 7;   /* 分割後の各行の最短長 */
   /* 多字助詞を先に。は/が/を/も は弱い境界としてペナルティ */
@@ -728,8 +728,6 @@ const SB = (function(){
 
   /* 文全体を行長が均等になる助詞位置で分割 */
   function fmtBalanceSplit(s){
-    /* 型の固定文「今日帰ったら〜お休み。」は分割しない */
-    if (/^今日帰ったら[\s\S]*お休み。$/.test(s)) return [s];
     const len = s.length;
     if (len <= FMT_MAX + FMT_TOL) return [s];
     const n = Math.ceil(len / FMT_MAX);
