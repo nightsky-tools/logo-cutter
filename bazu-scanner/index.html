@@ -181,11 +181,6 @@ ul.ngwords li button:hover{color:var(--err)}
 .toast{pointer-events:auto;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 14px;font-size:13px;display:flex;gap:12px;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.4);max-width:92vw}
 .toast button{background:transparent;border:none;color:var(--gold);font-weight:700;cursor:pointer;font-size:13px;font-family:'Zen Kaku Gothic New',sans-serif;white-space:nowrap}
 #banner{background:rgba(224,179,92,.12);border:1px solid var(--warn);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.7;margin-bottom:10px}
-.synclabel{font-size:11px;letter-spacing:.18em;color:var(--muted);margin:14px 0 8px}
-.syncgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.syncgrid button{background:rgba(120,140,255,.07);border:1px solid var(--line);color:var(--ink);border-radius:12px;padding:13px 8px;font-size:13px;cursor:pointer;font-family:'Zen Kaku Gothic New',sans-serif}
-.syncgrid button:active{transform:translateY(1px)}
-.syncstat{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.8;word-break:break-all}
 footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);letter-spacing:.15em}
 @media (prefers-reduced-motion:no-preference){
   .card{animation:fade .25s ease}
@@ -255,20 +250,15 @@ footer{margin-top:26px;text-align:center;font-size:11px;color:var(--muted);lette
   </div>
 
   <div class="card">
-    <details class="ngbox" id="syncbox" open>
-      <summary>同期・バックアップ</summary>
-      <div class="synclabel">バックアップ</div>
-      <div class="syncgrid">
-        <button id="bakExport">全データを書き出し</button>
-        <button id="bakRestore">ファイルから復元</button>
+    <details class="ngbox" id="syncbox">
+      <summary>同期・バックアップ(2台目の端末とデータを揃える)</summary>
+      <div class="ngform" style="margin-top:12px;flex-wrap:wrap">
+        <button id="bakExport">バックアップ書き出し</button>
+        <button id="bakRestore">バックアップから復元</button>
+        <button id="cloudBtn">クラウド同期設定</button>
       </div>
-      <div class="synclabel">クラウド同期(iPhone・Mac共用)</div>
-      <div class="syncgrid">
-        <button id="cloudBtn">同期を設定</button>
-        <button id="syncNowBtn">今すぐ同期</button>
-      </div>
-      <div class="syncstat" id="syncStatus">未設定(「同期を設定」から開始)</div>
-      <div class="ngempty">書き出しは禁止ワード・掴み履歴・削除記録の1ファイル。復元は「統合」推奨。クラウドへは送信前にこの端末内でAES-GCM暗号化されます。</div>
+      <div class="ngempty" id="syncStatus">クラウド同期: 未設定</div>
+      <div class="ngempty">書き出しは禁止ワード・掴み履歴・削除記録をまとめた1ファイルです。復元は「統合」を推奨します。クラウド同期は送信前に端末内でAES-GCM暗号化します。閉じる瞬間の自動送信はベストエフォートで、届かなくても次回同期で収束します。</div>
       <input type="file" id="bakFile" accept=".json,application/json,text/plain" style="display:none">
     </details>
   </div>
@@ -721,7 +711,7 @@ const SB = (function(){
   /* 多字助詞を先に。は/が/を/も は弱い境界としてペナルティ */
   const FMT_PARTICLE = /(ながら|ように|のに|ので|から|けど|たら|には|のは|とは|ても|て|に|で|と|は|が|を|も)/g;
   const FMT_WEAK = { "は":4.5, "が":4.5, "を":4.5, "も":4.5 };
-  const FMT_BADNEXT = "。、!?！？」』）)てにでとはがをものたりらるれ";
+  const FMT_BADNEXT = "。、!?！？」』）)てにでとはがをものたりらるれつ";
 
   function fmtCandidates(s){
     const out = []; let m;
@@ -806,9 +796,30 @@ const SB = (function(){
     const out = [];
     /* 「」が連続する箇所(」「)は間で改行して出力 */
     function pushLines(s){
-      s.replace(/」「/g, "」\n「").split("\n").forEach(function(x){ if (x) out.push(x); });
+      s.replace(/」「/g, "」\n「").replace(/こそ「/g, "こそ\n「").split("\n").forEach(function(x){ if (x) out.push(x); });
     }
     const lines = raw.replace(/\r\n/g, "\n").split("\n");
+    /* 導入部 = 掴みの後の最初の段落(?で終わる)。読点は必ず改行、途中の。も改行にする */
+    const introSet = new Set();
+    (function(){
+      let k = 0;
+      /* 先頭の空行・掴み(保護行)を読み飛ばす */
+      while (k < lines.length){
+        const l = lines[k].replace(/\s+$/, "");
+        if (l.trim() === "" || fmtIsProtected(l)) { k++; continue; }
+        break;
+      }
+      const group = [];
+      while (k < lines.length){
+        const l = lines[k].replace(/\s+$/, "");
+        if (l.trim() === "" || fmtIsProtected(l)) break;
+        group.push(k); k++;
+      }
+      if (group.length){
+        const last = lines[group[group.length - 1]].replace(/\s+$/, "");
+        if (/(?:[?？!！]|か。)\s*$/.test(last)) group.forEach(function(ix){ introSet.add(ix); });
+      }
+    })();
     let firstContent = true;
     let i = 0;
     while (i < lines.length){
@@ -830,11 +841,12 @@ const SB = (function(){
           if (nxt.indexOf("「") >= 0 || nxt.indexOf("」") >= 0) break;
         }
       }
+      const isIntro = introSet.has(i);
       fmtSentences(line).forEach(function(sent){
         sent = sent.replace(/^\s+/, "");
         if (!sent) return;
         /* 本文冒頭が「と+漢字」で始まる場合(掴みからの継続)は「と」を独立行に */
-        if (firstContent && /^と(?!ても|ころ|にかく|りあえず|もかく|うとう|はいえ|うぜん|んでも).+/.test(sent)){
+        if (firstContent && /^と(?=[\u4E00-\u9FFFそあど])./.test(sent)){
           out.push("と");
           sent = sent.slice(1);
           if (fmtLastNotes.indexOf("冒頭の「と」を独立行に") < 0) fmtLastNotes.push("冒頭の「と」を独立行に");
@@ -842,6 +854,14 @@ const SB = (function(){
         /* 文末記号も単独読点もない断片は整形済みとみなして再処理しない */
         if (!/[。？?！!」』]$/.test(sent) && !/(?<!、)、(?!、)/.test(sent)) {
           pushLines(sent);
+          return;
+        }
+        /* 導入部: 途中の。は改行に(消す)、読点は必ず改行 */
+        if (isIntro){
+          if (!/か。$/.test(sent)) sent = sent.replace(/。+$/, "");
+          if (!sent) return;
+          sent = sent.replace(/(?<!、)、(?=[「『（(“])/g, "");
+          sent.split(/(?<!、)、(?!、)/).forEach(function(l){ if (l) pushLines(l); });
           return;
         }
         if (sent.indexOf(SHIME) >= 0) {
@@ -1740,16 +1760,7 @@ const SB = (function(){
     if (pendingSync && !modalOpen){ pendingSync = false; syncNow("resume"); }
   };
   function setSyncStatus(t){
-    document.getElementById("syncStatus").textContent = t;
-  }
-  /* 同期ID = cfg.salt由来(同じ設定を共有する端末同士で同一表示になる。表示専用) */
-  function syncIdOf(c){
-    try {
-      const bin = atob(c.salt);
-      let h = "";
-      for (let i = 0; i < bin.length; i++) h += bin.charCodeAt(i).toString(16).padStart(2, "0");
-      return h.slice(0, 32);
-    } catch(e){ return "----"; }
+    document.getElementById("syncStatus").textContent = "クラウド同期: " + t;
   }
   function fmtTime(ms){
     const d = new Date(ms);
@@ -1819,17 +1830,9 @@ const SB = (function(){
       }
       lastPushed = mergedCanon;
       store.set(LASTSYNC_KEY, String(Date.now())); /* 表示専用・同期対象外(§1-7) */
-      setSyncStatus("\uD83D\uDD12暗号化して同期済み " + fmtTime(Date.now()) + " / 同期ID: " + syncIdOf(c));
+      setSyncStatus("最終同期 " + fmtTime(Date.now()));
     } catch(e){
-      /* 原因を切り分けて表示(HTTP番号 / 応答形式 / 接続不可=CORS・オフライン・URL誤り) */
-      const m = String(e && e.message || "");
-      let why = "接続不可(URL誤り・オフライン・またはサーバのCORS未許可)";
-      if (/^http (\d+)/.test(m)) why = "サーバ応答 HTTP " + m.slice(5) + "(GET拒否)";
-      else if (/^put (\d+)/.test(m)) why = "サーバ応答 HTTP " + m.slice(4) + "(PUT拒否)";
-      else if (m === "remote_not_json") why = "サーバの応答がJSONではありません(エラーページの可能性)";
-      else if (m === "remote_too_large") why = "サーバの応答が大きすぎます";
-      else if (m === "remote_bad") why = "リモートデータの形式が不正です";
-      setSyncStatus("エラー: " + why + "。画面復帰時に再試行します");
+      setSyncStatus("エラー(通信失敗)。画面復帰時に再試行します");
     } finally {
       syncing = false;
       if (pendingSync && !modalOpen){ pendingSync = false; syncNow("retry"); }
@@ -1859,16 +1862,6 @@ const SB = (function(){
   });
   window.addEventListener("pagehide", function(){ flushSend(); });
 
-  document.getElementById("syncNowBtn").addEventListener("click", function(){
-    const c = loadCfg();
-    if (!cfgComplete(c) || decryptFailed){
-      document.getElementById("cloudBtn").click(); /* 未設定・停止中は設定ダイアログへ誘導 */
-      return;
-    }
-    setSyncStatus("同期中…");
-    syncNow("manual");
-  });
-
   /* 段階式の設定ダイアログ。解除も同じ導線(§4-2) */
   document.getElementById("cloudBtn").addEventListener("click", async function(){
     const c = loadCfg();
@@ -1891,7 +1884,7 @@ const SB = (function(){
         decryptFailed = false;
         lastPushed = null;
         pendingSync = false;
-        setSyncStatus("未設定(「同期を設定」から開始)");
+        setSyncStatus("未設定");
         showToast("同期を解除し、この端末の鍵情報を破棄しました");
       } else if (v === "pass"){
         await askPassphrase(c.url, c.salt);
@@ -1908,10 +1901,7 @@ const SB = (function(){
       ]
     });
     if (url === null) return;
-    let u = String(url).trim();
-    /* jsonblob.com はページURLを貼るだけでAPI URLへ自動変換(コピペで済むように) */
-    const jb = u.match(/^https?:\/\/jsonblob\.com\/(?!api\/)([A-Za-z0-9-]+)\/?$/);
-    if (jb) u = "https://jsonblob.com/api/jsonBlob/" + jb[1];
+    const u = String(url).trim();
     if (!/^https?:\/\/\S+$/.test(u)){ modalInfo("設定エラー", "URLの形式が正しくありません(https://〜)。"); return; }
     await askPassphrase(u, null);
   });
@@ -1944,9 +1934,9 @@ const SB = (function(){
     const c = loadCfg();
     if (cfgComplete(c)){
       const ls = Number(store.get(LASTSYNC_KEY) || 0);
-      setSyncStatus(ls ? "\uD83D\uDD12暗号化して同期済み " + fmtTime(ls) + " / 同期ID: " + syncIdOf(c) : "設定済み・初回同期待ち");
+      setSyncStatus(ls ? "最終同期 " + fmtTime(ls) : "設定済み");
     } else {
-      setSyncStatus("未設定(「同期を設定」から開始)");
+      setSyncStatus("未設定");
     }
   })();
   booted = true;
