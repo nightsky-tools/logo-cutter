@@ -710,7 +710,7 @@ const SB = (function(){
   const FMT_MIN = 7;   /* 分割後の各行の最短長 */
   /* 多字助詞を先に。は/が/を/も は弱い境界としてペナルティ */
   const FMT_PARTICLE = /(ながら|ように|のに|ので|から|けど|たら|には|のは|とは|ても|まま|まで|て|に|で|と|は|が|を|も)/g;
-  const FMT_WEAK = { "は":6, "が":6, "を":6, "も":6 };
+  const FMT_PEN = { "を":4, "に":4, "は":6, "が":6, "も":6 };
   const FMT_BADNEXT = "。、!?！？」』）)てにでとはがをものたりらるれついしき";
 
   function fmtCandidates(s){
@@ -721,7 +721,7 @@ const SB = (function(){
       const next = s[end];
       if (next === undefined) continue;
       if (FMT_BADNEXT.indexOf(next) >= 0) continue;
-      out.push({ pos: end, pen: FMT_WEAK[m[0]] || 0 });
+      out.push({ pos: end, pen: FMT_PEN[m[0]] || 0 });
     }
     return out;
   }
@@ -742,7 +742,7 @@ const SB = (function(){
         if (c.pos < prev + FMT_MIN) continue;
         if (len - c.pos < FMT_MIN) continue;
         const score = Math.abs(c.pos - target) + c.pen;
-        if (score < bestScore){ bestScore = score; best = c.pos; }
+        if (score <= bestScore){ bestScore = score; best = c.pos; }
       }
       if (best === null) continue;
       breaks.push(best); prev = best;
@@ -809,7 +809,7 @@ const SB = (function(){
     let best = null, bs = Infinity;
     cands.forEach(function(c){
       const sc = Math.abs(c.pos - mid) + c.pen;
-      if (sc < bs){ bs = sc; best = c.pos; }
+      if (sc <= bs){ bs = sc; best = c.pos; }
     });
     if (best === null) return [seg];
     const out = [];
@@ -863,6 +863,28 @@ const SB = (function(){
       });
     }
     const lines = raw.replace(/\r\n/g, "\n").split("\n");
+    /* 事前結合: 変な位置で切れた短い断片行(2〜9字・文末記号/読点/括弧なし)は次の行と結合して組み直す */
+    (function(){
+      let fc = -1;
+      for (let k = 0; k < lines.length; k++){
+        const l = lines[k].replace(/\s+$/, "");
+        if (l.trim() !== "" && !fmtIsProtected(l)){ fc = k; break; }
+      }
+      for (let k = 0; k < lines.length - 1; k++){
+        if (k === fc) continue; /* 掴み直後の継続行(と/しまって等)は結合しない */
+        const a = lines[k].replace(/\s+$/, "");
+        const b = lines[k + 1].replace(/\s+$/, "");
+        if (a.trim() === "" || b.trim() === "") continue;
+        if (fmtIsProtected(a) || fmtIsProtected(b)) continue;
+        if (/[。？?！!」』]$/.test(a) || /(?<!、)、/.test(a)) continue;
+        if (a.indexOf("「") >= 0 || a.indexOf("」") >= 0 || b.indexOf("「") >= 0 || b.indexOf("」") >= 0) continue;
+        if (a.length < 2 || a.length > 9) continue;
+        lines[k] = a + b;
+        lines.splice(k + 1, 1);
+        k--;
+      }
+    })();
+
     /* 導入部 = 掴みの後の最初の段落(?で終わる)。読点は必ず改行、途中の。も改行にする */
     const introSet = new Set();
     (function(){
