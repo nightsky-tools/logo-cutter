@@ -705,13 +705,13 @@ const SB = (function(){
   const SHIME = "心と体をゆっくり休ませてあげてくださいね。";
 
   /* ---------- 改行整形(読点→改行・実投稿準拠) ---------- */
-  const FMT_MAX = 26;  /* 目標行長 */
-  const FMT_TOL = 8;   /* この範囲までの超過は分割しない(再検査で結果が変わらないように) */
+  const FMT_MAX = 24;  /* 行長の上限(これを超える行は分割) */
+  const FMT_TOL = 0;   /* 超過の許容なし(24字上限) */
   const FMT_MIN = 7;   /* 分割後の各行の最短長 */
   /* 多字助詞を先に。は/が/を/も は弱い境界としてペナルティ */
-  const FMT_PARTICLE = /(ながら|ように|のに|ので|から|けど|たら|には|のは|とは|ても|て|に|で|と|は|が|を|も)/g;
-  const FMT_WEAK = { "は":4.5, "が":4.5, "を":4.5, "も":4.5 };
-  const FMT_BADNEXT = "。、!?！？」』）)てにでとはがをものたりらるれつ";
+  const FMT_PARTICLE = /(ながら|ように|のに|ので|から|けど|たら|には|のは|とは|ても|まま|て|に|で|と|は|が|を|も)/g;
+  const FMT_WEAK = { "は":6, "が":6, "を":6, "も":6 };
+  const FMT_BADNEXT = "。、!?！？」』）)てにでとはがをものたりらるれつい";
 
   function fmtCandidates(s){
     const out = []; let m;
@@ -728,6 +728,8 @@ const SB = (function(){
 
   /* 文全体を行長が均等になる助詞位置で分割 */
   function fmtBalanceSplit(s){
+    /* 型の固定文「今日帰ったら〜お休み。」は分割しない */
+    if (/^今日帰ったら[\s\S]*お休み。$/.test(s)) return [s];
     const len = s.length;
     if (len <= FMT_MAX + FMT_TOL) return [s];
     const n = Math.ceil(len / FMT_MAX);
@@ -748,9 +750,15 @@ const SB = (function(){
       breaks.push(best); prev = best;
     }
     if (!breaks.length) return [s];
-    const out = []; let p = 0;
-    breaks.forEach(function(b){ out.push(s.slice(p, b)); p = b; });
-    out.push(s.slice(p));
+    const frags = []; let p = 0;
+    breaks.forEach(function(b){ frags.push(s.slice(p, b)); p = b; });
+    frags.push(s.slice(p));
+    /* 上限を超える断片は再帰的に分割(候補がなければそのまま) */
+    const out = [];
+    frags.forEach(function(f){
+      if (f === s) { out.push(f); return; }
+      fmtBalanceSplit(f).forEach(function(x){ out.push(x); });
+    });
     return out;
   }
 
@@ -796,7 +804,19 @@ const SB = (function(){
     const out = [];
     /* 「」が連続する箇所(」「)は間で改行して出力 */
     function pushLines(s){
-      s.replace(/」「/g, "」\n「").replace(/こそ「/g, "こそ\n「").split("\n").forEach(function(x){ if (x) out.push(x); });
+      s.replace(/」「/g, "」\n「").replace(/こそ「/g, "こそ\n「").split("\n").forEach(function(x){
+        if (!x) return;
+        if (x.indexOf("「") < 0 && x.indexOf("」") < 0){
+        fmtBalanceSplit(x).forEach(function(y){ out.push(y); });
+        return;
+      }
+      if (x.length > FMT_MAX && /」と伝えています。?$/.test(x)){
+          out.push(x.replace(/」と伝えています/, "」と\n伝えています").split("\n")[0]);
+          out.push(x.replace(/^[\s\S]*」と(?=伝えています)/, ""));
+          return;
+        }
+        out.push(x);
+      });
     }
     const lines = raw.replace(/\r\n/g, "\n").split("\n");
     /* 導入部 = 掴みの後の最初の段落(?で終わる)。読点は必ず改行、途中の。も改行にする */
@@ -853,7 +873,9 @@ const SB = (function(){
         }
         /* 文末記号も単独読点もない断片は整形済みとみなして再処理しない */
         if (!/[。？?！!」』]$/.test(sent) && !/(?<!、)、(?!、)/.test(sent)) {
-          pushLines(sent);
+          if (sent.indexOf("「") < 0 && sent.indexOf("」") < 0){
+            fmtBalanceSplit(sent).forEach(function(x){ out.push(x); });
+          } else pushLines(sent);
           return;
         }
         /* 導入部: 途中の。は改行に(消す)、読点は必ず改行 */
@@ -861,7 +883,12 @@ const SB = (function(){
           if (!/か。$/.test(sent)) sent = sent.replace(/。+$/, "");
           if (!sent) return;
           sent = sent.replace(/(?<!、)、(?=[「『（(“])/g, "");
-          sent.split(/(?<!、)、(?!、)/).forEach(function(l){ if (l) pushLines(l); });
+          sent.split(/(?<!、)、(?!、)/).forEach(function(l){
+            if (!l) return;
+            if (l.indexOf("「") < 0 && l.indexOf("」") < 0){
+              fmtBalanceSplit(l).forEach(function(x){ out.push(x); });
+            } else pushLines(l);
+          });
           return;
         }
         if (sent.indexOf(SHIME) >= 0) {
