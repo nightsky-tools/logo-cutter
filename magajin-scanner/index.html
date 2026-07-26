@@ -146,7 +146,13 @@
    ・7/29実記事の実走で発見: 画像プロンプトの「【画像プロンプト】」
      見出し形式を受理対象に追加(従来の■形式も引き続き受理)。
    ・8/13実走反映: メタの文字数申告の読み取りを寛容化(「本文実測」等の
-     前置き語つきでも数値を取得)。
+     前置き語つきでも数値を取得)。A-4の種別判定で「向かい合う」の内包
+     「合」による誤読を修正(オポジション優先)。E-5は否定文(観測でき
+     ません等)なら⚠に降格(促しか否かの意味判定は検品)。
+   ・文字数運用の改訂に対応: メタの文字数欄が「(入稿前にスキャナ実測値を
+     転記)」なら⚠で実測値(合計・章別)を提示。数字がある場合のみ照合。
+     背景: 生成AIは自文の字数を実測できないことが2回の実走で確定したため、
+     実測はスキャナ・転記は人、に運用変更(生成§8同日改訂)。
    ・同実走反映(同日訂正): A-8で「値は表と同じだが表記が違う度数」を
      ✗(表記不一致)に昇格。※当初「表は分2桁」と誤認したが実ジェネレー
      ターは2桁詰めをしないため、正は「表のまま転記」。D-1で第4章内の過去構文9語を✗に昇格
@@ -213,7 +219,7 @@ function parseTables(src) {
 
 // ---------- 記事のパース ----------
 function parseArticle(src) {
-  src = z2h(src);
+  src = z2h(src).replace(/^```[^\n]*$/gm, ""); // 1コードブロック出力(生成§8)の```行を透過
   const art = { raw: src };
   const meta = src.match(/<!--([\s\S]*?)-->/);
   art.meta = meta ? meta[1] : null;
@@ -262,10 +268,12 @@ const RETRO_FEAR = ["壊れる","壊れて","トラブルが必ず","最悪"];
 const ASSERT_WORDS = ["必ず叶","絶対に叶","が起こります","起きます。"];
 const FEAR_WORDS = ["危険", "凶", "災い", "不吉", "祟り"];
 const ASPECT_SYN = [
-  [/コンジャンクション|(?:^|[^重])合(?![唱奏体])/, "コンジャンクション(合)"],
+  // 8/13実走反映: 「向かい合う」を先に判定し、内包する「合」の誤読を防ぐ
+  [/オポジション|向き合|向かい合/, "オポジション"],
+  [/コンジャンクション|(?:^|[^重い])合(?![唱奏体わ])/, "コンジャンクション(合)"],
   [/重な/, "コンジャンクション(合)"],
   [/セクスタイル/, "セクスタイル"], [/スクエア/, "スクエア"],
-  [/トライン/, "トライン"], [/オポジション|向き合/, "オポジション"]];
+  [/トライン/, "トライン"]];
 const PLANETS = ["太陽","水星","金星","火星","木星","土星","天王星","海王星","冥王星"];
 const RANGES_5 = [[150,250],[800,1200],[1200,1800],[720,1080],[200,400]];
 const SIGNS = ["牡羊座","牡牛座","双子座","蟹座","獅子座","乙女座","天秤座","蠍座","射手座","山羊座","水瓶座","魚座"];
@@ -415,11 +423,16 @@ function scan(t, art) {
   } else {
     push("B","B-3", art.bodyChars >= 2000 && art.bodyChars <= 3000, `合計実測${art.bodyChars}字(規定2,000〜3,000)`);
   }
+  // 8/13実走反映(運用改訂): 生成時は「(入稿前にスキャナ実測値を転記)」が正。数字がある場合のみ実測と照合
+  const pendingChars = art.meta && /文字数[::][^\n]*転記/.test(art.meta);
   if (art.metaChars) {
     const claim = +art.metaChars, real = art.bodyChars;
     const dev = real ? Math.abs(claim - real) / real * 100 : 999;
-    push("B","B-4", dev <= 10, `メタ申告${claim}字 / 実測${real}字 / 乖離${dev.toFixed(1)}%`);
-  } else push("B","B-4", false, "メタブロックに文字数申告がない");
+    push("B","B-4", dev <= 10, `メタ記載${claim}字 / 実測${real}字 / 乖離${dev.toFixed(1)}%` + (dev > 10 ? "(AIの概算数字の疑い。欄は転記待ち表記に戻し、下の実測値を入稿前に転記)" : ""));
+  } else if (pendingChars) {
+    push("B","B-4","warn", `文字数欄は転記待ち(正しい運用)。入稿前にこの実測値を転記: 合計${art.bodyChars}字` +
+      (art.chapters.length >= 5 ? ` / 章別 ${art.chapters.slice(0,5).map((c,i)=>`第${i+1}章${c.chars}`).join("・")}字` : ""));
+  } else push("B","B-4", false, "メタブロックに文字数欄がない(「文字数: (入稿前にスキャナ実測値を転記)」の行を追加)");
   if (!isCalendar && art.chapters[3]) {
     const ch4 = art.chapters[3].text;
     const missing = SIGNS.filter(s => !ch4.includes(s));
@@ -440,10 +453,11 @@ function scan(t, art) {
   }
 
   // ===== C. 形式 =====
-  push("C","C-1", !!(art.meta && art.metaKind && art.metaChars),
+  const hasCharsLine = !!(art.metaChars || (art.meta && /文字数[::]/.test(art.meta))); // 転記待ち表記も欄ありと扱う(運用改訂)
+  push("C","C-1", !!(art.meta && art.metaKind && hasCharsLine),
     !art.meta ? "メタブロックなし" :
-    (art.metaKind && art.metaChars) ? "メタブロックあり(必須項目そろい)" :
-    "メタブロックはあるが必須項目(種別/文字数)が読み取れない");
+    (art.metaKind && hasCharsLine) ? "メタブロックあり(必須項目そろい)" :
+    "メタブロックはあるが必須項目(種別/文字数欄)が読み取れない");
   if (art.title) {
     let ok = false, msg = "";
     if (isRetro) { // v1.8: 逆行記事の命名規則(生成§7)
@@ -523,9 +537,12 @@ function scan(t, art) {
     FEAR_WORDS.concat(RETRO_FEAR).forEach(w => { if (raw.includes(w)) push("D","D-9","warn",`M-6 不安訴求の可能性: 「${w}」`); });
   }
   if (t.eclipse && t.visibility) {
-    const promotes = /見上げ|観測しま|空を眺め/.test(raw);
+    const promHit = raw.match(/(見上げ|観測しま|空を眺め)[^。]{0,14}/);
+    const promotes = !!promHit;
+    const negated = promHit && /できませ|できない|かないませ|見えませ/.test(promHit[0]); // 8/13実走反映: 否定文は促しでない可能性
     if (promotes && /見えない/.test(t.visibility) && !/見える/.test(t.visibility))
-      push("E","E-5", false, "可視性が「見えない」なのに観測を促す表現がある");
+      push("E","E-5", negated ? "warn" : false,
+        negated ? `観測語はあるが否定文の可能性: 「${promHit[0]}」→ 促しか否かは検品判定` : "可視性が「見えない」なのに観測を促す表現がある");
     else if (promotes && /国内に(皆既|金環)食が見える地域あり/.test(t.visibility))
       push("E","E-5","warn","国内一部可視の食で観測表現あり。地域差の併記を文脈確認");
   }
