@@ -311,7 +311,7 @@
 
 <div class="wrap">
   <header>
-    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-12a</small></h1>
+    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-26a(自動月送り)</small></h1>
   </header>
 
   <div class="cat-row" id="catRow"></div>
@@ -2005,7 +2005,26 @@ async function seqPeekText(){
   const items = sp ? await seqItems() : null;
   if(!items) return { err: "連続コピーが未設定です。緑バーをタップして工程と号を設定してください" };
   const idx = seqIdx(items);
-  if(idx >= items.length) return { err: "この号は全工程コピー済みです。タブで緑バーを押して「次の号へ」等を選んでください" };
+  if(idx >= items.length){
+    // build 2026-07-26a: Macブリッジ限定の自動月送り。次の素材月の記事と、その生成月の
+    // 星データが両方そろっている時だけ「◯月号に進む」タップと同じ切替を自動で行い、
+    // 切替後の1工程目を返す。どちらか欠けていれば従来どおりのエラーで止まる(安全側)。
+    // 手動UI(緑バーのタップメニュー)の動きは変えない。
+    const nextK = nextMonthKey(sp.month);
+    const genK = nextK ? nextMonthKey(nextK) : null;
+    const av0 = await loadArticleVault();
+    const hasNextArts = !!(nextK && av0 && av0.months[nextK] &&
+      Object.keys((av0.months[nextK].signs)||{}).some(id=> av0.months[nextK].signs[id] && av0.months[nextK].signs[id].body));
+    const hasGenSky = !!(genK && av0 && av0.months[genK] && av0.months[genK].sky && av0.months[genK].sky.body);
+    if(hasNextArts && hasGenSky){
+      state.seqPos.month = nextK;
+      state.seqPos.idx = 0; state.seqPos.label = null; state.seqPos.ts = Date.now();
+      save(true); renderSeq();
+      toast(`自動月送り: ${artLabelOf(nextK)}に切り替えました`);
+      return seqPeekText();
+    }
+    return { err: "この号は全工程コピー済みです。タブで緑バーを押して「次の号へ」等を選んでください" };
+  }
   const it = items[idx];
   const av = await loadArticleVault();
   const signs = av && av.months[sp.month] && av.months[sp.month].signs;
