@@ -2017,7 +2017,7 @@ async function loadArticleVault(){
     return null;
   }catch(e){ return null; }
 }
-function artLabelOf(k){ const p = k.split("-"); return +p[0] ? `${+p[0]}年${+p[1]}月号` : "号数不明"; }
+function artLabelOf(k){ if(!k) return "—"; const p = k.split("-"); return +p[0] ? `${+p[0]}年${+p[1]}月号` : "号数不明"; }
 // "2026-08" → "2026-09"(12月は翌年1月へ)
 function nextMonthKey(k){
   const p = k.split("-").map(Number);
@@ -2114,6 +2114,10 @@ async function seqItems(){
   if(!sp || !sp.month) return null;
   const steps = seqSteps().map(id=> seqDocOf(id)).filter(Boolean);
   if(!steps.length) return null;
+  if(sp.month === "MAG"){
+    const marks = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩"];
+    return steps.map((doc, si) => ({ signId: null, signNm: "", doc, label: `${marks[si] || ""}${doc.name}` }));
+  }
   const av = await loadArticleVault();
   if(!av || !av.months[sp.month]) return null;
   const signs = av.months[sp.month].signs || {};
@@ -2208,31 +2212,10 @@ async function seqSetup(){
   // ① 工程をタップ順で選ぶ
   const steps = await seqPickSteps(docs.slice(0, 30), seqSteps());
   if(!steps) return false;
-  // ② 号を選ぶ
-  const av = await loadArticleVault();
-  if(!av){ toast("記事保管庫のデータが見つかりません(同じサイトで記事保管庫を開いて保存してください)", true); return false; }
-  const monthKeys = Object.keys(av.months).filter(k=>{
-    const s = (av.months[k]||{}).signs || {};
-    return Object.keys(s).some(id=> s[id] && s[id].body);
-  }).sort().reverse().slice(0, 24);
-  if(!monthKeys.length){ toast("記事保管庫にまだ記事がありません", true); return false; }
-  const mk = await _modal({
-    title: "どの号の記事を素材にする?(生成されるのはその翌月号)",
-    buttons: monthKeys.map(k=>{
-      const s = av.months[k].signs;
-      const n = Object.keys(s).filter(id=> s[id] && s[id].body).length;
-      return { label: `素材:${artLabelOf(k)}(${n}記事) → 生成:${artLabelOf(nextMonthKey(k))}`, value: k, style: "ghost" };
-    }).concat([{ label: "キャンセル", value: null }])
-  });
-  if(!mk) return false;
-  // ③ 入れ方が未設定の命令書だけ、順に設定(設定済みはそのまま使う)
-  for(const id of steps){
-    const dx = docs.find(x=> x.id === id);
-    if(dx.autoMat) continue;
-    toast(`「${dx.name}」への記事・星データの入れ方を設定します`);
-    const c = detectFields(dx.body).length ? await matSetup(dx) : await matSetupNoFields(dx);
-    if(!c) return false;
-  }
+  // ② 2026-07-28改修(実機バグ第1号対応): マガジンは号・星座・記事素材の概念を使わない。
+  //    記事保管庫への依存を全廃した簡易モード固定(疑似号"MAG")。入れ方の質問も出さない
+  //    (素材は連続コピー押下時のchainAutoFillが束・クリップボード・同梱データから下書きへ入れる)。
+  const mk = "MAG";
   state.seqPos = { month: mk, idx: 0, label: null, steps, ts: Date.now() };
   save(true);
   return true;
@@ -2253,7 +2236,9 @@ async function renderSeq(){
   }
   const steps = seqSteps().map(id=> seqDocOf(id)).filter(Boolean);
   const idx = seqIdx(items);
-  const head = `素材:${esc(artLabelOf(state.seqPos.month))} → 生成:${esc(artLabelOf(nextMonthKey(state.seqPos.month)))}・${steps.length}工程`;
+  const head = state.seqPos.month === "MAG"
+    ? `マガジン・${steps.length}工程(イベントは自動前進)`
+    : `素材:${esc(artLabelOf(state.seqPos.month))} → 生成:${esc(artLabelOf(nextMonthKey(state.seqPos.month)))}・${steps.length}工程`; // 2026-07-28: 実機バグ第1号の続き(MAG時のnullクラッシュ回避)
   if(idx >= items.length){
     btn.innerHTML = `✔ ${head}:すべてコピー済み<small>タップで次の号へ/もう一周。「変更」で設定し直し</small>`;
   }else{
@@ -2308,6 +2293,18 @@ async function seqCopy(){
   }
   const idx = seqIdx(items);
   if(idx >= items.length){
+    if(sp.month === "MAG"){
+      const v2 = await _modal({ title: "1サイクル完了(全工程コピー済み)",
+        msg: "次の緑で次のイベントの生成から始まります(イベントは自動前進)。",
+        buttons: [ { label: "次のサイクルへ", value: "again", style: "primary" },
+                   { label: "キャンセル", value: null } ] });
+      if(v2 === "again"){
+        state.seqPos.idx = 0; state.seqPos.label = null; state.seqPos.ts = Date.now();
+        save(true); renderSeq();
+        toast("次のサイクルへ。緑を押すと次のイベントの生成命令書が入ります");
+      }
+      return;
+    }
     // 次の号(現在の号+1ヶ月)に記事があれば、設定そのままで1タップ切替を最優先で出す
     const nextK = nextMonthKey(sp.month);
     const av2 = await loadArticleVault();
@@ -2336,14 +2333,20 @@ async function seqCopy(){
     return;
   }
   const it = items[idx];
-  const av = await loadArticleVault();
-  const signs = av && av.months[sp.month] && av.months[sp.month].signs;
-  if(!signs || !signs[it.signId] || !signs[it.signId].body){
-    toast("記事が見つかりません。「変更」で設定し直してください", true);
-    return;
+  let r;
+  if(sp.month === "MAG"){
+    await chainAutoFill(it.doc); // 押した瞬間に束・クリップボード・同梱データから下書きへ自動吸い込み
+    r = composeDoc(it.doc, { art: null, artTitleOnly: false, sky: null }, "", "", sp.month, null);
+  } else {
+    const av = await loadArticleVault();
+    const signs = av && av.months[sp.month] && av.months[sp.month].signs;
+    if(!signs || !signs[it.signId] || !signs[it.signId].body){
+      toast("記事が見つかりません。「変更」で設定し直してください", true);
+      return;
+    }
+    await chainAutoFill(it.doc);
+    r = composeDoc(it.doc, seqCfgOf(it.doc), signs[it.signId].body, it.signNm, sp.month, av);
   }
-  await chainAutoFill(it.doc); // 2026-07-26追加: 押した瞬間に束・クリップボード・同梱データから下書きへ自動吸い込み
-  const r = composeDoc(it.doc, seqCfgOf(it.doc), signs[it.signId].body, it.signNm, sp.month, av);
   const ok = await copyText(r.text, null);
   if(!ok) return; // コピーできなかったら進まない(飛ばし防止)
   delete fillDrafts[it.doc.id]; scheduleSaveDrafts(); // 2026-07-26追加: コピー成功で下書きを消す(翌サイクルへの残留防止・差し込み画面と同規約)
@@ -2473,7 +2476,7 @@ function composeDoc(d, cfg, artBody, signNm, mk, av){
   if(skyTarget && cfg.sky !== "__END__" && cfg.sky !== skyTarget.name) cfg.sky = skyTarget.name;
   let base = d.body;
   const draftUsed = [];
-  if(artTarget || skyTarget || titleTarget){
+  if(artTarget || skyTarget || titleTarget || fillDrafts[d.id]){ // 2026-07-28修正: 素材ターゲットが無くても下書き(🥳欄)は合体する(MAGモードの必須条件)
     const draft = fillDrafts[d.id];
     const values = fields.map(f=>{
       if(artTarget && f === artTarget) return artText;
