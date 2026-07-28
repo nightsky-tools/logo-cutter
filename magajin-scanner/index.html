@@ -94,7 +94,7 @@
 <div class="wrap">
   <header>
     <h1>マガジン記事スキャナ</h1>
-    <div class="sub">検品命令書 v1.2 準拠 ・ A〜C機械判定 / D〜F注意検出 / 入稿用分割 ・ v1.8(新月・満月・カレンダー・水星逆行対応)</div>
+    <div class="sub">検品命令書 v1.2 準拠 ・ A〜C機械判定 / D〜F注意検出 / 入稿用分割 ・ v1.8(新月・満月・カレンダー・水星逆行対応) ・ <span id="dataVer"></span></div>
   </header>
 
   <label for="tableIn">① ジェネレーター出力のMarkdown表(v1.4/v1.5形式・自動取り込みあり)</label>
@@ -185,6 +185,14 @@ function findEvent(kind, mo, dy, y){
   hits.sort((a, b) => Math.abs(a.year - cy) - Math.abs(b.year - cy));
   return hits[0];
 }
+  try{
+    var s = JSON.stringify(LUNATIONS);
+    var h = 0; for(var i = 0; i < s.length; i++){ h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+    var ver = ("00000000" + (h >>> 0).toString(16)).slice(-8);
+    var el = document.getElementById("dataVer");
+    if(el) el.textContent = "天文データ版: " + ver;
+    window.MAG_DATA_VER = ver;
+  }catch(e){}
 return { monthEvents, monthAll, findEvent, md: buildMarkdown };
 })();
 </script>
@@ -218,6 +226,8 @@ return { monthEvents, monthAll, findEvent, md: buildMarkdown };
      「合」による誤読を修正(オポジション優先)。E-5は否定文(観測でき
      ません等)なら⚠に降格(促しか否かの意味判定は検品)。
    ・意地悪テスト反映: A-9(タイトル星座と表の星座の完全一致)を新設。
+   ・連動強化: レポートコピー時に記事・表・レポートの束(nightsky-scan-
+     bundle)を共有領域へ発行(月だより保管庫の連続コピーが吸い込む)。
    ・同梱データ対応: ジェネレーターv1.5の天文データ・表生成コードを丸写し
      同梱し、②の記事タイトルから①の表を自前生成(feed・コピー不要)。
    ・文字数運用の改訂に対応: メタの文字数欄が「(入稿前にスキャナ実測値を
@@ -795,6 +805,14 @@ $("runBtn").addEventListener("click", () => {
 });
 
 $("copyReport").addEventListener("click", e => {
+  // 意地悪テスト後の連動強化(2026-07-26): 走査済みの記事・レポート・表を束にして共有領域へ発行。
+  // 月だより保管庫の連続コピー(緑)が1押しで検品・修正の下書きへ吸い込めるようにする。
+  try {
+    const bundle = { ts: Date.now(),
+      article: $("articleIn").value || "", table: $("tableIn").value || "", report: lastReport || "" };
+    bundle.fp = (t => { let h = 0; for (let i = 0; i < t.length; i++) { h = ((h << 5) - h + t.charCodeAt(i)) | 0; } return h; })(bundle.article + bundle.report);
+    localStorage.setItem("nightsky-scan-bundle", JSON.stringify(bundle));
+  } catch (err) {}
   const btn = e.currentTarget;
   const done = () => { btn.classList.add("done"); btn.textContent = "コピーしました";
     setTimeout(() => { btn.classList.remove("done"); btn.textContent = "検品レポートをコピー"; }, 1800); };
