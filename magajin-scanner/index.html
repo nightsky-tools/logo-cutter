@@ -225,6 +225,9 @@ return { monthEvents, monthAll, findEvent, md: buildMarkdown };
      前置き語つきでも数値を取得)。A-4の種別判定で「向かい合う」の内包
      「合」による誤読を修正(オポジション優先)。E-5は否定文(観測でき
      ません等)なら⚠に降格(促しか否かの意味判定は検品)。
+   ・7/29実機検品反映: C-5の対象星座を「括弧を除いた月の星座」に限定
+     (満月表の太陽併記でLeoを誤要求した実機バグの修正)。レポートコピー
+     の末尾に照合済みの表を同梱(検品§1の表添付を1コピーで満たす)。
    ・意地悪テスト反映: A-9(タイトル星座と表の星座の完全一致)を新設。
    ・連動強化: レポートコピー時に記事・表・レポートの束(nightsky-scan-
      bundle)を共有領域へ発行(月だより保管庫の連続コピーが吸い込む)。
@@ -588,7 +591,10 @@ function scan(t, art) {
       push("C","C-5", /phases of the moon|moon phases/i.test(p) ? true : "warn",
         /phases of the moon|moon phases/i.test(p) ? "phases of the moon をプロンプトに含む" : "phases of the moon がプロンプトにない(生成§6の主題指定を確認)");
     } else {
-    const sign = t.signdeg ? SIGNS.find(s => t.signdeg.includes(s)) : null;
+    // 7/29実機検品反映(2026-07-28): 満月表の度数セルは「(太陽は◯座…)」併記のため、
+    // includesの先勝ちだと太陽の星座を対象と誤認する。対象星座=括弧を除いた月の星座。
+    const moonCell = (t.signdeg || "").replace(/\(.+?\)/, "");
+    const sign = SIGNS.find(s2 => moonCell.includes(s2)) || null;
     if (sign) push("C","C-5", new RegExp(SIGN_EN[sign], "i").test(p),
       `${sign}(${SIGN_EN[sign]})` + (new RegExp(SIGN_EN[sign],"i").test(p) ? " をプロンプトに含む" : " がプロンプトにない"));
     }
@@ -816,11 +822,13 @@ $("copyReport").addEventListener("click", e => {
   const btn = e.currentTarget;
   const done = () => { btn.classList.add("done"); btn.textContent = "コピーしました";
     setTimeout(() => { btn.classList.remove("done"); btn.textContent = "検品レポートをコピー"; }, 1800); };
+  // 2026-07-28追記: 検品§1の表添付を1コピーで満たすため、レポート末尾に照合済みの表を同梱
+  const reportOut = lastReport + "\n\n■ 照合に使用した表(スキャナ同梱の天文データ由来。検品§1の表添付として有効)\n\n" + ($("tableIn").value || "(表なし)");
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(lastReport).then(done).catch(() => {});
+    navigator.clipboard.writeText(reportOut).then(done).catch(() => {});
   } else {
     const ta = document.createElement("textarea");
-    ta.value = lastReport; ta.style.position = "fixed"; ta.style.opacity = "0";
+    ta.value = reportOut; ta.style.position = "fixed"; ta.style.opacity = "0";
     document.body.appendChild(ta); ta.select();
     try { document.execCommand("copy"); done(); } catch(err) {}
     document.body.removeChild(ta);
