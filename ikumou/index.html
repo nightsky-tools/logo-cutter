@@ -633,18 +633,15 @@ function doSplit(raw){
     hook = parts[0]||"";
     body = parts.slice(1).join("\n");
   }else{
+    /* フックは最初の1行だけ。2行目以降(「こんな体していませんか。」など)はすべて本文へ */
     var lines = raw.split("\n");
     var idx = -1;
     for(var i=0;i<lines.length;i++){
-      if(lines[i].trim().indexOf("・")===0){ idx = i; break; }
+      if(lines[i].trim()!==""){ idx = i; break; }
     }
-    if(idx>0){
-      hook = lines.slice(0, idx).join("\n");
-      body = lines.slice(idx).join("\n");
-    }else{
-      var m = raw.split(/\n\s*\n/);
-      hook = m[0]||"";
-      body = m.slice(1).join("\n\n");
+    if(idx>=0){
+      hook = lines[idx];
+      body = lines.slice(idx+1).join("\n").replace(/^\s*\n+/,"");
     }
   }
   return [hook.trim(), body.trim()];
