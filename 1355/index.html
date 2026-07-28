@@ -314,7 +314,7 @@
 
 <div class="wrap">
   <header>
-    <h1>月だより保管庫<small>MAGAZINE COMMAND ARCHIVE ・ build 2026-07-12a ・ マガジン専用(保存領域は本家の命令書保管庫と完全分離)</small></h1>
+    <h1>月だより保管庫<small>MAGAZINE COMMAND ARCHIVE ・ build 2026-07-12a ・ マガジン専用(保存領域は本家の命令書保管庫と完全分離) ・ <span id="dataVer"></span></small></h1>
   </header>
 
   <div class="cat-row" id="catRow"></div>
@@ -544,6 +544,16 @@ function findEvent(kind, mo, dy, y){
   hits.sort((a, b) => Math.abs(a.year - cy) - Math.abs(b.year - cy));
   return hits[0];
 }
+
+
+  try{
+    var s = JSON.stringify(LUNATIONS);
+    var h = 0; for(var i = 0; i < s.length; i++){ h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+    var ver = ("00000000" + (h >>> 0).toString(16)).slice(-8);
+    var el = document.getElementById("dataVer");
+    if(el) el.textContent = "天文データ版: " + ver + "(3アプリで同じなら同一データ)";
+    window.MAG_DATA_VER = ver;
+  }catch(e){}
 return { monthEvents, monthAll, findEvent, md: buildMarkdown };
 })();
 </script>
@@ -1524,6 +1534,116 @@ async function pickFromFeed(){
   if(r === null || r === undefined) return null;
   return list[+String(r).slice(2)] || null;
 }
+/* ---- 連続コピー押下時の自動吸い込み(2026-07-26追加) ----
+   緑(連続コピー)を押した瞬間に、その工程の空欄下書きへ:
+   ①スキャナ発行の束(記事・レポート・表, 12時間有効) ②新しいコピー表(12時間)
+   ③クリップボードの分類(記事/スキャナレポート/検品レポート/表)
+   ④記事から同梱データで表を自動照合 ⑤生成で表が無ければ1タップ選択。
+   既存下書きは上書きしない(空欄のみ)。 */
+function chainDraftGet(d){
+  const fields = detectFields(d.body);
+  const old = fillDrafts[d.id];
+  const names = fields.map(f => f.name);
+  const values = names.map(nm => {
+    if(old && Array.isArray(old.names)){ const di = old.names.indexOf(nm); if(di !== -1 && old.values && old.values[di]) return old.values[di]; }
+    return "";
+  });
+  return { names, values };
+}
+function chainDraftSet(d, names, values){
+  fillDrafts[d.id] = { names, values };
+  scheduleSaveDrafts();
+}
+function cfgFpChain(t){ let h = 0; for(let i = 0; i < t.length; i++){ h = ((h << 5) - h + t.charCodeAt(i)) | 0; } return h; }
+function autoNextEvent(){
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  let lastT = 0; try{
+    const h = JSON.parse(localStorage.getItem("mag-auto-event-hist") || "null");
+    if(Array.isArray(h) && h.length) lastT = h[h.length - 1].t;
+    else { const r = JSON.parse(localStorage.getItem("mag-last-auto-event") || "null"); if(r && r.t) lastT = r.t; } // 旧形式互換
+  }catch(e){}
+  const items = [];
+  for(let off = 0; off <= 3; off++){
+    const base = new Date(today.getFullYear(), today.getMonth() + off, 1);
+    MAG_EPH.monthEvents(base.getFullYear(), base.getMonth() + 1).forEach(ev =>
+      items.push({ d: new Date(ev.year, ev.month - 1, ev.day),
+        key: ev.year + "-" + ev.month + "-" + ev.day + ev.kind,
+        label: `${ev.month}/${ev.day} ${ev.kind}${ev.eclipse ? "(" + ev.eclipse + ")" : ""}`,
+        md: MAG_EPH.md(ev) }));
+  }
+  items.sort((a, b) => a.d - b.d);
+  const upcoming = items.filter(x => x.d >= today);
+  // 自動投入済みイベントより後ろへ進む(同日に複数号を書いても 満月→新月→満月… と前進する)
+  return upcoming.find(x => x.d.getTime() > lastT) || upcoming[0] || null;
+}
+async function chainAutoFill(d){
+  try{
+    const dr = chainDraftGet(d);
+    if(!dr.names.length) return;
+    const filled = [];
+    const putEmpty = (kw, val) => {
+      const i = dr.names.findIndex((nm, ix) => kw.test(nm) && !(dr.values[ix] || "").trim());
+      if(i === -1) return false;
+      dr.values[i] = val; filled.push(dr.names[i].slice(0, 14)); return true;
+    };
+    const FRESH = 12 * 3600 * 1000;
+    try{
+      const b = JSON.parse(localStorage.getItem("nightsky-scan-bundle") || "null");
+      if(b && b.ts && (Date.now() - b.ts) < FRESH){
+        if(b.article) putEmpty(/記事全文|差し戻された記事/, b.article);
+        if(b.report) putEmpty(/スキャナ/, b.report);
+        // 束のtableは記事欄のある工程(検品・修正)のみ。生成には入れない(前号の表の混入防止・2026-07-26)
+        if(b.table && dr.names.some(nm => /記事全文|差し戻された記事/.test(nm))) putEmpty(/ジェネレーター/, b.table);
+      }
+    }catch(e){}
+    try{
+      const gc = JSON.parse(localStorage.getItem("nightsky-gen-copied") || "null");
+      if(gc && gc.md && gc.ts && (Date.now() - gc.ts) < FRESH) putEmpty(/ジェネレーター/, gc.md);
+    }catch(e){}
+    try{
+      const x = await navigator.clipboard.readText();
+      if(x && x.trim()){
+        const fp = String(cfgFpChain(x));
+        const own = (localStorage.getItem("nightsky-last-copy-fp") === fp);
+        if(!own){
+          const t = x.replace(/^```[^\n]*$/gm, "");
+          if(/note記事タイトル\s*[::]/.test(t) || /^<!--\s*種別/m.test(t)) putEmpty(/記事全文|差し戻された記事/, t.trim());
+          else if(/【マガジン記事スキャナ/.test(t)) putEmpty(/スキャナ/, t);
+          else if(/【検品結果】|差し戻し理由と修正指示/.test(t)) putEmpty(/検品レポート/, t);
+          else if(/\|\s*種別\s*\|/.test(t)) putEmpty(/ジェネレーター/, t);
+        }
+      }
+    }catch(e){}
+    const gi = dr.names.findIndex((nm, ix) => /ジェネレーター/.test(nm) && !(dr.values[ix] || "").trim());
+    if(gi !== -1){
+      const ai = dr.names.findIndex((nm, ix) => /記事全文|差し戻された記事/.test(nm) && (dr.values[ix] || "").trim());
+      if(ai !== -1){
+        const hit = feedMatchByArticle(dr.values[ai]);
+        if(hit){ dr.values[gi] = hit.md; filled.push(dr.names[gi].slice(0, 14)); }
+      }
+    }
+    const gi2 = dr.names.findIndex((nm, ix) => /ジェネレーター/.test(nm) && !(dr.values[ix] || "").trim());
+    const hasArtField = dr.names.some(nm => /記事全文|差し戻された記事/.test(nm));
+    if(gi2 !== -1 && !hasArtField){
+      // 2026-07-26改良: 質問せず「次のイベント」を自動確定。新月と満月は交互に来るため
+      // 日付順の先頭=次に書く記事。同じイベントを直前に自動投入済みなら、その次へ送る
+      // (同日に2本書く場合の自動前進)。前倒しやカレンダー記事は差し込み画面の選択で。
+      const sel = autoNextEvent();
+      if(sel){
+        dr.values[gi2] = sel.md; filled.push("次のイベント: " + sel.label);
+        try{
+          const h = JSON.parse(localStorage.getItem("mag-auto-event-hist") || "[]");
+          h.push({ key: sel.key, t: sel.d.getTime(), label: sel.label });
+          localStorage.setItem("mag-auto-event-hist", JSON.stringify(h.slice(-8)));
+        }catch(e){}
+      }
+    }
+    if(filled.length){
+      chainDraftSet(d, dr.names, dr.values);
+      toast("⛓ 下書きへ自動で吸い込みました: " + filled.slice(0, 3).join("、") + (filled.length > 3 ? " ほか" : ""));
+    }
+  }catch(e){}
+}
 async function autoFillFromClipboard(fromOpen){
   const ae = document.activeElement && document.activeElement.tagName;
   if(ae === "TEXTAREA" || ae === "INPUT") return;
@@ -2155,6 +2275,7 @@ async function seqPeekText(){
   if(!signs || !signs[it.signId] || !signs[it.signId].body){
     return { err: "記事が見つかりません。「変更」で設定し直してください" };
   }
+  await chainAutoFill(it.doc); // 2026-07-26追加: 押した瞬間に束・クリップボード・同梱データから下書きへ自動吸い込み
   const r = composeDoc(it.doc, seqCfgOf(it.doc), signs[it.signId].body, it.signNm, sp.month, av);
   bridgePendingPeek = true;
   if(r.skyWarn) setTimeout(()=> toast(r.skyWarn, true), 1200);
@@ -2221,9 +2342,11 @@ async function seqCopy(){
     toast("記事が見つかりません。「変更」で設定し直してください", true);
     return;
   }
+  await chainAutoFill(it.doc); // 2026-07-26追加: 押した瞬間に束・クリップボード・同梱データから下書きへ自動吸い込み
   const r = composeDoc(it.doc, seqCfgOf(it.doc), signs[it.signId].body, it.signNm, sp.month, av);
   const ok = await copyText(r.text, null);
   if(!ok) return; // コピーできなかったら進まない(飛ばし防止)
+  delete fillDrafts[it.doc.id]; scheduleSaveDrafts(); // 2026-07-26追加: コピー成功で下書きを消す(翌サイクルへの残留防止・差し込み画面と同規約)
   if(countOnce("c:" + it.doc.id)) it.doc.copies = (it.doc.copies || 0) + 1;
   state.seqPos.idx = idx + 1;
   state.seqPos.label = items[idx + 1] ? items[idx + 1].label : null;
@@ -2238,7 +2361,19 @@ async function seqBack(){
   const items = state.seqPos ? await seqItems() : null;
   if(!items){ toast("先に緑のボタンで設定してください", true); return; }
   const idx = seqIdx(items);
-  if(idx <= 0){ toast("これより前はありません", true); return; }
+  if(idx <= 0){
+    // 2026-07-26追加: 工程の先頭でさらに「戻る」=イベントの自動前進を1つ巻き戻す
+    try{
+      const h = JSON.parse(localStorage.getItem("mag-auto-event-hist") || "[]");
+      if(Array.isArray(h) && h.length){
+        const popped = h.pop();
+        localStorage.setItem("mag-auto-event-hist", JSON.stringify(h));
+        toast("イベントを1つ戻しました(「" + popped.label + "」を取り消し)。次の緑で同じイベントから再開できます");
+        return;
+      }
+    }catch(e){}
+    toast("これより前はありません", true); return;
+  }
   state.seqPos.idx = idx - 1;
   state.seqPos.label = items[idx - 1].label;
   state.seqPos.ts = Date.now();
