@@ -94,7 +94,7 @@
 <div class="wrap">
   <header>
     <h1>マガジン記事スキャナ</h1>
-    <div class="sub">検品命令書 v1.2 準拠 ・ A〜C機械判定 / D〜F注意検出 / 入稿用分割 ・ v1.8r3(7/28改修: C-5満月対応・レポートに表同梱) ・ <span id="dataVer"></span></div>
+    <div class="sub">検品命令書 v1.2 準拠 ・ A〜C機械判定 / D〜F注意検出 / 入稿用分割 ・ v1.8r4(7/29改修: コピー失敗を明示・表同梱・C-5満月対応) ・ <span id="dataVer"></span></div>
   </header>
 
   <label for="tableIn">① ジェネレーター出力のMarkdown表(v1.4/v1.5形式・自動取り込みあり)</label>
@@ -824,14 +824,25 @@ $("copyReport").addEventListener("click", e => {
     setTimeout(() => { btn.classList.remove("done"); btn.textContent = "検品レポートをコピー"; }, 1800); };
   // 2026-07-28追記: 検品§1の表添付を1コピーで満たすため、レポート末尾に照合済みの表を同梱
   const reportOut = lastReport + "\n\n■ 照合に使用した表(スキャナ同梱の天文データ由来。検品§1の表添付として有効)\n\n" + ($("tableIn").value || "(表なし)");
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(reportOut).then(done).catch(() => {});
-  } else {
+  // 2026-07-29修正(実機検品の実走反映): コピー失敗を無言で握りつぶさない。
+  // 旧実装はwriteText拒否時にcatch(()=>{})で沈黙し、クリップボードに前回の
+  // 古いレポート(表なし)が残ったまま貼られる事故を起こした。失敗時は
+  // textareaフォールバック→それも失敗なら明示アラート。成功表示が出ない
+  // コピーは信用しないこと。
+  const fallbackCopy = () => {
     const ta = document.createElement("textarea");
     ta.value = reportOut; ta.style.position = "fixed"; ta.style.opacity = "0";
     document.body.appendChild(ta); ta.select();
-    try { document.execCommand("copy"); done(); } catch(err) {}
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch(err) {}
     document.body.removeChild(ta);
+    if (ok) done();
+    else alert("コピーに失敗しました。もう一度「検品レポートをコピー」を押してください(古い内容を貼らないよう注意)");
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(reportOut).then(done).catch(fallbackCopy);
+  } else {
+    fallbackCopy();
   }
 });
 
