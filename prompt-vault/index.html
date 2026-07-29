@@ -1,5 +1,3 @@
-== FILE 6/6: 命令書保管庫.html(146.8 KB)
-==========================================================
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -311,7 +309,7 @@
 
 <div class="wrap">
   <header>
-    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-26a(自動月送り)</small></h1>
+    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-29a(過去タイトル自動差し込み)</small></h1>
   </header>
 
   <div class="cat-row" id="catRow"></div>
@@ -2245,6 +2243,29 @@ function composeDoc(d, cfg, artBody, signNm, mk, av){
         : `⚠ 目印「${cfg.sky}」が本文に見つからず、星データを末尾に付けました(⚙入れ方で設定し直してください)`;
     }
   }
+  // build 2026-07-29a: 過去タイトル一覧(データD)の自動差し込み。
+  // 記事保管庫にあるこの星座の号(素材月以前)のタイトル行を新しい順に最大12ヶ月分、
+  // ▼▼過去タイトル一覧▲▲の枠へ入れる(13ヶ月目以降は古い号から自動で落ちる)。
+  // 枠が無い命令書・星座が特定できない場合は何もしない(従来どおり空のまま)。
+  try{
+    const dOpen = text.match(/▼▼\s*過去タイトル一覧\s*ここから\s*▼▼/);
+    const dClose = text.match(/▲▲\s*過去タイトル一覧\s*ここまで\s*▲▲/);
+    if(dOpen && dClose && av && av.months){
+      const dSignId = (ART_SIGNS.find(p=> p[1] === signNm)||[])[0] || null;
+      if(dSignId){
+        const dKeys = Object.keys(av.months).filter(k=>{
+          const sg = av.months[k] && av.months[k].signs;
+          return k <= mk && sg && sg[dSignId] && sg[dSignId].body;
+        }).sort().reverse().slice(0, 12);
+        const dTitles = dKeys.map(k=> firstLineOf(av.months[k].signs[dSignId].body)).filter(Boolean);
+        const dI1 = dOpen.index + dOpen[0].length;
+        const dI2 = dClose.index;
+        if(dTitles.length && dI2 > dI1){
+          text = text.slice(0, dI1) + "\n\n" + dTitles.join("\n") + "\n\n" + text.slice(dI2);
+        }
+      }
+    }
+  }catch(e){}
   if(!skyWarn && warns.length) skyWarn = warns[0];
   const draftNote = draftUsed.length
     ? `📝 差し込み画面の下書きも入れました:${draftUsed.slice(0,3).join("、")}${draftUsed.length > 3 ? ` ほか${draftUsed.length-3}件` : ""}(不要なら差し込み画面で下書きを消してください)`
