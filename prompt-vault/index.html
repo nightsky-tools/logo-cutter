@@ -309,7 +309,7 @@
 
 <div class="wrap">
   <header>
-    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-29a(過去タイトル自動差し込み)</small></h1>
+    <h1>命令書保管庫<small>COMMAND ARCHIVE ・ build 2026-07-30a(C自動差し込み・整合チェック)</small></h1>
   </header>
 
   <div class="cat-row" id="catRow"></div>
@@ -2030,6 +2030,7 @@ async function seqPeekText(){
     return { err: "記事が見つかりません。「変更」で設定し直してください" };
   }
   const r = composeDoc(it.doc, seqCfgOf(it.doc), signs[it.signId].body, it.signNm, sp.month, av);
+  if(r.intError) return { err: r.intError }; // 整合NGの命令書は自動運転に渡さない(2026-07-30a)
   bridgePendingPeek = true;
   if(r.skyWarn) setTimeout(()=> toast(r.skyWarn, true), 1200);
   if(r.draftNote) setTimeout(()=> toast(r.draftNote), r.skyWarn ? 3600 : 1200);
@@ -2096,6 +2097,7 @@ async function seqCopy(){
     return;
   }
   const r = composeDoc(it.doc, seqCfgOf(it.doc), signs[it.signId].body, it.signNm, sp.month, av);
+  if(r.intError){ toast(r.intError, true); return; } // 整合NGはコピーしない(2026-07-30a)
   const ok = await copyText(r.text, null);
   if(!ok) return; // コピーできなかったら進まない(飛ばし防止)
   if(countOnce("c:" + it.doc.id)) it.doc.copies = (it.doc.copies || 0) + 1;
@@ -2247,30 +2249,81 @@ function composeDoc(d, cfg, artBody, signNm, mk, av){
   // 記事保管庫にあるこの星座の号(素材月以前)のタイトル行を新しい順に最大12ヶ月分、
   // ▼▼過去タイトル一覧▲▲の枠へ入れる(13ヶ月目以降は古い号から自動で落ちる)。
   // 枠が無い命令書・星座が特定できない場合は何もしない(従来どおり空のまま)。
+  // build 2026-07-30a: 前月タイトル行(データC)の自動差し込みを追加。
+  // ▼▼前月記事のタイトル行▲▲の枠の中身を、素材号(mk)のタイトル行で毎回まるごと上書きする。
+  // 枠に古い本文・別号のタイトルが残っていても、コピーのたびに正しい1行へ置き換わるため、
+  // C・D・Aは常に同じ号・同じ星座から組み上がる(貼り替え漏れの構造的な根絶)。
   try{
-    const dOpen = text.match(/▼▼\s*過去タイトル一覧\s*ここから\s*▼▼/);
-    const dClose = text.match(/▲▲\s*過去タイトル一覧\s*ここまで\s*▲▲/);
-    if(dOpen && dClose && av && av.months){
-      const dSignId = (ART_SIGNS.find(p=> p[1] === signNm)||[])[0] || null;
-      if(dSignId){
-        const dKeys = Object.keys(av.months).filter(k=>{
-          const sg = av.months[k] && av.months[k].signs;
-          return k <= mk && sg && sg[dSignId] && sg[dSignId].body;
-        }).sort().reverse().slice(0, 12);
-        const dTitles = dKeys.map(k=> firstLineOf(av.months[k].signs[dSignId].body)).filter(Boolean);
+    const cadSignId = (ART_SIGNS.find(p=> p[1] === signNm)||[])[0] || null;
+    let cadTitles = [];
+    if(av && av.months && cadSignId){
+      const cadKeys = Object.keys(av.months).filter(k=>{
+        const sg = av.months[k] && av.months[k].signs;
+        return k <= mk && sg && sg[cadSignId] && sg[cadSignId].body;
+      }).sort().reverse().slice(0, 12);
+      cadTitles = cadKeys.map(k=> firstLineOf(av.months[k].signs[cadSignId].body)).filter(Boolean);
+    }
+    if(cadTitles.length){
+      const cOpen = text.match(/▼▼\s*前月記事のタイトル行\s*ここから\s*▼▼/);
+      const cClose = text.match(/▲▲\s*前月記事のタイトル行\s*ここまで\s*▲▲/);
+      if(cOpen && cClose && cClose.index > cOpen.index + cOpen[0].length){
+        const cI1 = cOpen.index + cOpen[0].length;
+        const cI2 = cClose.index;
+        text = text.slice(0, cI1) + "\n\n" + cadTitles[0] + "\n\n" + text.slice(cI2);
+      }
+      const dOpen = text.match(/▼▼\s*過去タイトル一覧\s*ここから\s*▼▼/);
+      const dClose = text.match(/▲▲\s*過去タイトル一覧\s*ここまで\s*▲▲/);
+      if(dOpen && dClose && dClose.index > dOpen.index + dOpen[0].length){
         const dI1 = dOpen.index + dOpen[0].length;
         const dI2 = dClose.index;
-        if(dTitles.length && dI2 > dI1){
-          text = text.slice(0, dI1) + "\n\n" + dTitles.join("\n") + "\n\n" + text.slice(dI2);
-        }
+        text = text.slice(0, dI1) + "\n\n" + cadTitles.join("\n") + "\n\n" + text.slice(dI2);
       }
     }
   }catch(e){}
+  // build 2026-07-30a: 組み立て後の整合チェック(データC・A・Dの食い違いを検出)。
+  // NGなら intError を返し、呼び出し側はコピーを中止する(矛盾した命令書を送ると
+  // 送り先Claudeが条文23・第III部2で停止し、自動押しが完了印を待ち続けるため)。
+  const intError = validateComposeIntegrity(text);
   if(!skyWarn && warns.length) skyWarn = warns[0];
   const draftNote = draftUsed.length
     ? `📝 差し込み画面の下書きも入れました:${draftUsed.slice(0,3).join("、")}${draftUsed.length > 3 ? ` ほか${draftUsed.length-3}件` : ""}(不要なら差し込み画面で下書きを消してください)`
     : null;
-  return { text, skyWarn, draftNote };
+  return { text, skyWarn, draftNote, intError };
+}
+// build 2026-07-30a: 差し込み整合チェック(占い命令書のC・A・Dの食い違い検出)。
+// C/Aの構造を持たない命令書(検品・校閲など)は null を返して検査対象外とする。
+function validateComposeIntegrity(text){
+  try{
+    const SG = "牡羊座|牡牛座|双子座|蟹座|獅子座|乙女座|天秤座|蠍座|射手座|山羊座|水瓶座|魚座";
+    const blk = (label)=>{
+      const o = text.match(new RegExp("▼▼\\s*" + label + "[\\s\\S]{0,40}?▼▼"));
+      if(!o) return null;
+      const rest = text.slice(o.index + o[0].length);
+      const c = rest.match(new RegExp("▲▲\\s*" + label));
+      return c ? rest.slice(0, c.index).trim() : null;
+    };
+    const pt = (line)=>{
+      const m = String(line||"").match(new RegExp("【(\\d{1,2})月限定】(" + SG + ")"));
+      return m ? { m: +m[1], s: m[2] } : null;
+    };
+    const nx = (m)=> m === 12 ? 1 : m + 1;
+    const cB = blk("前月記事のタイトル行");
+    const aM = text.match(/【(\d{4})年(\d{1,2})月の天体イベント一覧/);
+    if(cB === null && !aM) return null; // 占い生成命令書ではない
+    const errs = [];
+    const c = cB ? pt((cB.split("\n").map(s=> s.trim()).filter(Boolean)[0]) || "") : null;
+    if(cB !== null && !c) errs.push("C枠にタイトル行(【〇月限定】〇〇座)が見つかりません");
+    if(cB !== null && /1,?980円/.test(cB)) errs.push("C枠に旧価格(1,980円)の古い本文が残っています");
+    if(c && aM && nx(c.m) !== +aM[2]) errs.push(`C(${c.m}月)+1ヶ月とA(${+aM[2]}月)が不一致`);
+    const dB = blk("過去タイトル一覧");
+    if(dB){
+      const dts = dB.split("\n").map(pt).filter(Boolean);
+      if(c && dts.length && dts[0].s !== c.s) errs.push(`C(${c.s})とD(${dts[0].s})の星座が不一致`);
+      // D行の月ズレは遮断しない(監査で変更): 並び順が保証されず誤ブロックの害が大きい。
+      // C自動上書き+cadTitles再挿入により、このゲート通過時のDは常に最新化済みでもある。
+    }
+    return errs.length ? "⛔ 差し込み整合NG:" + errs.join("/") + "(コピー中止。記事保管庫の前月号の格納を確認してください)" : null;
+  }catch(e){ return null; }
 }
 function firstLineOf(t){
   for(const line of String(t||"").split("\n")){ if(line.trim()) return line.trim(); }
@@ -2384,6 +2437,7 @@ async function matCopy(i, forcePick){
   const artBody = signs[sid].body;
   const nmS = (ART_SIGNS.find(([id])=> id === sid)||[])[1] || "";
   const r = composeDoc(d, cfg, artBody, nmS, mk, av);
+  if(r.intError){ toast(r.intError, true); return; } // 整合NGはコピーしない(2026-07-30a)
   const text = r.text;
   const skyWarn = r.skyWarn;
   const ok = await copyText(text, null);
@@ -3209,3 +3263,4 @@ let bootDone = false;
 })();
 </script>
 </body>
+</html>
