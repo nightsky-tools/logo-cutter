@@ -314,7 +314,7 @@
 
 <div class="wrap">
   <header>
-    <h1>月だより保管庫<small>MAGAZINE COMMAND ARCHIVE ・ build 2026-07-28-mag3(MAGモード入り) ・ マガジン専用(保存領域は本家の命令書保管庫と完全分離) ・ <span id="dataVer"></span></small></h1>
+    <h1>月だより保管庫<small>MAGAZINE COMMAND ARCHIVE ・ build 2026-07-30-mag4(MAGモード入り) ・ マガジン専用(保存領域は本家の命令書保管庫と完全分離) ・ <span id="dataVer"></span></small></h1>
   </header>
 
   <div class="cat-row" id="catRow"></div>
@@ -1600,20 +1600,11 @@ async function chainAutoFill(d){
       const gc = JSON.parse(localStorage.getItem("nightsky-gen-copied") || "null");
       if(gc && gc.md && gc.ts && (Date.now() - gc.ts) < FRESH) putEmpty(/ジェネレーター/, gc.md);
     }catch(e){}
-    try{
-      const x = await navigator.clipboard.readText();
-      if(x && x.trim()){
-        const fp = String(cfgFpChain(x));
-        const own = (localStorage.getItem("nightsky-last-copy-fp") === fp);
-        if(!own){
-          const t = x.replace(/^```[^\n]*$/gm, "");
-          if(/note記事タイトル\s*[::]/.test(t) || /^<!--\s*種別/m.test(t)) putEmpty(/記事全文|差し戻された記事/, t.trim());
-          else if(/【マガジン記事スキャナ/.test(t)) putEmpty(/スキャナ/, t);
-          else if(/【検品結果】|差し戻し理由と修正指示/.test(t)) putEmpty(/検品レポート/, t);
-          else if(/\|\s*種別\s*\|/.test(t)) putEmpty(/ジェネレーター/, t);
-        }
-      }
-    }catch(e){}
+    // build 2026-07-30-mag4: 緑ボタン経路のクリップボード自動読取(readText)を廃止。
+    // iOS 16以降はreadTextのたびにOSの「ペースト」許可ピルが必ず表示され、緑を押す
+    // 度に出て邪魔なため。束(nightsky-*)と同梱データからの自動吸い込みは従来どおり。
+    // クリップボードから入れたい時は「全体ペースト」ボタンか差し込み画面
+    // (開いた時の自動取り込みは残置)を使う。
     const gi = dr.names.findIndex((nm, ix) => /ジェネレーター/.test(nm) && !(dr.values[ix] || "").trim());
     if(gi !== -1){
       const ai = dr.names.findIndex((nm, ix) => /記事全文|差し戻された記事/.test(nm) && (dr.values[ix] || "").trim());
