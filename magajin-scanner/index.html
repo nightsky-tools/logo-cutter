@@ -94,7 +94,7 @@
 <div class="wrap">
   <header>
     <h1>マガジン記事スキャナ</h1>
-    <div class="sub">検品命令書 v1.2 準拠 ・ A〜C機械判定 / D〜F注意検出 / 入稿用分割 ・ v1.8r4(7/29改修: コピー失敗を明示・表同梱・C-5満月対応) ・ <span id="dataVer"></span></div>
+    <div class="sub">検品命令書 v1.2 準拠 ・ A〜C機械判定 / D〜F注意検出 / 入稿用分割 ・ v1.8r5(7/31改修: A-5のスラッシュ区切り誤検出を根治)・旧r4(7/29改修: コピー失敗を明示・表同梱・C-5満月対応) ・ <span id="dataVer"></span></div>
   </header>
 
   <label for="tableIn">① ジェネレーター出力のMarkdown表(v1.4/v1.5形式・自動取り込みあり)</label>
@@ -455,7 +455,7 @@ function scan(t, art) {
   let retroIssues = [];
   PLANETS.forEach(p => {
     if (isRetro && p === "水星") return; // v1.8: 逆行記事の主役は表の開始・終了で照合済み(検品A-5)
-    const re = new RegExp(p + "[^。]{0,12}逆行|逆行[^。]{0,8}" + p);
+    const re = new RegExp(p + "[^。/／]{0,12}逆行|逆行[^。/／]{0,8}" + p); // r5: スラッシュ区切り(メタ補助要素欄の「◯の逆行/◯と◯の合」等)を跨ぐ一致を除外(8/13再走査の誤検出根治)
     if (re.test(raw) && !t.retro.includes(p) && !t.stations.some(s => s.body === p))
       retroIssues.push(`${p}の逆行に言及しているが表の逆行欄・留欄にない`);
   });
