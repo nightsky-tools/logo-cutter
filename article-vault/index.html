@@ -309,7 +309,7 @@
 
 <div class="wrap">
   <header>
-    <h1>記事保管庫<small>MONTHLY ARCHIVE</small></h1>
+    <h1>記事保管庫<small>MONTHLY ARCHIVE・末尾掃除v2</small></h1>
     <div class="month-nav">
       <button class="mn-btn" id="mPrev" aria-label="前の月">◀</button>
       <button class="month-tag" id="monthTag" title="タップで年月を選択"><b id="monthLabel"></b></button>
@@ -1055,9 +1055,13 @@ async function load(){
   if(!state.months) state.months = {};
   if(!state.extras) state.extras = [];
   if(!state.tombs) state.tombs = {};
+  // 末尾掃除v2: 格納済みデータを起動時に自動で掃除して保存(手作業のコピー→ペースト不要)
+  const startupCleaned = cleanPayloadJunk(state);
+  if(startupCleaned) save(true);
   if(memoryOnly) document.getElementById("storageWarn").style.display = "block";
   document.getElementById("loading").style.display = "none";
   render();
+  if(startupCleaned) toast(`🧹格納済み記事${startupCleaned}件の末尾ゴミを自動で掃除して保存しました`);
   setTimeout(()=> tryAutoImport(), 400); // 開いた直後にも自動チェック(読めない環境では何もしない)
   await loadSyncConfig();
   if(sync){
@@ -1228,11 +1232,75 @@ async function copySign(id){
   toast(`${s.nm}の本文をコピーしました(${d.body.length.toLocaleString()}字・通算${d.copies||0}回目)`);
   render();
 }
+// ---- 末尾ゴミ掃除(末尾掃除v2・2026-07-31) ----
+// チャット画面からのコピーで本文の後ろに紛れ込むものを「末尾」に限って取り除く。
+// 対象: (a)空白・空行 (b)モデル表記行(実例「Opus 5 高」)
+//       (c)見えない文字だけの行(画面では☒や空行に見える。オブジェクト置換文字U+FFFC等)
+// 本文の途中には一切触らない。消す行の種類を増やすときは TAIL_JUNK に正規表現を1行足す。
+const TAIL_JUNK = [
+  /^(Claude\s*)?(Opus|Sonnet|Haiku|Fable|Mythos|オーパス|ソネット|ハイク)\s*[0-9０-９]*(\.[0-9０-９]+)?\s*(高|中|低)?$/i
+];
+// 見えない文字: ゼロ幅類・語結合子・異体字セレクタ・BOM・注釈制御・オブジェクト置換(U+FFFC)・置換文字(U+FFFD)
+const TAIL_INVIS_G = /[\u200B-\u200F\u2060\uFE00-\uFE0F\uFEFF\uFFF9-\uFFFC\uFFFD]/g;
+function tailTrim(s){
+  let p;
+  do{
+    p = s;
+    s = s.replace(/[\s\u00A0\u3000]+$/, "");
+    s = s.replace(/[\u200B-\u200F\u2060\uFE00-\uFE0F\uFEFF\uFFF9-\uFFFC\uFFFD]+$/, "");
+  }while(s !== p);
+  return s;
+}
+function stripTailJunk(text){
+  if(!text) return text;
+  let t = tailTrim(String(text));
+  for(let guard = 0; guard < 50 && t; guard++){
+    const nl = t.lastIndexOf("\n");
+    const line = nl >= 0 ? t.slice(nl + 1) : t;
+    const core = line.replace(TAIL_INVIS_G, "").trim();
+    const isJunk = !core || TAIL_JUNK.some(re => re.test(core));
+    if(!isJunk) break;
+    t = nl >= 0 ? tailTrim(t.slice(0, nl)) : "";
+  }
+  return t;
+}
+// 格納済みデータの一括掃除(起動時・同期のマージ後に自動実行)。
+// 掃除した件数を返す。掃除前の本文はprevに退避(既存の上書き保存と同じ形)。
+// tsを現在時刻へ進めるので、LWW同期でも掃除後が勝つ(旧本文が他端末から勝ち戻らない)。
+function cleanPayloadJunk(p){
+  let n = 0;
+  const months = (p && p.months) || {};
+  for(const mk in months){
+    const signs = (months[mk] && months[mk].signs) || {};
+    for(const sid in signs){
+      const it = signs[sid];
+      if(!it || typeof it.body !== "string") continue;
+      const nb = stripTailJunk(it.body);
+      if(nb !== it.body && nb.trim()){
+        it.prev = { body: it.body, month: it.month, updated: it.updated };
+        it.body = nb;
+        it.updated = nowStamp();
+        it.ts = Date.now();
+        n++;
+      }
+    }
+  }
+  return n;
+}
 // 共通の格納処理(手動ペースト・自動ふりわけの両方から使う)
 // key=格納先の号、id=星座ID、text=タイトル+本文そのまま
 async function storeArticle(key, id, text, auto){
   const s = SIGNS.find(x=>x.id===id);
   state.lastAutoFp = cfgFp(text); // どの経路の格納でも記録し、タブ復帰時の自動取り込みが同じ内容に再反応しないようにする
+  // 末尾掃除v2: 指紋(lastAutoFp)は掃除前の生コピーで記録した上で、格納する本文だけ掃除する
+  // (掃除後の指紋にすると、画面復帰のたびに同じコピーへ再反応するため)
+  const _rawLen = text.length;
+  text = stripTailJunk(text);
+  const junkN = _rawLen - text.length;
+  if(!text.trim()){
+    toast("コピー内容がモデル表記などの末尾ゴミだけだったため、格納を中止しました", true);
+    return;
+  }
   state.current = key; // 格納先の号のボードへ移動
   const signs = curSigns();
   if(signs[id] && signs[id].body === text){
@@ -1264,7 +1332,8 @@ async function storeArticle(key, id, text, auto){
     let extra = "";
     if(!cr.ok) extra = " ／ ⚠ 分割不可:" + cr.problems[0];
     else if(cr.warnings.length) extra = " ／ ⚠ 要確認" + cr.warnings.length + "件(開いて整形プレビューを確認)";
-    const head = auto ? `${labelOf(key)}の${s.nm}に自動格納しました` : `${labelOf(key)}の${s.nm}に保存しました`;
+    const head = (auto ? `${labelOf(key)}の${s.nm}に自動格納しました` : `${labelOf(key)}の${s.nm}に保存しました`)
+      + (junkN > 0 ? `〔🧹末尾のゴミ${junkN}字を除去〕` : "");
     if(!auto && a.match === "mismatch") toast(`保存しましたが ⚠ ${a.detected.nm}の内容かもしれません${extra}`, true);
     else if(!auto && a.month && a.month !== boardMonth) toast(`保存しましたが ⚠ ${a.month}の記事かもしれません${extra}`, true);
     else if(a.match === "none") toast(`保存しました(⚠ 本文に星座名なし)${extra}`, true);
@@ -1741,7 +1810,8 @@ function openEditor(){
   setTimeout(()=>ta.focus(), 100);
 }
 async function saveEditor(){
-  const body = document.getElementById("eText").value;
+  let body = document.getElementById("eText").value;
+  if(current.kind === "sign") body = stripTailJunk(body); // 末尾掃除v2(星座スロットのみ。その他のテキストは触らない)
   const stamp = nowStamp();
   if(current.kind==="sign"){
     const signs = curSigns();
@@ -2175,6 +2245,8 @@ async function syncNow(showToast){
     const local = payloadOf(state);
     const remote = sanitizePayload(migrate(cloud || {})); // 取り込みは必ずサニタイズ+マージ経由(置き換え取り込みは禁止)
     const merged = mergePayloads(local, remote);
+    // 末尾掃除v2: マージ結果も掃除してから比較する(相手端末から来た末尾ゴミも自動で消え、保存・クラウド送信まで進む)
+    const syncCleaned = cleanPayloadJunk(merged);
     const fpL = fingerprint(local), fpR = fingerprint(remote), fpM = fingerprint(merged);
     let changedLocal = false, pushed = false;
     if(fpM !== fpL){
@@ -2189,7 +2261,7 @@ async function syncNow(showToast){
     }else{
       lastPushedFp = fpM; // クラウドと一致=未送信変更なし
     }
-    syncOkStatus(changedLocal && pushed ? "(両端末の変更を統合)" : "");
+    syncOkStatus((changedLocal && pushed ? "(両端末の変更を統合)" : "") + (syncCleaned ? ` ／ 🧹末尾ゴミ${syncCleaned}件を掃除` : ""));
     if(showToast){
       if(changedLocal && pushed) toast("両方の変更を統合して同期しました");
       else if(changedLocal) toast("クラウドの新しいデータを取り込みました");
