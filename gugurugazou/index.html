@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<title>画像プロンプト分配</title>
+<title>画像プロンプト分配 V1</title>
 <style>
 :root{ --night:#0d1026; --panel:#151a38; --line:#2a3160; --gold:#e8c66a; --txt:#e8eaf6; --dim:#8890b5; --green:#7ee0a3; --red:#e08585; }
 *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
@@ -55,7 +55,7 @@ textarea:focus{ outline:none; border-color:var(--gold); }
 </head>
 <body>
 <div class="wrap">
-  <h1>画像プロンプト分配<small>PROMPT SPLITTER</small></h1>
+  <h1>画像プロンプト分配 <span style="font-size:.7em;color:var(--dim);letter-spacing:.1em;">V1</span><small>PROMPT SPLITTER</small></h1>
   <p class="note">Claudeが出した画像プロンプト(1つのかたまりに複数入り)を下に貼るだけ。<b>😀の目印で自動的に分割</b>し、絵文字を消して1個ずつ保存します。あとは緑のボタンを<b>押すたびに1個コピーして次へ</b>進みます。</p>
 
   <textarea id="inBox" placeholder="ここに貼り付け(😀😀😀😀 が区切り)"></textarea>
@@ -382,11 +382,16 @@ function pickLabel(part){
   if(looksLabel && rest){ return { label: first, text: rest }; }
   return { label: "", text: part };
 }
+const HAS_MARK = /[\u{1F600}-\u{1F606}]/u;
 function splitPrompts(raw){
   let t = String(raw || "");
   t = t.replace(/```[a-zA-Z]*\n?/g, "");
-  return t.split(/😀+/)
-    .map(s => s.replace(/😀/g, "").trim())
+  // 目印は😀系スマイル(😀😁😂😃😄😅😆 = U+1F600〜U+1F606)。
+  // 環境によって😀が😃等に変わって届くケースや、異体字セレクタ・ゼロ幅文字の混入にも耐える
+  const MARK = /(?:[\u{1F600}-\u{1F606}][\uFE0F\uFE0E\u200B-\u200D\u2060]*)+/gu;
+  const EDGE = /^[\uFE0F\uFE0E\u200B-\u200D\u2060\s]+|[\uFE0F\uFE0E\u200B-\u200D\u2060\s]+$/gu;
+  return t.split(MARK)
+    .map(s => s.replace(MARK, "").replace(EDGE, "").trim())
     .filter(s => s.length > 0)
     .map(pickLabel);
 }
@@ -399,7 +404,7 @@ function curIdx(){
 async function ingest(raw){
   const parts = splitPrompts(raw);
   if(!parts.length){ toast("😀の目印が見つからないか、中身が空です", true); return false; }
-  if(!String(raw).includes("😀") && state.bundle){
+  if(!HAS_MARK.test(String(raw)) && state.bundle){
     toast("😀の目印が見つかりません。保存中のプロンプトはそのまま残しました(入れ替えるなら先に全消去してください)", true);
     return false;
   }
@@ -438,7 +443,7 @@ function undoToLastHist(){
 el("inBox").addEventListener("input", async (e)=>{
   if(modalOpen) return;
   const v = e.target.value;
-  if(v.includes("😀") && v.trim().length > 10){
+  if(HAS_MARK.test(v) && v.trim().length > 10){
     const ok = await ingest(v);
     if(ok) e.target.value = "";
   }
