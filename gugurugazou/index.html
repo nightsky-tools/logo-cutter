@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<title>画像プロンプト分配 V1</title>
+<title>画像プロンプト分配 V3</title>
+<!-- V2 (2026-08-04): ChatGPT用「1枚指定行の自動付加」トグルを新設(束データ・保存キー・Gist同期の形式は無変更)。 -->
+<!-- V3 (2026-08-04): Gemini画像生成の廃止決定に伴いトグルを廃止し、1枚+正方形指定の強化版1行を全コピーに常時付加。分割・ラベル判定・進行・同期・保存キーはV1のまま。 -->
 <style>
 :root{ --night:#0d1026; --panel:#151a38; --line:#2a3160; --gold:#e8c66a; --txt:#e8eaf6; --dim:#8890b5; --green:#7ee0a3; --red:#e08585; }
 *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
@@ -55,7 +57,7 @@ textarea:focus{ outline:none; border-color:var(--gold); }
 </head>
 <body>
 <div class="wrap">
-  <h1>画像プロンプト分配 <span style="font-size:.7em;color:var(--dim);letter-spacing:.1em;">V1</span><small>PROMPT SPLITTER</small></h1>
+  <h1>画像プロンプト分配 <span style="font-size:.7em;color:var(--dim);letter-spacing:.1em;">V3</span><small>PROMPT SPLITTER</small></h1>
   <p class="note">Claudeが出した画像プロンプト(1つのかたまりに複数入り)を下に貼るだけ。<b>😀の目印で自動的に分割</b>し、絵文字を消して1個ずつ保存します。あとは緑のボタンを<b>押すたびに1個コピーして次へ</b>進みます。</p>
 
   <textarea id="inBox" placeholder="ここに貼り付け(😀😀😀😀 が区切り)"></textarea>
@@ -489,6 +491,9 @@ async function copyText(text){
     return ok;
   }
 }
+// 1枚+正方形指定の常時付加(V3・2026-08-04)。Gemini画像生成の廃止決定により全コピーへ必ず付ける
+const ONE_IMG_LINE = "Create exactly one image only. Output must be a single square 1:1 image. Do not generate multiple images, variations, collages, grids, or multi-panel layouts. Return only one final image.";
+function outText(t){ return ONE_IMG_LINE + "\n\n" + t; }
 function markCopied(i, v){
   state.bundle.copied[i] = { v: !!v, ts: Date.now() };
 }
@@ -506,13 +511,13 @@ async function seqCopy(){
     save(); render();
     return;
   }
-  const ok = await copyText(state.bundle.items[idx].text);
+  const ok = await copyText(outText(state.bundle.items[idx].text));
   if(!ok){ toast("コピーできませんでした。もう一度押してください", true); return; }
   if(!state.bundle || state.bundle.id !== bid){ toast("コピーはできましたが、同期で内容が変わったため進捗は更新しませんでした", true); render(); return; }
   markCopied(idx, true);
   save();
   render();
-  toast(`${idx + 1}個目${state.bundle.items[idx].label ? "(" + state.bundle.items[idx].label + ")" : ""}をコピーしました`);
+  toast(`${idx + 1}個目${state.bundle.items[idx].label ? "(" + state.bundle.items[idx].label + ")" : ""}をコピーしました(1枚指定つき)`);
 }
 el("seqBtn").onclick = seqCopy;
 el("backBtn").onclick = ()=>{
@@ -526,12 +531,12 @@ el("backBtn").onclick = ()=>{
 async function copyOne(i){
   if(!state.bundle || !state.bundle.items[i]) return;
   const bid = state.bundle.id;
-  const ok = await copyText(state.bundle.items[i].text);
+  const ok = await copyText(outText(state.bundle.items[i].text));
   if(!ok){ toast("コピーできませんでした", true); return; }
   if(!state.bundle || state.bundle.id !== bid){ toast("コピーはできましたが、同期で内容が変わったため進捗は更新しませんでした", true); render(); return; }
   markCopied(i, true);
   save(); render();
-  toast(`${i + 1}個目をコピーしました`);
+  toast(`${i + 1}個目をコピーしました(1枚指定つき)`);
 }
 function render(){
   const seq = el("seqBtn");
