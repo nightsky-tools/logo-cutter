@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>リピーター引き継ぎ盤</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap');
+body{margin:0;min-height:100vh;background:linear-gradient(180deg,#12162A 0%,#171C33 55%,#1A1F38 100%);color:#EAE6DB;font-family:'Zen Kaku Gothic New','Hiragino Sans',sans-serif;padding:28px 16px 56px;box-sizing:border-box}
+.wrap{max-width:680px;margin:0 auto}
+.display{font-family:'Shippori Mincho',serif}
+.card{background:#1E2440;border:1px solid #2C3350;border-radius:14px;padding:18px 16px;margin-top:16px}
+h1{font-size:26px;font-weight:700;margin:10px 0 6px}
+h2{font-size:16px;margin:0 0 10px;color:#D8B36A}
+label{font-size:12px;color:#8D93AC;letter-spacing:.08em;display:block;margin-bottom:5px}
+textarea{width:100%;box-sizing:border-box;background:#141930;border:1px solid #3A415C;border-radius:8px;color:#EAE6DB;padding:10px 12px;font-size:12.5px;line-height:1.7;outline:none;font-family:'SFMono-Regular',Menlo,Consolas,monospace;resize:vertical;min-height:200px}
+textarea:focus{border-color:#D8B36A}
+.btn{background:#D8B36A;color:#12162A;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-top:12px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.result-row{display:grid;grid-template-columns:120px 1fr 1fr 60px;gap:8px;padding:8px 0;border-bottom:1px solid #2C3350;font-size:13px;align-items:start}
+.result-row.head{font-size:11px;color:#8D93AC;padding:4px 0}
+.ok{color:#9CC79A}.ng{color:#E08A7A}.warn{color:#D8B36A}
+.badge-ok{background:#1E3A2A;color:#9CC79A;border:1px solid #2E5A3A;border-radius:4px;padding:2px 7px;font-size:11px;white-space:nowrap}
+.badge-ng{background:#3A1E1E;color:#E08A7A;border:1px solid #5A2E2E;border-radius:4px;padding:2px 7px;font-size:11px;white-space:nowrap}
+.badge-new{background:#1E2A3A;color:#8DB0D8;border:1px solid #2E4A5A;border-radius:4px;padding:2px 7px;font-size:11px;white-space:nowrap}
+.summary-ok{background:#1E2440;border:1px solid #9CC79A;border-radius:10px;padding:14px 16px;text-align:center;margin-top:4px}
+.summary-ng{background:#1E2440;border:1px solid #E08A7A;border-radius:10px;padding:14px 16px;text-align:center;margin-top:4px}
+.note{font-size:11.5px;color:#8D93AC;line-height:1.7;margin:8px 0 0}
+pre{background:#141930;border:1px solid #3A415C;border-radius:10px;padding:14px;font-size:12px;line-height:1.75;white-space:pre-wrap;word-break:break-all;margin:0;font-family:'SFMono-Regular',Menlo,Consolas,monospace;color:#CFD3E4}
+.copybtn{background:#D8B36A;color:#12162A;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer}
+.copybtn.done{background:#9CC79A}
+@media(max-width:520px){.row2{grid-template-columns:1fr}.result-row{grid-template-columns:90px 1fr 1fr 50px;font-size:11.5px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="text-align:center;margin-bottom:4px">
+    <div style="font-size:11px;letter-spacing:.35em;color:#D8B36A">&#10022; REPEAT CLIENT VERIFIER &#10022;</div>
+    <h1 class="display">リピーター引き継ぎ盤</h1>
+    <p style="font-size:13px;color:#8D93AC;margin:0;line-height:1.7">
+      前回と今回の「検算済みブロック」を貼り付けて照合します。<br>
+      天体・星座・度数・ハウスを1項目ずつ文字単位で比較し、<br>
+      不一致があれば即座に警告します。
+    </p>
+  </header>
+
+  <section class="card">
+    <div class="row2">
+      <div>
+        <label>前回の検算済みブロック</label>
+        <textarea id="blockA" placeholder="【検算済み出生図ブロック】&#10;対象: ○○ 様&#10;...をここに貼り付け"></textarea>
+      </div>
+      <div>
+        <label>今回の検算済みブロック</label>
+        <textarea id="blockB" placeholder="【検算済み出生図ブロック】&#10;対象: ○○ 様&#10;...をここに貼り付け"></textarea>
+      </div>
+    </div>
+    <button class="btn" id="compareBtn">照合する</button>
+  </section>
+
+  <section class="card" id="resultCard" style="display:none">
+    <h2 class="display">照合結果</h2>
+    <div id="summaryArea"></div>
+    <div id="tableArea" style="margin-top:16px"></div>
+    <p class="note" id="diffNote"></p>
+  </section>
+
+  <section class="card" id="blockCard" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h2 class="display">引き継ぎメモ（AIへの申し送り用）</h2>
+      <button class="copybtn" id="copyBtn">コピー</button>
+    </div>
+    <pre id="memoOut"></pre>
+    <p class="note">リピーター追補命令書の【前回鑑定の引き継ぎ】欄に貼り付けて使えます。</p>
+  </section>
+</div>
+
+<script>
+/* ===== パーサー ===== */
+const PLANET_KEYS=["太陽","月","水星","金星","火星","木星","土星"];
+const ANGLE_KEYS=["上昇宮（ASC）","天頂（MC）"];
+
+function parseBlock(text){
+  const lines=text.split(/\r?\n/);
+  const data={meta:{},planets:{},angles:{},raw:text};
+
+  for(const line of lines){
+    // 全角コロン→半角・行頭末尾スペース除去・連続スペース正規化
+    const l=line.trim().replace(/：/g,":").replace(/\s{2,}/g," ");
+    if(!l)continue;
+
+    // メタ情報
+    if(/^対象\s*:/.test(l))data.meta.name=l.replace(/^対象\s*:\s*/,"").trim();
+    if(/^生年月日\s*:/.test(l))data.meta.date=l.replace(/^生年月日\s*:\s*/,"").trim();
+    if(/^出生時刻\s*:/.test(l))data.meta.time=l.replace(/^出生時刻\s*:\s*/,"").trim();
+
+    // 天体行
+    for(const key of PLANET_KEYS){
+      if(new RegExp("^"+key+"\\s*:").test(l)){
+        data.planets[key]=parsePlanetLine(l,key);
+        break;
+      }
+    }
+    // 角度
+    for(const key of ANGLE_KEYS){
+      if(new RegExp("^"+key+"\\s*:").test(l)){
+        data.angles[key]=parseAngleLine(l,key);
+        break;
+      }
+    }
+  }
+  return data;
+}
+
+function parsePlanetLine(line,key){
+  const rest=line.replace(new RegExp("^"+key+"\\s*[：:]\\s*"),"").trim();
+  const retro=rest.includes("（逆行）")||rest.includes("(逆行)");
+  // 星座と度数
+  const signMatch=rest.match(/([ぁ-ん座]+座)/);
+  const degMatch=rest.match(/(\d+)度(\d+)分/);
+  // ハウス
+  const houseMatch=rest.match(/第(\d+)ハウス/);
+  // 時刻なし版の範囲
+  const rangeMatch=rest.match(/（([^〜]+)〜([^）]+)）/)||rest.match(/\(([^~]+)~([^\)]+)\)/);
+  return{
+    sign: signMatch?signMatch[1]:"",
+    deg: degMatch?`${degMatch[1]}度${degMatch[2]}分`:"",
+    retro,
+    house: houseMatch?houseMatch[1]:"",
+    range: rangeMatch?`${rangeMatch[1]}〜${rangeMatch[2]}`:"",
+    raw: rest
+  };
+}
+
+function parseAngleLine(line,key){
+  const rest=line.replace(new RegExp("^"+key+"\\s*[：:]\\s*"),"").trim();
+  const signMatch=rest.match(/([ぁ-ん座]+座)/);
+  const degMatch=rest.match(/(\d+)度(\d+)分/);
+  return{
+    sign: signMatch?signMatch[1]:"",
+    deg: degMatch?`${degMatch[1]}度${degMatch[2]}分`:"",
+    raw: rest
+  };
+}
+
+/* ===== 比較 ===== */
+function compareBlocks(a,b){
+  const rows=[];
+  let allOk=true;
+
+  // メタ
+  const nameSame=(a.meta.name||"")===( b.meta.name||"");
+  const dateSame=(a.meta.date||"")===( b.meta.date||"");
+  rows.push({label:"お名前",va:a.meta.name||"（なし）",vb:b.meta.name||"（なし）",ok:nameSame,type:"meta"});
+  rows.push({label:"生年月日",va:a.meta.date||"（なし）",vb:b.meta.date||"（なし）",ok:dateSame,type:"meta"});
+  if(!nameSame||!dateSame)allOk=false;
+
+  // 天体
+  for(const key of PLANET_KEYS){
+    const pa=a.planets[key],pb=b.planets[key];
+    if(!pa&&!pb)continue;
+    if(!pa){rows.push({label:key,va:"（なし）",vb:fmtPlanet(pb),ok:false,type:"planet"});allOk=false;continue;}
+    if(!pb){rows.push({label:key,va:fmtPlanet(pa),vb:"（なし）",ok:false,type:"planet"});allOk=false;continue;}
+    const signOk=pa.sign===pb.sign;
+    const degOk=pa.deg===pb.deg;
+    const retroOk=pa.retro===pb.retro;
+    const houseOk=(!pa.house&&!pb.house)||(pa.house===pb.house);
+    const ok=signOk&&degOk&&retroOk&&houseOk;
+    if(!ok)allOk=false;
+    rows.push({label:key,va:fmtPlanet(pa),vb:fmtPlanet(pb),ok,signOk,degOk,retroOk,houseOk,type:"planet"});
+  }
+
+  // 角度
+  for(const key of ANGLE_KEYS){
+    const aa=a.angles[key],ab=b.angles[key];
+    if(!aa&&!ab)continue;
+    if(!aa){rows.push({label:key,va:"（なし）",vb:fmtAngle(ab),ok:false,type:"angle"});allOk=false;continue;}
+    if(!ab){rows.push({label:key,va:fmtAngle(aa),vb:"（なし）",ok:false,type:"angle"});allOk=false;continue;}
+    const ok=aa.sign===ab.sign&&aa.deg===ab.deg;
+    if(!ok)allOk=false;
+    rows.push({label:key,va:fmtAngle(aa),vb:fmtAngle(ab),ok,type:"angle"});
+  }
+
+  return{rows,allOk};
+}
+
+function fmtPlanet(p){
+  if(!p)return"（なし）";
+  let s=p.sign+(p.deg?" "+p.deg:"");
+  if(p.range)s+=`（${p.range}）`;
+  if(p.retro)s+="（逆行）";
+  if(p.house)s+=` ／ 第${p.house}H`;
+  return s;
+}
+function fmtAngle(p){if(!p)return"（なし）";return p.sign+(p.deg?" "+p.deg:"");}
+
+/* ===== 引き継ぎメモ生成 ===== */
+function buildMemo(a,b,rows,allOk){
+  const L=[];
+  L.push("【リピーター引き継ぎ照合メモ】");
+  L.push(`照合日: ${new Date().toLocaleDateString("ja-JP")}`);
+  L.push(`お客様: ${a.meta.name||"（不明）"}`);
+  L.push(`生年月日: ${a.meta.date||"（不明）"}`);
+  L.push("");
+  if(allOk){
+    L.push("▶ 照合結果: 全項目一致 ✓");
+    L.push("　前回・今回の計算結果に相違なし。前回鑑定書の内容をそのまま引き継いでください。");
+  } else {
+    L.push("▶ 照合結果: 不一致あり ⚠ — 以下の項目を確認してください");
+    for(const r of rows){
+      if(!r.ok){
+        L.push(`　× ${r.label}`);
+        L.push(`　　前回: ${r.va}`);
+        L.push(`　　今回: ${r.vb}`);
+      }
+    }
+    L.push("");
+    L.push("⚠ 不一致がある項目は、どちらのデータが正しいか占い師が確認のうえ、");
+    L.push("  正しい方のブロックのみを命令書に貼り付けてください。");
+    L.push("  AIにどちらが正しいかを判断させないでください。");
+  }
+  L.push("");
+  L.push("◆ 前回の検算済みブロック（参照用）:");
+  L.push(a.raw.trim());
+  return L.join("\n");
+}
+
+/* ===== UI ===== */
+const $=id=>document.getElementById(id);
+
+$("compareBtn").addEventListener("click",()=>{
+  const ta=$("blockA").value.trim();
+  const tb=$("blockB").value.trim();
+  if(!ta||!tb){alert("前回・今回の両方のブロックを貼り付けてください。");return;}
+
+  const a=parseBlock(ta);
+  const b=parseBlock(tb);
+  const{rows,allOk}=compareBlocks(a,b);
+
+  // サマリー
+  const summaryEl=$("summaryArea");
+  if(allOk){
+    summaryEl.innerHTML=`<div class="summary-ok"><span style="font-size:20px">✓</span><br><strong style="color:#9CC79A;font-size:15px">全項目一致 — 引き継ぎOK</strong><br><span style="font-size:12px;color:#8D93AC">前回・今回の計算結果に相違ありません。</span></div>`;
+  } else {
+    const ngCount=rows.filter(r=>!r.ok).length;
+    summaryEl.innerHTML=`<div class="summary-ng"><span style="font-size:20px">⚠</span><br><strong style="color:#E08A7A;font-size:15px">不一致 ${ngCount}件 — 要確認</strong><br><span style="font-size:12px;color:#8D93AC">赤字の項目を確認してからAIに渡してください。</span></div>`;
+  }
+
+  // テーブル
+  let t=`<div class="result-row head"><span>項目</span><span>前回</span><span>今回</span><span>判定</span></div>`;
+  for(const r of rows){
+    const badge=r.ok
+      ?`<span class="badge-ok">一致</span>`
+      :`<span class="badge-ng">相違</span>`;
+    t+=`<div class="result-row">
+      <span style="color:#8D93AC">${esc(r.label)}</span>
+      <span style="${r.ok?"":"color:#E08A7A"}">${esc(r.va)}</span>
+      <span style="${r.ok?"":"color:#E08A7A"}">${esc(r.vb)}</span>
+      <span>${badge}</span>
+    </div>`;
+  }
+  $("tableArea").innerHTML=t;
+  $("resultCard").style.display="";
+
+  // 引き継ぎメモ
+  const memo=buildMemo(a,b,rows,allOk);
+  $("memoOut").textContent=memo;
+  $("blockCard").style.display="";
+  $("diffNote").innerHTML=allOk
+    ? '<span class="ok">✓ 下の引き継ぎメモをリピーター追補命令書の【前回鑑定の引き継ぎ】欄に貼り付けてください。</span>'
+    : '<span class="warn">⚠ 不一致項目を確認・修正してから下のメモを使用してください。不一致のまま命令書に貼ることは禁止です。</span>';
+});
+
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+$("copyBtn").addEventListener("click",async()=>{
+  const text=$("memoOut").textContent;
+  try{await navigator.clipboard.writeText(text);}
+  catch(e){const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);}
+  $("copyBtn").textContent="コピーしました";$("copyBtn").classList.add("done");
+  setTimeout(()=>{$("copyBtn").textContent="コピー";$("copyBtn").classList.remove("done");},1600);
+});
+</script>
+</body>
+</html>
+
