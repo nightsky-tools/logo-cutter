@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>稼働時間</title>
+<style>
+  :root{
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --stone50:#fafaf9; --stone100:#f5f5f4; --stone200:#e7e5e4; --stone300:#d6d3d1;
+    --stone400:#a8a29e; --stone500:#78716c; --stone600:#57534e; --stone700:#44403c;
+    --stone800:#292524; --stone900:#1c1917;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0;}
+  body{
+    background:var(--stone100); color:var(--stone900);
+    font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+    font-size:16px; line-height:1.5;
+  }
+  button{appearance:none; border:0; background:none; font:inherit; color:inherit; cursor:pointer; padding:0; text-align:inherit;}
+  button:focus-visible{outline:2px solid var(--stone400); outline-offset:2px;}
+  .mono{font-family:var(--mono);}
+  .tnum{font-variant-numeric:tabular-nums;}
+
+  #app[data-theme="day"]{
+    --seg-bg:#f59e0b; --seg-tx:#1c1917; --work:#fbbf24; --ot:#d97706;
+    --chip-bg:#fef3c7; --chip-tx:#92400e; --accent:#d97706; --tile-sub:#fde68a;
+  }
+  #app[data-theme="night"]{
+    --seg-bg:#4f46e5; --seg-tx:#ffffff; --work:#818cf8; --ot:#4338ca;
+    --chip-bg:#e0e7ff; --chip-tx:#3730a3; --accent:#4f46e5; --tile-sub:#c7d2fe;
+  }
+
+  .loading{min-height:100vh; display:flex; align-items:center; justify-content:center; font-size:.875rem; color:var(--stone500);}
+  .wrap{max-width:28rem; margin:0 auto; padding:1rem 1rem 4rem;}
+  .wrap > * + *{margin-top:1rem;}
+  [hidden]{display:none !important;}
+  svg{display:block; flex:none;}
+
+  .head{display:flex; align-items:center; justify-content:space-between;}
+  .brand{display:flex; align-items:center; gap:.5rem;}
+  .logo{width:2rem; height:2rem; border-radius:.5rem; background:var(--stone900); color:#fbbf24; display:flex; align-items:center; justify-content:center;}
+  .brand h1{margin:0; font-size:1.125rem; font-weight:700; letter-spacing:.025em;}
+  .now{font-size:.75rem; color:var(--stone500);}
+
+  .banner{display:flex; align-items:center; gap:.5rem; border:1px solid #fecaca; background:#fef2f2; color:#b91c1c;
+    border-radius:.75rem; padding:.5rem .75rem; font-size:.75rem;}
+  .banner span{flex:1;}
+  .banner button{color:#f87171; display:flex;}
+  .banner button:hover{color:#dc2626;}
+
+  .shift-grid{display:grid; grid-template-columns:1fr 1fr; gap:.5rem;}
+  .shift-btn{display:flex; align-items:center; justify-content:center; gap:.5rem;
+    border-radius:1rem; border:1px solid var(--stone200); background:#fff; color:var(--stone500);
+    padding:.75rem; font-size:.875rem; font-weight:700; transition:background-color .15s,color .15s,border-color .15s;}
+  .shift-btn:hover{background:var(--stone50);}
+  .shift-btn .sub{font-size:.75rem; font-weight:400; color:var(--stone400);}
+  .shift-btn.on{border-color:transparent; box-shadow:0 1px 2px 0 rgba(0,0,0,.05);}
+  .shift-btn.on[data-key="day"]{background:#f59e0b; color:#1c1917;}
+  .shift-btn.on[data-key="night"]{background:#4f46e5; color:#fff;}
+  .shift-btn.on .sub{color:inherit; opacity:.8;}
+
+  .pat-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:.375rem;}
+  .pat-btn{border-radius:.75rem; border:1px solid var(--stone200); background:#fff; color:var(--stone600);
+    padding:.5rem .25rem; text-align:center; transition:background-color .15s,color .15s;}
+  .pat-btn:hover{background:var(--stone50);}
+  .pat-btn .pl{font-size:.875rem; font-weight:700;}
+  .pat-btn .pe{font-size:.75rem; color:var(--stone400);}
+  .pat-btn.on{border-color:transparent; background:var(--stone900); color:#fff; box-shadow:0 1px 2px 0 rgba(0,0,0,.05);}
+  .pat-btn.on .pe{color:var(--stone300);}
+
+  .card{background:#fff; border:1px solid var(--stone200); border-radius:1rem; box-shadow:0 1px 2px 0 rgba(0,0,0,.05);}
+  .card.pad{padding:1.25rem;}
+
+  .sum-head{display:flex; align-items:baseline; justify-content:space-between; gap:.5rem;}
+  .sum-label{font-size:.75rem; font-weight:700; letter-spacing:.1em; color:var(--stone500);}
+  .sum-range{font-size:.875rem; color:var(--stone600);}
+  .tile{margin-top:.75rem; border-radius:.75rem; background:var(--stone900); padding:1rem; text-align:center;}
+  .tile .big{font-size:2.25rem; line-height:2.5rem; font-weight:700; color:#fff;}
+  .tile .tsub{margin-top:.25rem; font-size:.75rem; color:var(--tile-sub);}
+  .sum-row{margin-top:.75rem; display:flex; justify-content:center; gap:1rem; font-size:.875rem; color:var(--stone600);}
+  .sum-row b{font-weight:700;}
+  .tl-wrap{margin-top:1rem; border-top:1px dashed var(--stone200); padding-top:1rem;}
+  .tl-bar{position:relative; display:flex; height:1rem; width:100%; overflow:hidden; border-radius:9999px; background:var(--stone200);}
+  .tl-work{background:var(--work);}
+  .tl-ot{background:var(--ot);}
+  .tl-break{background:var(--stone300);}
+  .tl-tick{position:absolute; top:0; height:100%; width:2px; background:#fff;}
+  .tl-labels{margin-top:.25rem; display:flex; justify-content:space-between; font-size:.75rem; color:var(--stone500);}
+  .tl-legend{margin-top:.5rem; display:flex; flex-wrap:wrap; column-gap:.75rem; row-gap:.25rem; font-size:.75rem; color:var(--stone500);}
+  .tl-legend span{display:flex; align-items:center; gap:.25rem;}
+  .sw{width:.625rem; height:.625rem; border-radius:.125rem; display:inline-block;}
+
+  .live{background:var(--stone900); color:#fff; border-radius:1rem; padding:1rem; box-shadow:0 1px 2px 0 rgba(0,0,0,.05);}
+  .live-head{display:flex; align-items:center; justify-content:space-between;}
+  .live-st{display:flex; align-items:center; gap:.5rem; font-size:.875rem; font-weight:700;}
+  .dot{width:.625rem; height:.625rem; border-radius:9999px; background:var(--stone400);}
+  .dot.work{background:#34d399; animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+  .live-range{font-size:.75rem; font-weight:400; color:var(--stone400);}
+  .chip{border-radius:9999px; background:var(--chip-bg); color:var(--chip-tx); padding:.125rem .5rem; font-size:.75rem; font-weight:700;}
+  .live-mid{margin-top:.75rem; text-align:center;}
+  .live-mid .lab{font-size:.75rem; color:var(--stone400);}
+  .live-mid .big{font-size:2.25rem; line-height:2.5rem; font-weight:700;}
+  .live-foot{margin-top:.75rem; display:flex; justify-content:center; gap:1rem; border-top:1px solid var(--stone700); padding-top:.75rem; font-size:.75rem; color:var(--stone300);}
+  .live-foot b{font-weight:700;}
+
+  .off{display:flex; align-items:center; justify-content:space-between; background:#fff; border:1px solid var(--stone200);
+    border-radius:1rem; padding:.75rem 1rem; font-size:.875rem; color:var(--stone500); box-shadow:0 1px 2px 0 rgba(0,0,0,.05);}
+
+  .sec-head{display:flex; align-items:center; justify-content:space-between; padding:.75rem 1rem;}
+  .sec-title{display:flex; align-items:center; gap:.375rem; font-size:.875rem; font-weight:700; color:var(--stone700);}
+  .sec-title svg{color:var(--stone500);}
+  .link-btn{display:flex; align-items:center; gap:.25rem; font-size:.75rem; font-weight:700; color:var(--stone500);}
+  .link-btn:hover{color:var(--stone700);}
+  .link-btn.dim{color:var(--stone400);}
+  .link-btn.dim:hover{color:var(--stone600);}
+
+  .rows{border-top:1px solid var(--stone200);}
+  .brk{display:flex; width:100%; align-items:center; gap:.5rem; padding:.625rem 1rem; transition:background-color .15s;}
+  .brk + .brk{border-top:1px solid var(--stone100, #f5f5f4);}
+  .rows .brk:not(:first-child){border-top:1px solid #f5f5f4;}
+  .brk:hover{background:var(--stone50);}
+  .brk.skip{background:var(--stone50);}
+  .badge{width:3.5rem; flex:none; border-radius:9999px; background:var(--stone200); color:var(--stone600);
+    padding:.25rem .5rem; text-align:center; font-size:.75rem; font-weight:700;}
+  .brk.skip .badge{background:var(--chip-bg); color:var(--chip-tx);}
+  .brk-main{min-width:0; flex:1;}
+  .brk-name{font-size:.875rem; font-weight:500; color:var(--stone800);}
+  .brk-time{margin-left:.5rem; font-size:.75rem; color:var(--stone500);}
+  .brk-dur{flex:none; font-size:.75rem; font-weight:700; color:var(--stone400);}
+  .brk.skip .brk-dur{color:var(--accent);}
+
+  .col-btn{display:flex; width:100%; align-items:center; justify-content:space-between; padding:.75rem 1rem;
+    font-size:.875rem; font-weight:700; color:var(--stone700); border-radius:1rem;}
+  .col-btn:hover{background:var(--stone50);}
+  .tbl-body{border-top:1px solid var(--stone200);}
+  .tbl-shift{padding:.75rem 1rem;}
+  .tbl-shift-label{margin-bottom:.375rem; font-size:.75rem; font-weight:700;}
+  .tbl-shift-label.day{color:#d97706;}
+  .tbl-shift-label.night{color:#4f46e5;}
+  .tbl-list{border:1px solid var(--stone200); border-radius:.75rem; overflow:hidden;}
+  .tbl-row{display:flex; align-items:center; justify-content:space-between; padding:.5rem .75rem; font-size:.875rem;}
+  .tbl-row + .tbl-row{border-top:1px solid #f5f5f4;}
+  .tbl-row .tl1{font-weight:500; color:var(--stone700);}
+  .tbl-row .tl2{font-size:.75rem; color:var(--stone500);}
+  .tbl-row .tl3{font-weight:700; color:var(--stone800);}
+  .tbl-row .tl3 small{margin-left:.25rem; font-weight:400; font-size:.75rem; color:var(--stone400);}
+
+  .foot{padding-top:.25rem; text-align:center; font-size:.75rem; color:var(--stone400); margin-bottom:0;}
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading">読み込み中…</div>
+
+<div id="app" class="wrap" data-theme="day" hidden>
+  <header class="head">
+    <div class="brand">
+      <span class="logo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </span>
+      <h1>稼働時間</h1>
+    </div>
+    <div class="now mono tnum" id="clockNow"></div>
+  </header>
+
+  <div id="saveBanner" class="banner" hidden>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span>設定の保存に失敗しました。</span>
+    <button type="button" aria-label="閉じる" data-action="dismiss-save">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    </button>
+  </div>
+
+  <div class="shift-grid">
+    <button type="button" class="shift-btn" data-action="shift" data-key="day" id="btnDay">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+      昼勤
+      <span class="sub mono tnum">8:30〜</span>
+    </button>
+    <button type="button" class="shift-btn" data-action="shift" data-key="night" id="btnNight">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      夜勤
+      <span class="sub mono tnum">21:00〜</span>
+    </button>
+  </div>
+
+  <div class="pat-grid" id="patGrid"></div>
+
+  <section class="card pad" id="summaryCard"></section>
+
+  <div id="liveWrap"></div>
+
+  <section class="card">
+    <div class="sec-head">
+      <div class="sec-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v2"/><path d="M14 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/><path d="M6 2v2"/></svg>
+        休憩（タップで稼働に切替）
+      </div>
+      <span id="breaksAction"></span>
+    </div>
+    <div class="rows" id="breaksList"></div>
+  </section>
+
+  <section class="card">
+    <button type="button" class="col-btn" data-action="toggle-table">
+      <span class="sec-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
+        全パターン早見表（休憩あり）
+      </span>
+      <span id="chevR"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+      <span id="chevD" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+    </button>
+    <div class="tbl-body" id="tableBody" hidden></div>
+  </section>
+
+  <p class="foot">時刻はご指定の勤務表の通りに登録しています。設定は自動保存されます。</p>
+</div>
+
+<script>
+"use strict";
+
+var STORAGE_KEY = "kadou-time:v1";
+function pad(n){ return String(n).padStart(2, "0"); }
+
+// ---- 勤務時間データ（分単位・0=当日0:00、1440以上=翌日）----
+// ユーザー指定の時刻をそのまま登録。ここ以外に時刻の情報源はない。
+var SHIFTS = {
+  day: {
+    key: "day",
+    label: "昼勤",
+    start: 8 * 60 + 30, // 8:30
+    regularEnd: 17 * 60 + 20, // 17:20
+    baseBreaks: [
+      { id: "d1", label: "休憩", from: 10 * 60 + 30, to: 10 * 60 + 40 }, // 10:30-10:40
+      { id: "d2", label: "昼休憩", from: 12 * 60 + 30, to: 13 * 60 + 25 }, // 12:30-13:25
+      { id: "d3", label: "休憩", from: 15 * 60 + 20, to: 15 * 60 + 30 }  // 15:20-15:30
+    ],
+    patterns: [
+      { id: "t", label: "定時", end: 17 * 60 + 20, extraBreaks: [] },
+      { id: "z1", label: "残業1", end: 18 * 60 + 30, // 18:30
+        extraBreaks: [ { id: "d-o1", label: "休憩", from: 17 * 60 + 20, to: 17 * 60 + 30 } ] }, // 17:20-17:30
+      { id: "z2", label: "残業2", end: 19 * 60 + 30, // 19:30
+        extraBreaks: [ { id: "d-o1", label: "休憩", from: 17 * 60 + 20, to: 17 * 60 + 30 } ] },
+      { id: "z275", label: "残業2.75", end: 20 * 60 + 25, // 20:25
+        extraBreaks: [
+          { id: "d-o1", label: "休憩", from: 17 * 60 + 20, to: 17 * 60 + 30 },
+          { id: "d-o2", label: "休憩", from: 19 * 60 + 30, to: 19 * 60 + 40 } // 19:30-19:40
+        ] }
+    ]
+  },
+  night: {
+    key: "night",
+    label: "夜勤",
+    start: 21 * 60, // 21:00
+    regularEnd: 1440 + 5 * 60 + 50, // 翌5:50
+    baseBreaks: [
+      { id: "n1", label: "休憩", from: 23 * 60, to: 23 * 60 + 10 }, // 23:00-23:10
+      { id: "n2", label: "昼休憩", from: 1440 + 60, to: 1440 + 60 + 55 }, // 翌1:00-1:55
+      { id: "n3", label: "休憩", from: 1440 + 4 * 60, to: 1440 + 4 * 60 + 10 } // 翌4:00-4:10
+    ],
+    patterns: [
+      { id: "t", label: "定時", end: 1440 + 5 * 60 + 50, extraBreaks: [] },
+      { id: "z1", label: "残業1", end: 1440 + 7 * 60, // 翌7:00
+        extraBreaks: [ { id: "n-o1", label: "休憩", from: 1440 + 5 * 60 + 50, to: 1440 + 6 * 60 } ] }, // 翌5:50-6:00
+      { id: "z2", label: "残業2", end: 1440 + 8 * 60, // 翌8:00
+        extraBreaks: [ { id: "n-o1", label: "休憩", from: 1440 + 5 * 60 + 50, to: 1440 + 6 * 60 } ] },
+      { id: "z225", label: "残業2.25", end: 1440 + 8 * 60 + 25, // 翌8:25
+        extraBreaks: [
+          { id: "n-o1", label: "休憩", from: 1440 + 5 * 60 + 50, to: 1440 + 6 * 60 },
+          { id: "n-o2", label: "休憩", from: 1440 + 8 * 60, to: 1440 + 8 * 60 + 10 } // 翌8:00-8:10
+        ] }
+    ]
+  }
+};
+
+// ---- ヘルパー ----
+function fmtClock(t){
+  var next = t >= 1440;
+  var m = t % 1440;
+  return (next ? "翌" : "") + Math.floor(m / 60) + ":" + pad(m % 60);
+}
+function fmtDur(min){
+  var h = Math.floor(min / 60);
+  var m = min % 60;
+  if (h === 0) return m + "分";
+  if (m === 0) return h + "時間";
+  return h + "時間" + m + "分";
+}
+function fmtDec(min){ return (min / 60).toFixed(2) + "h"; }
+function fmtHMS(totalSec){
+  var s = Math.max(0, Math.floor(totalSec));
+  return Math.floor(s / 3600) + ":" + pad(Math.floor((s % 3600) / 60)) + ":" + pad(s % 60);
+}
+function visibleBreaks(shiftDef, pattern){
+  return shiftDef.baseBreaks.concat(pattern.extraBreaks).slice().sort(function(a, b){ return a.from - b.from; });
+}
+// 稼働(work)と休憩(break)の区間リストを作る。スキップした休憩は稼働扱い。
+function buildSegments(shiftDef, pattern, skips){
+  var breaks = visibleBreaks(shiftDef, pattern);
+  var segs = [];
+  var cur = shiftDef.start;
+  for (var i = 0; i < breaks.length; i++){
+    var b = breaks[i];
+    if (b.from > cur) segs.push({ from: cur, to: b.from, type: "work" });
+    segs.push({
+      from: b.from, to: b.to,
+      type: skips[b.id] ? "work" : "break",
+      breakId: b.id, skipped: !!skips[b.id]
+    });
+    cur = b.to;
+  }
+  if (cur < pattern.end) segs.push({ from: cur, to: pattern.end, type: "work" });
+  return segs;
+}
+function totals(shiftDef, pattern, segs){
+  var work = 0, rest = 0;
+  segs.forEach(function(s){
+    if (s.type === "work") work += s.to - s.from; else rest += s.to - s.from;
+  });
+  return { work: work, rest: rest, gross: pattern.end - shiftDef.start };
+}
+
+// ---- 状態 ----
+var state = {
+  loaded: false,
+  shiftKey: "day",
+  patIds: { day: "t", night: "t" },
+  skips: {},
+  showTable: false
+};
+
+function currentShift(){ return SHIFTS[state.shiftKey]; }
+function currentPattern(){
+  var sd = currentShift();
+  for (var i = 0; i < sd.patterns.length; i++){
+    if (sd.patterns[i].id === state.patIds[state.shiftKey]) return sd.patterns[i];
+  }
+  return sd.patterns[0];
+}
+
+// ---- 保存 ----
+async function saveState(){
+  if (!state.loaded) return;
+  if (!window.storage) return; // 単体で開いた場合は保存なしで動作
+  try {
+    var res = await window.storage.set(STORAGE_KEY, JSON.stringify({
+      shiftKey: state.shiftKey, patIds: state.patIds, skips: state.skips
+    }));
+    if (!res) showSaveErr();
+  } catch (e) {
+    showSaveErr();
+  }
+}
+function showSaveErr(){ document.getElementById("saveBanner").hidden = false; }
+
+async function loadState(){
+  if (!window.storage) return;
+  try {
+    var res = await window.storage.get(STORAGE_KEY);
+    if (res && res.value) {
+      var d = JSON.parse(res.value);
+      if (d.shiftKey === "day" || d.shiftKey === "night") state.shiftKey = d.shiftKey;
+      if (d.patIds) state.patIds = { day: d.patIds.day || "t", night: d.patIds.night || "t" };
+      if (d.skips && typeof d.skips === "object") state.skips = d.skips;
+    }
+  } catch (e) {
+    // 保存データなし
+  }
+}
+
+// ---- 描画 ----
+function esc(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+
+function renderShiftButtons(){
+  document.getElementById("app").setAttribute("data-theme", state.shiftKey);
+  document.getElementById("btnDay").classList.toggle("on", state.shiftKey === "day");
+  document.getElementById("btnNight").classList.toggle("on", state.shiftKey === "night");
+}
+
+function renderPatterns(){
+  var sd = currentShift();
+  var cur = currentPattern();
+  var html = sd.patterns.map(function(p){
+    return '<button type="button" class="pat-btn' + (p.id === cur.id ? " on" : "") + '" data-action="pattern" data-id="' + p.id + '">' +
+      '<div class="pl">' + esc(p.label) + '</div>' +
+      '<div class="pe mono tnum">〜' + fmtClock(p.end) + '</div>' +
+      '</button>';
+  }).join("");
+  document.getElementById("patGrid").innerHTML = html;
+}
+
+function timelineHTML(segs, sd, p){
+  var total = p.end - sd.start;
+  var hasOT = p.end > sd.regularEnd;
+  var tick = ((sd.regularEnd - sd.start) / total) * 100;
+  var bars = segs.map(function(s){
+    var w = ((s.to - s.from) / total) * 100;
+    var cls = s.type === "break" ? "tl-break" : (s.from >= sd.regularEnd ? "tl-ot" : "tl-work");
+    var title = fmtClock(s.from) + "〜" + fmtClock(s.to) + " " +
+      (s.type === "break" ? "休憩" : (s.skipped ? "稼働（休憩なし）" : "稼働"));
+    return '<div class="' + cls + '" style="width:' + w + '%" title="' + esc(title) + '"></div>';
+  }).join("");
+  var tickHtml = hasOT
+    ? '<div class="tl-tick" style="left:' + tick + '%" title="定時終了 ' + fmtClock(sd.regularEnd) + '"></div>'
+    : "";
+  var midLabel = hasOT ? '<span>定時 ' + fmtClock(sd.regularEnd) + '</span>' : "";
+  var otLegend = hasOT ? '<span><span class="sw" style="background:var(--ot)"></span>残業稼働</span>' : "";
+  return '<div class="tl-bar">' + bars + tickHtml + '</div>' +
+    '<div class="tl-labels mono tnum"><span>' + fmtClock(sd.start) + '</span>' + midLabel + '<span>' + fmtClock(p.end) + '</span></div>' +
+    '<div class="tl-legend">' +
+      '<span><span class="sw" style="background:var(--work)"></span>定時稼働</span>' +
+      otLegend +
+      '<span><span class="sw" style="background:var(--stone300)"></span>休憩</span>' +
+    '</div>';
+}
+
+function renderSummary(){
+  var sd = currentShift();
+  var p = currentPattern();
+  var segs = buildSegments(sd, p, state.skips);
+  var sum = totals(sd, p, segs);
+  var breaks = visibleBreaks(sd, p);
+  var skippedCount = breaks.filter(function(b){ return state.skips[b.id]; }).length;
+
+  var html =
+    '<div class="sum-head">' +
+      '<div class="sum-label">稼働時間</div>' +
+      '<div class="sum-range mono tnum">' + fmtClock(sd.start) + ' 〜 ' + fmtClock(p.end) + '</div>' +
+    '</div>' +
+    '<div class="tile">' +
+      '<div class="big mono tnum">' + fmtDur(sum.work) + '</div>' +
+      '<div class="tsub mono tnum">' + fmtDec(sum.work) +
+        (skippedCount > 0 ? '・休憩なし稼働 ' + skippedCount + '件を含む' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="sum-row">' +
+      '<span>拘束 <b class="tnum">' + fmtDur(sum.gross) + '</b></span>' +
+      '<span>休憩 <b class="tnum">' + fmtDur(sum.rest) + '</b></span>' +
+    '</div>' +
+    '<div class="tl-wrap">' + timelineHTML(segs, sd, p) + '</div>';
+  document.getElementById("summaryCard").innerHTML = html;
+}
+
+function renderLive(){
+  var sd = currentShift();
+  var p = currentPattern();
+  var segs = buildSegments(sd, p, state.skips);
+  var sum = totals(sd, p, segs);
+  var now = new Date();
+
+  // ---- 現在時刻を勤務帯に照らす ----
+  var nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+  var live = null;
+  [0, 1440].forEach(function(off){
+    if (live) return;
+    var t = nowMin + off;
+    if (t >= sd.start && t < p.end) {
+      var seg = null;
+      for (var i = 0; i < segs.length; i++){
+        if (t >= segs[i].from && t < segs[i].to) { seg = segs[i]; break; }
+      }
+      var workedMin = 0;
+      segs.forEach(function(s){
+        if (s.type === "work" && s.from < t) workedMin += Math.min(s.to, t) - s.from;
+      });
+      live = {
+        t: t, seg: seg, workedMin: workedMin,
+        remainWorkMin: sum.work - workedMin,
+        toNextSec: (seg.to - t) * 60,
+        toEndSec: (p.end - t) * 60
+      };
+    }
+  });
+
+  var html;
+  if (live) {
+    var isWork = live.seg.type === "work";
+    var label = live.seg.to === p.end ? "終業まで" : (isWork ? "次の休憩まで" : "稼働再開まで");
+    html =
+      '<section class="live">' +
+        '<div class="live-head">' +
+          '<div class="live-st">' +
+            '<span class="dot' + (isWork ? " work" : "") + '"></span>' +
+            (isWork ? "稼働中" : "休憩中") +
+            '<span class="live-range mono tnum">' + fmtClock(live.seg.from) + '〜' + fmtClock(live.seg.to) + '</span>' +
+          '</div>' +
+          '<span class="chip">' + esc(sd.label) + '・' + esc(p.label) + '</span>' +
+        '</div>' +
+        '<div class="live-mid">' +
+          '<div class="lab">' + label + '</div>' +
+          '<div class="big mono tnum">' + fmtHMS(live.toNextSec) + '</div>' +
+        '</div>' +
+        '<div class="live-foot">' +
+          '<span>稼働済み <b class="tnum">' + fmtDur(Math.floor(live.workedMin)) + '</b></span>' +
+          '<span>残り稼働 <b class="tnum">' + fmtDur(Math.ceil(live.remainWorkMin)) + '</b></span>' +
+          '<span>終業まで <b class="mono tnum">' + fmtHMS(live.toEndSec) + '</b></span>' +
+        '</div>' +
+      '</section>';
+  } else {
+    var s = sd.start % 1440;
+    var diff = s - nowMin;
+    var toStartSec = (diff > 0 ? diff : diff + 1440) * 60;
+    html =
+      '<div class="off">' +
+        '<span>選択中の勤務は時間外です</span>' +
+        '<span class="mono tnum">開始まで ' + fmtHMS(toStartSec) + '</span>' +
+      '</div>';
+  }
+  document.getElementById("liveWrap").innerHTML = html;
+}
+
+function renderBreaks(){
+  var sd = currentShift();
+  var p = currentPattern();
+  var breaks = visibleBreaks(sd, p);
+  var skippedCount = breaks.filter(function(b){ return state.skips[b.id]; }).length;
+
+  var actionHtml;
+  if (skippedCount > 0) {
+    actionHtml =
+      '<button type="button" class="link-btn" data-action="reset-skips">' +
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>' +
+        '基本に戻す' +
+      '</button>';
+  } else {
+    actionHtml = '<button type="button" class="link-btn dim" data-action="skip-all">すべて稼働</button>';
+  }
+  document.getElementById("breaksAction").innerHTML = actionHtml;
+
+  var rows = breaks.map(function(b){
+    var skipped = !!state.skips[b.id];
+    var dur = b.to - b.from;
+    return '<button type="button" class="brk' + (skipped ? " skip" : "") + '" data-action="skip" data-id="' + b.id + '">' +
+      '<span class="badge">' + (skipped ? "稼働" : "休憩") + '</span>' +
+      '<span class="brk-main">' +
+        '<span class="brk-name">' + esc(b.label) + '</span>' +
+        '<span class="brk-time mono tnum">' + fmtClock(b.from) + '〜' + fmtClock(b.to) + '</span>' +
+      '</span>' +
+      '<span class="brk-dur tnum">' + (skipped ? "+" + dur + "分" : dur + "分") + '</span>' +
+    '</button>';
+  }).join("");
+  document.getElementById("breaksList").innerHTML = rows;
+}
+
+function renderTable(){
+  var html = ["day", "night"].map(function(key){
+    var sd = SHIFTS[key];
+    var rows = sd.patterns.map(function(p){
+      var segs2 = buildSegments(sd, p, {});
+      var t2 = totals(sd, p, segs2);
+      return '<div class="tbl-row">' +
+        '<span class="tl1">' + esc(p.label) + '</span>' +
+        '<span class="tl2 mono tnum">〜' + fmtClock(p.end) + '</span>' +
+        '<span class="tl3 tnum">' + fmtDur(t2.work) + '<small>' + fmtDec(t2.work) + '</small></span>' +
+      '</div>';
+    }).join("");
+    return '<div class="tbl-shift">' +
+      '<div class="tbl-shift-label ' + key + '">' + esc(sd.label) + '（' + fmtClock(sd.start) + ' 出勤）</div>' +
+      '<div class="tbl-list">' + rows + '</div>' +
+    '</div>';
+  }).join("");
+  document.getElementById("tableBody").innerHTML = html;
+}
+
+function renderTableToggle(){
+  document.getElementById("tableBody").hidden = !state.showTable;
+  document.getElementById("chevR").hidden = state.showTable;
+  document.getElementById("chevD").hidden = !state.showTable;
+}
+
+function renderClock(){
+  var now = new Date();
+  document.getElementById("clockNow").textContent =
+    "現在 " + now.getHours() + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds());
+}
+
+function renderAll(){
+  renderShiftButtons();
+  renderPatterns();
+  renderSummary();
+  renderLive();
+  renderBreaks();
+  renderTableToggle();
+}
+
+// ---- 操作 ----
+document.addEventListener("click", function(ev){
+  var el = ev.target.closest("[data-action]");
+  if (!el) return;
+  var action = el.getAttribute("data-action");
+
+  if (action === "shift") {
+    state.shiftKey = el.getAttribute("data-key");
+    renderAll();
+    saveState();
+  } else if (action === "pattern") {
+    state.patIds[state.shiftKey] = el.getAttribute("data-id");
+    renderAll();
+    saveState();
+  } else if (action === "skip") {
+    var id = el.getAttribute("data-id");
+    state.skips[id] = !state.skips[id];
+    renderSummary();
+    renderLive();
+    renderBreaks();
+    saveState();
+  } else if (action === "reset-skips") {
+    visibleBreaks(currentShift(), currentPattern()).forEach(function(b){ delete state.skips[b.id]; });
+    renderSummary();
+    renderLive();
+    renderBreaks();
+    saveState();
+  } else if (action === "skip-all") {
+    visibleBreaks(currentShift(), currentPattern()).forEach(function(b){ state.skips[b.id] = true; });
+    renderSummary();
+    renderLive();
+    renderBreaks();
+    saveState();
+  } else if (action === "toggle-table") {
+    state.showTable = !state.showTable;
+    renderTableToggle();
+  } else if (action === "dismiss-save") {
+    document.getElementById("saveBanner").hidden = true;
+  }
+});
+
+// ---- 起動 ----
+(async function init(){
+  await loadState();
+  state.loaded = true;
+  renderTable();
+  renderAll();
+  renderClock();
+  document.getElementById("loading").hidden = true;
+  document.getElementById("app").hidden = false;
+  setInterval(function(){
+    renderClock();
+    renderLive();
+  }, 1000);
+})();
+</script>
+</body>
+</html>
