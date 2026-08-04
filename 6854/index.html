@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>二次プログレス計算盤</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap');
+body{margin:0;min-height:100vh;background:linear-gradient(180deg,#12162A 0%,#171C33 55%,#1A1F38 100%);color:#EAE6DB;font-family:'Zen Kaku Gothic New','Hiragino Sans',sans-serif;padding:28px 16px 56px;box-sizing:border-box}
+.wrap{max-width:620px;margin:0 auto}
+.display{font-family:'Shippori Mincho',serif}
+.card{background:#1E2440;border:1px solid #2C3350;border-radius:14px;padding:18px 16px;margin-top:16px}
+label{font-size:12px;color:#8D93AC;letter-spacing:.08em;display:block;margin-bottom:5px}
+input,select{width:100%;box-sizing:border-box;background:#141930;border:1px solid #3A415C;border-radius:8px;color:#EAE6DB;padding:9px 11px;font-size:14px;outline:none;font-family:inherit}
+input:focus,select:focus{border-color:#D8B36A}
+h1{font-size:26px;font-weight:700;margin:10px 0 6px}
+h2{font-size:16px;margin:0 0 10px;color:#D8B36A}
+.row{display:flex;gap:10px;margin-top:12px}
+.btn{background:#D8B36A;color:#12162A;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-top:12px}
+.asp{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid #2C3350;font-size:13px}
+.tight{color:#D8B36A;font-weight:700}
+.warn{color:#E08A7A}.ok{color:#9CC79A}
+.note{font-size:11.5px;color:#8D93AC;line-height:1.7;margin:8px 0 0}
+pre{background:#141930;border:1px solid #3A415C;border-radius:10px;padding:14px;font-size:12px;line-height:1.75;white-space:pre-wrap;word-break:break-all;margin:0;font-family:Menlo,Consolas,monospace;color:#CFD3E4}
+.copybtn{background:#D8B36A;color:#12162A;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer}
+.copybtn.done{background:#9CC79A}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="text-align:center;margin-bottom:4px">
+    <div style="font-size:11px;letter-spacing:.35em;color:#D8B36A">&#10022; SECONDARY PROGRESSIONS &#10022;</div>
+    <h1 class="display">二次プログレス計算盤</h1>
+    <p style="font-size:13px;color:#8D93AC;margin:0;line-height:1.7">
+      「誕生後1日＝人生1年」で算出する進行図（二次プログレッション）。<br>
+      進行天体×出生天体のアスペクトで中長期の流れを読みます。<br>
+      エンジンは出生図検算盤と同一（VSOP87D＋ΔT補正）。
+    </p>
+  </header>
+
+  <section class="card">
+    <h2 class="display">出生データ</h2>
+    <label>お名前</label>
+    <input id="name" placeholder="例）魚多沙汰">
+    <div class="row">
+      <div style="flex:2"><label>生年月日</label><input id="bdate" type="date" min="1900-01-01" max="2050-12-31"></div>
+      <div style="flex:1"><label>出生時刻（不明なら空欄）</label><input id="btime" type="time"></div>
+      <div style="width:90px"><label>時差(UTC)</label><input id="btz" type="number" step="0.5" value="9"></div>
+    </div>
+
+  </section>
+
+  <section class="card">
+    <h2 class="display">進行設定</h2>
+    <div class="row" style="margin-top:0">
+      <div style="flex:1"><label>進行日（この日時点の進行図）</label><input id="progdate" type="date" min="1900-01-01" max="2050-12-31"></div>
+    </div>
+    <div class="row">
+      <div style="width:130px"><label>オーブ（許容度数）</label><input id="orb" type="number" min="0.5" max="8" step="0.5" value="3"></div>
+      <div style="flex:1">
+        <label>アスペクト種別</label>
+        <select id="aspMode">
+          <option value="pn">進行×出生（推奨）</option>
+          <option value="both">進行×出生 ＋ 進行×進行</option>
+        </select>
+      </div>
+    </div>
+    <p class="note">二次プログレッションのオーブは通常1〜3度。外惑星（木星・土星）は動きが遅いため進行でほぼ動かないことに注意。進行月・進行太陽が最も重要です。</p>
+    <button class="btn" id="calcBtn">進行図を算出する</button>
+  </section>
+
+  <section class="card" id="errCard" style="display:none"><span class="warn" id="errMsg"></span></section>
+
+  <section class="card" id="progCard" style="display:none">
+    <h2 class="display">進行天体位置</h2>
+    <div id="progBody"></div>
+    <p class="note" id="progNote"></p>
+  </section>
+
+  <section class="card" id="aspCard" style="display:none">
+    <h2 class="display">アスペクト一覧（誤差が小さい順）</h2>
+    <div id="aspBody"></div>
+  </section>
+
+  <section class="card" id="blockCard" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h2 class="display">時期読みブロック（コピー用）</h2>
+      <button class="copybtn" id="copyBtn">コピー</button>
+    </div>
+    <pre id="blockPre"></pre>
+    <p class="note">命令書の【時期読みブロック】欄にそのまま貼り付けて使えます。トランジットブロックと組み合わせると時期読みの精度が上がります。</p>
+  </section>
+</div>
+
+<script>
+const D2R=Math.PI/180,R2D=180/Math.PI;
+const norm=d=>((d%360)+360)%360;
+const horner=(x,...c)=>{let s=c[c.length-1];for(let i=c.length-2;i>=0;i--)s=s*x+c[i];return s;};
+function julianDay(y,mo,d,hUT){if(mo<=2){y-=1;mo+=12;}const A=Math.floor(y/100),B=2-A+Math.floor(A/4);return Math.floor(365.25*(y+4716))+Math.floor(30.6001*(mo+1))+d+B-1524.5+hUT/24;}
+function nutationLon(T){const Om=(125.04452-1934.136261*T)*D2R,Ls=(280.4665+36000.7698*T)*D2R;return-0.0047785*Math.sin(Om)-0.0003667*Math.sin(2*Ls);}
+const DT_TABLE=[-1.991,-0.76,0.605,2.045,3.5,4.912,6.23,7.476,8.685,9.895,11.133,12.425,13.744,15.054,16.308,17.472,18.512,19.435,20.25,20.97,21.611,22.182,22.684,23.118,23.484,23.785,24.019,24.194,24.314,24.386,24.415,24.409,24.374,24.316,24.243,24.162,24.083,24.036,24.055,24.173,24.425,24.829,25.347,25.924,26.509,27.05,27.505,27.891,28.238,28.575,28.932,29.321,29.698,30.18,30.623,31.07,31.35,31.681,32.181,32.68,33.15,33.591,34.001,34.47,35.03,35.732,36.541,37.431,38.29,39.202,40.181,41.171,42.23,43.372,44.486,45.477,46.457,47.524,48.536,49.587,50.539,51.382,52.168,52.957,53.788,54.344,54.872,55.323,55.82,56.301,56.856,57.566,58.309,59.124,59.986,60.786,61.629,62.297,62.967,63.468,63.828,64.091,64.3,64.473,64.574,64.688,64.846,65.147,65.457,65.777,66.07,66.325,66.603,66.908,67.281,67.644,68.102,68.594,68.968,69.22,69.361,69.359,69.294,69.183,69.1,69.0,68.9,68.8,68.8,69.037,69.276,69.518,69.761,70.008,70.257,70.508,70.761,71.017,71.276,71.536,71.8,72.066,72.335,72.606,72.88,73.157,73.436,73.718,74.003,74.291,74.581,74.874];
+function deltaTdays(jd){const y=(jd-2451544.5)/365.25+2000;const i=Math.min(Math.max(Math.floor(y)-1900,0),DT_TABLE.length-2);const f=Math.min(Math.max(y-1900-i,0),1);return(DT_TABLE[i]*(1-f)+DT_TABLE[i+1]*f)/86400;}
+const VSOP_TBL={"mercury":{"L":{"0":[[4.4025071,0,0],[0.40989415,1.48302034,26087.9031],[0.050462942,4.4778549,52175.8063],[0.00855346843,1.16520322,78263.7094],[0.00165590362,4.11969163,104351.613],[0.00034561897,0.779307658,130439.516],[0.00007583476,3.71348401,156527.419],[0.0000355974,1.51202669,1109.37855],[0.00001803463,4.10333178,5661.33205],[0.00001726012,0.358322399,182615.322]],"1":[[26088.1471,0,0],[0.0112600783,6.21703971,26087.9031],[0.00303471395,3.05565472,52175.8063],[0.00080538452,6.10454743,78263.7094],[0.00021245035,2.83531934,104351.613]]},"B":{"0":[[0.11737529,1.98357499,26087.9031],[0.02388077,5.0373896,52175.8063],[0.0122283953,3.14159265,0],[0.0054325181,1.79644364,78263.7094],[0.0012977877,4.83232504,104351.613],[0.00031866927,1.58088496,130439.516]],"1":[[0.00429151362,3.5016978,26087.9031],[0.00146233668,3.14159265,0]]},"R":{"0":[[0.395282717,0,0],[0.0783413182,6.19233723,26087.9031],[0.00795525557,2.9598969,52175.8063],[0.00121281763,6.01064154,78263.7094],[0.00021921969,2.77820094,104351.613],[0.00004354065,5.82894543,130439.516]],"1":[[0.00217347739,4.65617159,26087.9031],[0.00044141826,1.42385544,52175.8063]]}},"venus":{"L":{"0":[[3.17614667,0,0],[0.0135396842,5.5931332,10213.2855],[0.00089891645,5.30650048,20426.5711],[0.00005477201,4.41630653,7860.41939],[0.00003455732,2.69964471,11790.6291],[0.00002372061,2.9937754,3930.2097],[0.00001664069,4.25018935,1577.34354],[0.00001438322,4.15745044,9683.59458]],"1":[[10213.5294,0,0],[0.00095707712,2.46424449,10213.2855]]},"B":{"0":[[0.0592363847,0.267027758,10213.2855],[0.00040107978,1.14737178,20426.5711],[0.00032814918,3.14159265,0]],"1":[[0.00513347602,1.80364311,10213.2855]]},"R":{"0":[[0.723348209,0,0],[0.00489824185,4.02151832,10213.2855],[0.00001658058,4.90206728,20426.5711],[0.00001632093,2.84548852,7860.41939],[0.00001378048,1.12846591,11790.6291]],"1":[[0.00034551039,0.891987106,10213.2855]]}},"earth":{"L":{"0":[[1.75347046,0,0],[0.0334165646,4.6692568,6283.07585],[0.00034894275,4.62610242,12566.1517],[0.00003497056,2.74411801,5753.38488],[0.00003417571,2.8288658,3.52311835],[0.00003135896,3.62767042,77713.7715],[0.00002676218,4.41808351,7860.41939],[0.00002342687,6.13516238,3930.2097],[0.00001324292,0.742463564,11506.7698],[0.00001273166,2.03709656,529.690965],[0.00001199167,1.10962944,1577.34354]],"1":[[6283.31967,0,0],[0.00206058863,2.67823456,6283.07585]]},"B":{},"R":{"0":[[1.00013989,0,0],[0.0167069963,3.09846351,6283.07585],[0.00013956023,3.0552461,12566.1517],[0.0000308372,5.19846674,77713.7715],[0.00001628461,1.17387749,5753.38488],[0.00001575568,2.84685246,7860.41939],[0.00000924799,5.45292234,11506.7698],[0.00000542444,4.5640915,3930.2097]],"1":[[0.00103018608,1.1074897,6283.07585]]}},"mars":{"L":{"0":[[6.20347712,0,0],[0.186563681,5.050371,3340.61243],[0.0110821679,5.40099837,6681.22485],[0.00091798394,5.75478745,10021.8373],[0.00027744987,5.97049513,3.52311835],[0.00012315897,0.849560812,2810.92146],[0.0001061023,2.93958525,2281.2305],[0.00008715688,6.1100516,13362.4497],[0.00007774867,3.33968655,5621.84292],[0.00006797552,0.364622436,398.149003]],"1":[[3340.85627,0,0],[0.0145822705,3.60426054,3340.61243],[0.00164901343,3.92631251,6681.22485],[0.00019963338,4.26594061,10021.8373]]},"B":{"0":[[0.0319713499,3.76832042,3340.61243],[0.00298033234,4.10616996,6681.22485],[0.00289104742,0,0],[0.00031365538,4.44651053,10021.8373]],"1":[[0.00350068845,5.36847836,3340.61243]]},"R":{"0":[[1.53033488,0,0],[0.141849532,3.47971284,3340.61243],[0.00660776357,3.81783442,6681.22485],[0.00046179117,4.15595316,10021.8373],[0.00008109738,5.5595846,2810.92146],[0.00007485315,1.77238998,5621.84292]],"1":[[0.0110743334,2.03250525,3340.61243],[0.00103175886,2.37071846,6681.22485]]}},"jupiter":{"L":{"0":[[0.599546915,0,0],[0.0969589871,5.06191793,529.690965],[0.00573610145,1.44406206,7.113547],[0.0030638918,5.4173473,1059.38193],[0.0009717828,4.14264709,632.783739],[0.00072903096,3.64042909,522.577418],[0.00064263986,3.41145185,103.092774],[0.00039806051,2.29376745,419.484644],[0.0003885778,1.27231725,316.39187],[0.00027964622,1.78454589,536.804512]],"1":[[529.934808,0,0],[0.00489741194,4.2206669,529.690965],[0.00228918538,6.02647464,7.113547],[0.0002765538,4.57265957,1059.38193],[0.00020720943,5.45938936,522.577418],[0.00012105732,0.16985765,536.804512]]},"B":{"0":[[0.022686157,3.55852607,529.690965],[0.00110090358,0,0],[0.00109971634,3.90809347,1059.38193],[0.00008101427,3.60509573,522.577418]],"1":[[0.00177351787,5.70166488,529.690965]]},"R":{"0":[[5.20887429,0,0],[0.25209327,3.4910864,529.690965],[0.00610599902,3.84115366,1059.38193],[0.00282029465,2.5741988,632.783739],[0.00187647391,2.0759038,522.577418],[0.00086792941,0.710010906,419.484644],[0.00072062869,0.214656947,536.804512],[0.00065517227,5.97995851,316.39187]],"1":[[0.012718016,2.64937511,529.690965],[0.00061661771,3.00076251,1059.38193],[0.00053443592,3.89717644,522.577418],[0.00041390257,0,0],[0.00031185167,4.88276664,536.804512]]}},"saturn":{"L":{"0":[[0.87401354,0,0],[0.111076598,3.9620509,213.299095],[0.0141415096,4.58581516,7.113547],[0.00398379386,0.52112026,206.185548],[0.00350769223,3.30329903,426.598191],[0.00206816296,0.246583669,103.092774],[0.00079271288,3.84007079,220.412642],[0.00023990338,4.66976935,110.206321],[0.00016573583,0.437191235,419.484644],[0.000158203,0.938089538,632.783739]],"1":[[213.542956,0,0],[0.01296855,1.82820545,213.299095],[0.00564347566,2.88500136,7.113547],[0.0010767877,2.27769912,206.185548],[0.0009832303,1.08070061,426.598191],[0.00040254586,2.04128257,220.412642],[0.00019941734,1.27954663,103.092774]],"2":[[0.00116441181,1.17987851,7.113547]]},"B":{"0":[[0.0433067804,3.60284428,213.299095],[0.00240348303,2.85238489,426.598191],[0.00084745939,0,0],[0.00034116063,0.572973078,206.185548],[0.00030863357,3.48441504,220.412642]],"1":[[0.00397554998,5.33289993,213.299095]]},"R":{"0":[[9.55758136,0,0],[0.529213825,2.3922622,213.299095],[0.0187367993,5.23549605,206.185548],[0.0146466396,1.64763045,426.598191],[0.00821891059,5.93520025,316.39187],[0.00547506899,5.01532628,103.092774],[0.00371684449,2.27114833,220.412642],[0.00361778433,3.13904303,7.113547]],"1":[[0.0618298128,0.25843515,213.299095],[0.00506577574,0.711146509,206.185548],[0.00341394136,5.79635774,426.598191],[0.00188491375,0.472157194,220.412642],[0.0018626154,3.14159265,0],[0.00143891176,1.40744864,7.113547]],"2":[[0.00436902464,4.78671673,213.299095]]}}};
+function vsopSum(series,tau){let v=0;for(const k of Object.keys(series)){let s=0;for(const t of series[k])s+=t[0]*Math.cos(t[1]+t[2]*tau);v+=s*Math.pow(tau,+k);}return v;}
+function helioRect(p,tau){const L=vsopSum(VSOP_TBL[p].L,tau),B=vsopSum(VSOP_TBL[p].B,tau),R=vsopSum(VSOP_TBL[p].R,tau);return[R*Math.cos(B)*Math.cos(L),R*Math.cos(B)*Math.sin(L),R*Math.sin(B),L,B,R];}
+function planetLonJD(p,jd){const tau=(jd-2451545)/365250,T=(jd-2451545)/36525;const e=helioRect("earth",tau);let pl=helioRect(p,tau);let dx=pl[0]-e[0],dy=pl[1]-e[1],dz=pl[2]-e[2];const dist=Math.sqrt(dx*dx+dy*dy+dz*dz);pl=helioRect(p,tau-dist*0.0057755183/365250);dx=pl[0]-e[0];dy=pl[1]-e[1];let lam=Math.atan2(dy,dx)*R2D;const sunL=norm(e[3]*R2D+180);lam-=0.0057004*Math.cos((sunL-lam)*D2R);return norm(lam+nutationLon(T));}
+function sunLonJD(jd){const tau=(jd-2451545)/365250,T=(jd-2451545)/36525;const e=helioRect("earth",tau);return norm(e[3]*R2D+180+nutationLon(T)-0.005692/e[5]);}
+const MOON_TERMS=[[0,0,1,0,6288774,-20905355],[2,0,-1,0,1274027,-3699111],[2,0,0,0,658314,-2955968],[0,0,2,0,213618,-569925],[0,1,0,0,-185116,48888],[0,0,0,2,-114332,-3149],[2,0,-2,0,58793,246158],[2,-1,-1,0,57066,-152138],[2,0,1,0,53322,-170733],[2,-1,0,0,45758,-204586],[0,1,-1,0,-40923,-129620],[1,0,0,0,-34720,108743],[0,1,1,0,-30383,104755],[2,0,0,-2,15327,10321],[0,0,1,2,-12528,0],[0,0,1,-2,10980,79661],[4,0,-1,0,10675,-34782],[0,0,3,0,10034,-23210],[4,0,-2,0,8548,-21636],[2,1,-1,0,-7888,24208],[2,1,0,0,-6766,30824],[1,0,-1,0,-5163,-8379],[1,1,0,0,4987,-16675],[2,-1,1,0,4036,-12831],[2,0,2,0,3994,-10445],[4,0,0,0,3861,-11650],[2,0,-3,0,3665,14403],[0,1,-2,0,-2689,-7003],[2,-1,-2,0,2390,10056],[1,0,1,0,-2348,6322],[2,-2,0,0,2236,-9884],[0,1,2,0,-2120,5751],[2,-2,-1,0,2048,-4950],[2,0,1,-2,-1773,4130],[4,-1,-1,0,1215,-3958],[0,0,2,2,-1110,0],[3,0,-1,0,-892,3258],[2,1,1,0,-810,2616],[4,-1,-2,0,759,-1897],[0,2,-1,0,-713,-2117],[2,2,-1,0,-700,2354],[2,1,-2,0,691,0],[2,-1,0,-2,596,0],[4,0,1,0,549,-1423],[0,0,4,0,537,-1117],[4,-1,0,0,520,-1571],[1,0,-2,0,-487,-1739],[0,0,2,-2,-381,-4421],[1,1,1,0,351,0]];
+function moonLonJD(jd){const T=(jd-2451545)/36525;const Lp=norm(horner(T,218.3164477,481267.88123421,-0.0015786,1/538841,-1/65194000));const D=norm(horner(T,297.8501921,445267.1114034,-0.0018819,1/545868,-1/113065000));const M=norm(horner(T,357.5291092,35999.0502909,-0.0001536,1/24490000));const Mp=norm(horner(T,134.9633964,477198.8675055,0.0087414,1/69699,-1/14712000));const F=norm(horner(T,93.272095,483202.0175233,-0.0036539,-1/3526000,1/863310000));const E=horner(T,1,-0.002516,-0.0000074);let s=0;for(const t of MOON_TERMS){let coef=t[4];if(Math.abs(t[1])===1)coef*=E;else if(Math.abs(t[1])===2)coef*=E*E;s+=coef*Math.sin((t[0]*D+t[1]*M+t[2]*Mp+t[3]*F)*D2R);}const A1=norm(119.75+131.849*T),A2=norm(53.09+479264.290*T);s+=3958*Math.sin(A1*D2R)+1962*Math.sin((Lp-F)*D2R)+318*Math.sin(A2*D2R);return norm(Lp+s/1e6+nutationLon(T));}
+const BODIES=[["太陽",jd=>sunLonJD(jd+deltaTdays(jd))],["月",jd=>moonLonJD(jd+deltaTdays(jd))],["水星",jd=>planetLonJD("mercury",jd+deltaTdays(jd))],["金星",jd=>planetLonJD("venus",jd+deltaTdays(jd))],["火星",jd=>planetLonJD("mars",jd+deltaTdays(jd))],["木星",jd=>planetLonJD("jupiter",jd+deltaTdays(jd))],["土星",jd=>planetLonJD("saturn",jd+deltaTdays(jd))]];
+const SIGNS=["おひつじ座","おうし座","ふたご座","かに座","しし座","おとめ座","てんびん座","さそり座","いて座","やぎ座","みずがめ座","うお座"];
+const signOf=d=>SIGNS[Math.floor(norm(d)/30)];
+const degIn=d=>norm(d)%30;
+const fmtDeg=d=>{const x=degIn(d),deg=Math.floor(x),min=Math.round((x-deg)*60);return min===60?`${deg+1}度00分`:`${deg}度${String(min).padStart(2,"0")}分`;};
+const ASPECTS=[[0,"合（コンジャンクション）"],[60,"六分（セクスタイル）"],[90,"矩（スクエア）"],[120,"三分（トライン）"],[180,"衝（オポジション）"]];
+function separation(a,b){return Math.abs(norm(a-b+180)-180);}
+function findAspects(listA,listB,orb,labelA,labelB){
+  const out=[];
+  for(const a of listA)for(const b of listB){
+    if(labelA===labelB&&a.name>=b.name)continue;
+    const sep=separation(a.lon,b.lon);
+    for(const[angle,label]of ASPECTS){
+      const off=Math.abs(sep-angle);
+      if(off<=orb)out.push({a,b,angle,label,off,labelA,labelB});
+    }
+  }
+  return out;
+}
+const $=id=>document.getElementById(id);
+const show=(id,on)=>$(id).style.display=on?"":"none";
+const today=new Date();
+$("progdate").value=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+$("calcBtn").addEventListener("click",()=>{
+  show("errCard",false);show("progCard",false);show("aspCard",false);show("blockCard",false);
+  const bdm=/^(\d{4})-(\d{2})-(\d{2})$/.exec($("bdate").value);
+  const btm=/^(\d{2}):(\d{2})$/.exec($("btime").value);
+  if(!bdm){show("errCard",true);$("errMsg").textContent="出生年月日を入力してください。";return;}
+  const by=+bdm[1],bmo=+bdm[2],bd=+bdm[3],btz=+$("btz").value;
+  if(by<1900||by>2050){show("errCard",true);$("errMsg").textContent="出生年は1900〜2050年の範囲で。";return;}
+  const bhUT=btm?(+btm[1]+ +btm[2]/60-btz):12-btz;
+  const bJD=julianDay(by,bmo,bd,bhUT);
+  const pdm=/^(\d{4})-(\d{2})-(\d{2})$/.exec($("progdate").value);
+  if(!pdm){show("errCard",true);$("errMsg").textContent="進行日を入力してください。";return;}
+  const py=+pdm[1],pmo=+pdm[2],pd=+pdm[3];
+  const progJD=julianDay(py,pmo,pd,12);
+  const ageDays=progJD-bJD;
+  const ageYears=ageDays/365.25;
+  if(ageYears<0){show("errCard",true);$("errMsg").textContent="進行日は出生日より後の日付にしてください。";return;}
+  if(ageYears>120){show("errCard",true);$("errMsg").textContent="進行年数が120年を超えています。日付を確認してください。";return;}
+  const secProgJD=bJD+ageYears;
+  const orb=Math.min(8,Math.max(0.5,+$("orb").value||3));
+  const aspMode=$("aspMode").value;
+  const natalBodies=BODIES.map(b=>({name:b[0],lon:b[1](bJD)}));
+  const progBodies=BODIES.map(b=>({name:b[0],lon:b[1](secProgJD)}));
+  const progAge=Math.floor(ageYears);
+  const progMoonDeg=Math.round(degIn(progBodies.find(b=>b.name==="月").lon)*10)/10;
+  show("progCard",true);
+  $("progBody").innerHTML=progBodies.map(b=>`<div class="asp"><span>進行${b.name}</span><span>${signOf(b.lon)} ${fmtDeg(b.lon)}</span></div>`).join("");
+  $("progNote").innerHTML=`<span style="color:#8D93AC">進行年齢: 約${progAge}歳時点の進行図（進行JD: ${secProgJD.toFixed(4)}）</span><br>進行月は進行速度が最も速く（約1度/月）、星座・ハウス変化が重要なタイミングを示します。`;
+  let hits=findAspects(progBodies,natalBodies,orb,"進行","出生");
+  if(aspMode==="both"){const pp=findAspects(progBodies,progBodies,orb,"進行","進行");hits=[...hits,...pp];}
+  hits.sort((a,b)=>a.off-b.off);
+  show("aspCard",true);
+  $("aspBody").innerHTML=hits.map(h=>`<div class="asp"><span>${h.labelA}${h.a.name} × ${h.labelB}${h.b.name}</span><span style="text-align:right"><span class="${h.off<=1?"tight":""}">${h.label}</span> (誤差${h.off.toFixed(1)}度)</span></div>`).join("")||"<p class='note'>指定オーブ内のアスペクトはありません。</p>";
+  const name=$("name").value||"（お名前未入力）";
+  const L=["【二次プログレス時期読みブロック】"];
+  L.push(`対象: ${name} 様`);
+  L.push(`出生: ${$("bdate").value.replace(/-/g,"/")}${btm?" "+$("btime").value:"（時刻不明）"}（UTC${btz>=0?"+":""}${btz}）`);
+  L.push(`進行基準日: ${$("progdate").value.replace(/-/g,"/")}（進行年齢 約${progAge}歳時点）`);
+  L.push(`オーブ: ${orb}度`);
+  L.push("");
+  L.push("◆ 進行天体位置");
+  progBodies.forEach(b=>L.push(`進行${b.name}: ${signOf(b.lon)} ${fmtDeg(b.lon)}`));
+  L.push("");
+  L.push("◆ 出生天体位置（参照用）");
+  natalBodies.forEach(b=>L.push(`出生${b.name}: ${signOf(b.lon)} ${fmtDeg(b.lon)}`));
+  L.push("");
+  L.push("◆ アスペクト（誤差が小さい順）");
+  hits.forEach(h=>L.push(`${h.labelA}${h.a.name} × ${h.labelB}${h.b.name}: ${h.label} 誤差${h.off.toFixed(1)}度`));
+  if(!hits.length)L.push("（指定オーブ内のアスペクトなし）");
+  L.push("");
+  L.push("算出: 出生図検算盤と同一エンジン（VSOP87D＋ΔT補正）。二次プログレッション方式（1日＝1年）。");
+  L.push("進行月・進行太陽のアスペクトが最も重要。外惑星（木星・土星）の進行は非常に遅くほぼ動かない。");
+  show("blockCard",true);
+  $("blockPre").textContent=L.join("\n");
+});
+$("copyBtn").addEventListener("click",async()=>{
+  const text=$("blockPre").textContent;
+  try{await navigator.clipboard.writeText(text);}catch(e){const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();}
+  $("copyBtn").textContent="コピーしました";$("copyBtn").classList.add("done");
+  setTimeout(()=>{$("copyBtn").textContent="コピー";$("copyBtn").classList.remove("done");},1600);
+});
+</script>
+</body>
+</html>
+
