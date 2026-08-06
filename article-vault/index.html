@@ -1232,11 +1232,16 @@ async function copySign(id){
   toast(`${s.nm}の本文をコピーしました(${d.body.length.toLocaleString()}字・通算${d.copies||0}回目)`);
   render();
 }
-// ---- 末尾ゴミ掃除(末尾掃除v3・2026-07-31) ----
-// チャット画面からのコピーで本文の後ろに紛れ込むものを「末尾」に限って取り除く。
-// 対象: (a)空白・空行 (b)モデル表記行(実例「Opus 5 高」)
+// ---- 末尾ゴミ掃除(末尾掃除v4・2026-08-06) ----
+// チャット画面からのコピーで本文の後ろに紛れ込むものを取り除く。
+// v4(錨方式): 本文が固定文言⑥(TAIL_ANCHOR)を含むなら、その直後で切り落とす。
+//   2026-09〜12号の実測48本すべてで⑥が一字一句同一・1回・本文末尾であることを確認済み。
+//   後ろに何が付いても(モデル表記・未知の語を含めて)全部消える。
+//   ⑥が無い記事(2026-08号など旧版)は従来のv3方式(下のTAIL_JUNK行判定)へフォールバック。
+// v3(行判定)の対象: (a)空白・空行 (b)モデル表記行(実例「Opus 5 高」)
 //       (c)見えない文字だけの行(画面では☒や空行に見える。オブジェクト置換文字U+FFFC等)
-// 本文の途中には一切触らない。消す行の種類を増やすときは TAIL_JUNK に正規表現を1行足す。
+// v3は本文の途中には一切触らない。消す行の種類を増やすときは TAIL_JUNK に正規表現を1行足す。
+const TAIL_ANCHOR = "占いは、あなたの決断を代わりにするものではありません。月のリズムに合わせて、自分の心を見つめ直すきっかけ。そう思って、気軽に取り入れてみてください。";
 const TAIL_JUNK = [
   /^(Claude\s*)?(Opus|Sonnet|Haiku|Fable|Mythos|オーパス|ソネット|ハイク)\s*[0-9０-９]*(\.[0-9０-９]+)?\s*(高|中|低)?$/i
 ];
@@ -1256,6 +1261,10 @@ function tailTrim(s){
 function stripTailJunk(text){
   if(!text) return text;
   let t = tailTrim(String(text));
+  // v4錨方式: 固定文言⑥が見つかったら、最後の出現の直後で切って終わり
+  const a = t.lastIndexOf(TAIL_ANCHOR);
+  if(a >= 0){ return t.slice(0, a + TAIL_ANCHOR.length); }
+  // ⑥が無い本文(2026-08号など)は従来どおり末尾の行単位で掃除
   for(let guard = 0; guard < 50 && t; guard++){
     const nl = t.lastIndexOf("\n");
     const line = nl >= 0 ? t.slice(nl + 1) : t;
