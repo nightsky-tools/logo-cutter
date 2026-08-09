@@ -1,0 +1,107 @@
+<!-- ▼▼▼ 工房ツール ここから | フォルダ: api-gate | 題名: API取得ゲート v1.0 | 登録〜確認の入口を1ページに ▼▼▼ -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>API取得ゲート</title>
+<style>
+:root{ --bg:#0E1322; --panel:#171D30; --panel2:#121728; --line:#2A3352; --ink:#E9ECF5; --sub:#8B94AC; --acc:#E3C173; --err:#E2584D; }
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:'Hiragino Kaku Gothic ProN','Zen Kaku Gothic New',sans-serif;font-size:15px;line-height:1.75;padding:20px 14px 60px}
+.wrap{max-width:640px;margin:0 auto}
+.brand{font-family:monospace;font-size:10px;color:var(--sub);letter-spacing:.18em}
+h1{font-size:23px;margin-top:2px}
+.lead{font-size:12px;color:var(--sub);margin-top:2px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:14px}
+.step{font-family:monospace;font-size:10px;color:var(--acc);letter-spacing:.15em}
+.card h2{font-size:15px;margin:2px 0 6px}
+.card p{font-size:12.5px;color:var(--sub)}
+a.btn,button.btn{display:block;width:100%;text-align:center;margin-top:10px;padding:13px 0;background:var(--acc);color:#151204;border:none;border-radius:9px;font-weight:700;font-size:14px;text-decoration:none;cursor:pointer}
+a.sub,button.sub{display:block;width:100%;text-align:center;margin-top:8px;padding:10px 0;background:transparent;color:var(--sub);border:1px solid var(--line);border-radius:9px;font-weight:700;font-size:12.5px;text-decoration:none;cursor:pointer}
+input{width:100%;margin-top:10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:13px;padding:11px 12px;font-family:monospace}
+input:focus{outline:2px solid var(--acc);outline-offset:-1px}
+.note{font-size:11.5px;color:var(--sub);margin-top:10px;line-height:1.7}
+.note b{color:#E0B35C}
+.ok{color:#43B58C;font-size:12px;margin-top:8px;display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">NIGHTSKY-TOOLS</div>
+  <h1>API取得ゲート <span style="font-family:monospace;font-size:12px;color:var(--sub)">v1.0</span></h1>
+  <div class="lead">Threads API取得の各ステップを、この端末からワンタップで開く道案内。入力内容はどこにも保存されません</div>
+
+  <div class="card">
+    <div class="step">STEP 1</div>
+    <h2>Facebookアカウントを作る(本名・1個だけ)</h2>
+    <p>開発者サイトにログインする鍵としてだけ使います。Threads側の名前はソラ等のままでOK。</p>
+    <a class="btn" href="https://www.facebook.com/" target="_blank" rel="noopener">Facebookを開く</a>
+  </div>
+
+  <div class="card">
+    <div class="step">STEP 2</div>
+    <h2>Meta開発者登録(1回だけ)</h2>
+    <p>Facebookでログイン→SMS認証→職業選択→登録完了。画面が英語なら下の翻訳のコツ参照。</p>
+    <a class="btn" href="https://developers.facebook.com/async/registration" target="_blank" rel="noopener">開発者登録ページを開く</a>
+    <a class="sub" href="https://developers.facebook.com/" target="_blank" rel="noopener">開発者サイトのトップを開く</a>
+    <div class="note">iPhoneのSafariで見づらい時は、アドレス欄左の「ぁあ」→<b>デスクトップ用Webサイトを表示</b>。</div>
+  </div>
+
+  <div class="card">
+    <div class="step">STEP 3</div>
+    <h2>アプリを作る(1個だけ)</h2>
+    <p>「アプリを作成」→名前は中立に(例: threads-tool)→ユースケースは「Threads APIにアクセス」を選択。</p>
+    <a class="btn" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">マイアプリを開く</a>
+  </div>
+
+  <div class="card">
+    <div class="step">STEP 4-6</div>
+    <h2>権限→テスター追加→スマホで承認</h2>
+    <p>権限は threads_basic と threads_manage_insights だけ(投稿権限は付けない)。テスター追加後、各垢のThreadsアプリ→設定→アカウント→ウェブサイトのアクセス許可→招待→同意×2。</p>
+    <div class="note">ここはアプリ管理画面とThreadsアプリ内の操作なので、開くリンクはSTEP3と同じ「マイアプリ」です。詰まったら画面のスクショをClaudeに貼ってください。</div>
+  </div>
+
+  <div class="card">
+    <div class="step">STEP 7</div>
+    <h2>トークンの動作確認(ID調べ)</h2>
+    <p>発行したトークンを下に貼って開くと、成功なら {"id":"…","username":"…"} と表示されます。そのidが「ThreadsユーザーID」。エラーが出たらその画面をスクショしてClaudeへ。</p>
+    <input type="password" id="tok" placeholder="アクセストークンを貼る(この端末内でURLを組むだけ・保存しません)" autocomplete="off">
+    <button class="btn" onclick="openCheck()">確認ページを開く</button>
+    <button class="sub" onclick="copyCheck(this)">確認URLをコピー</button>
+    <div class="ok" id="okmsg"></div>
+    <div class="note"><b>注意:</b> トークンはパスワード同等。この欄は保存機能ゼロ(閉じたら消える)ですが、コピーしたURLにもトークンが含まれるので、人に送らないでください。</div>
+  </div>
+
+  <div class="card">
+    <div class="step">STEP 8</div>
+    <h2>道具に接続</h2>
+    <p>ユーザーIDとトークンを再投稿庫の対象タブ「Threads API連携」へ。直接取得がエラーならGASへ。</p>
+    <a class="btn" href="./rebuzz/" target="_blank" rel="noopener">再投稿庫を開く(同じサイト設置時)</a>
+    <a class="sub" href="https://script.google.com/" target="_blank" rel="noopener">GAS(script.google.com)を開く</a>
+  </div>
+
+  <div class="note" style="margin-top:16px">正直な注意: 登録・承認・SMS認証は人間がブラウザで行う作業で、コマンドや自動化で代行する方法はありません。このページは「開く」を速くするだけです。Metaの画面デザインは変わることがあるため、表示が説明と違ったらスクショをClaudeに貼れば実物に合わせて案内します。</div>
+</div>
+<script>
+function buildUrl(){
+  var t=(document.getElementById("tok").value||"").trim();
+  if(!t){ alert("トークンを貼ってください"); return null; }
+  return "https://graph.threads.net/v1.0/me?fields=id,username&access_token="+encodeURIComponent(t);
+}
+function openCheck(){
+  var u=buildUrl(); if(!u) return;
+  window.open(u,"_blank","noopener");
+}
+function copyCheck(btn){
+  var u=buildUrl(); if(!u) return;
+  function done(){ var m=document.getElementById("okmsg"); m.style.display="block"; m.textContent="コピーしました(取り扱い注意)"; setTimeout(function(){m.style.display="none";},2500); }
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(u).then(done).catch(function(){fb(u);done();}); }
+  else{ fb(u); done(); }
+  function fb(x){ var ta=document.createElement("textarea"); ta.value=x; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); try{document.execCommand("copy");}catch(e){} document.body.removeChild(ta); }
+}
+</script>
+</body>
+</html>
+<!-- ▲▲▲ 工房ツール ここまで | フォルダ: api-gate ▲▲▲ -->
