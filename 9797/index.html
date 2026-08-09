@@ -1,0 +1,894 @@
+<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 万バズ再投稿庫 v1.3 | 中立化+アカウント別バズ分析 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>再投稿庫</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0E1322; --panel:#171D30; --panel2:#121728; --line:#2A3352;
+  --ink:#E9ECF5; --sub:#8B94AC; --err:#E2584D; --warn:#E0B35C;
+  --acc:#E3C173;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:'Zen Kaku Gothic New',sans-serif; font-size:15px; line-height:1.75;
+  padding:20px 14px 90px;
+}
+.wrap{max-width:680px;margin:0 auto}
+header{margin-bottom:14px}
+.brand{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--sub);letter-spacing:.18em}
+h1{font-family:'Shippori Mincho',serif;font-size:24px;letter-spacing:.06em;margin-top:2px}
+.lead{font-size:12px;color:var(--sub);margin-top:2px}
+
+.tabs{display:flex;gap:8px;margin:16px 0 14px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+.tab{
+  flex:none;text-align:center;padding:11px 16px;border-radius:10px;
+  background:var(--panel);border:1px solid var(--line);color:var(--sub);
+  font-weight:700;font-size:13.5px;cursor:pointer;user-select:none;white-space:nowrap;
+}
+.tab.on{color:#111;border-color:transparent}
+.tab.plus{color:var(--acc);border-style:dashed}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 14px;margin-bottom:14px}
+.card h2{font-size:12px;color:var(--sub);letter-spacing:.14em;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card h2 .num{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--acc)}
+textarea,input[type=text],input[type=password]{
+  width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  color:var(--ink);font-family:'Zen Kaku Gothic New',sans-serif;font-size:14.5px;line-height:1.8;padding:10px 12px;
+}
+textarea{resize:vertical;min-height:120px}
+textarea:focus,input:focus{outline:2px solid var(--acc);outline-offset:-1px}
+button{font-family:'Zen Kaku Gothic New',sans-serif;font-weight:700;border:none;border-radius:9px;cursor:pointer;font-size:14px}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:default}
+.btn-main{width:100%;padding:13px 0;background:var(--acc);color:#151204;letter-spacing:.1em}
+.btn-line{background:transparent;border:1px solid var(--line);color:var(--sub);padding:9px 12px;font-size:12.5px}
+.btn-acc{background:transparent;border:1px solid var(--acc);color:var(--acc);padding:9px 12px;font-size:12.5px}
+.btn-red{background:transparent;border:1px solid var(--err);color:var(--err);padding:9px 12px;font-size:12.5px}
+.row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.row>*{flex:1}
+.note{font-size:11.5px;color:var(--sub);line-height:1.7;margin-top:10px}
+.note b{color:var(--warn);font-weight:700}
+.lbl{font-size:11px;color:var(--sub);letter-spacing:.1em;display:block;margin:10px 0 4px}
+.status{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--sub);margin-top:8px;line-height:1.7;word-break:break-all}
+.status.err{color:var(--err)}
+.status.ok{color:#43B58C}
+
+.rank-item{border:1px solid var(--line);border-radius:10px;background:var(--panel2);margin-bottom:8px;overflow:hidden}
+.rank-head{display:flex;align-items:center;gap:10px;padding:11px 12px;cursor:pointer;user-select:none}
+.rank-no{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub);flex:none;width:26px}
+.rank-hook{flex:1;font-size:13.5px;line-height:1.5;word-break:break-all}
+.rank-hook .sub{display:block;font-size:10.5px;color:var(--sub)}
+.views{
+  flex:none;font-family:'IBM Plex Mono',monospace;font-size:12px;
+  border:1px solid var(--line);color:var(--sub);border-radius:20px;padding:2px 9px;
+}
+.views.big{color:#43B58C;border-color:#43B58C}
+.views.mid{color:var(--acc);border-color:var(--acc)}
+.views.dead{color:var(--err);border-color:rgba(226,88,77,.5)}
+.rank-body{display:none;border-top:1px dashed var(--line);padding:12px}
+.rank-item.open .rank-body{display:block}
+.blk{position:relative;margin-bottom:10px}
+.blk pre{
+  background:var(--bg);border:1px solid var(--line);border-radius:8px;
+  padding:34px 12px 12px;white-space:pre-wrap;word-break:break-all;
+  font-family:'Zen Kaku Gothic New',sans-serif;font-size:13.5px;line-height:1.8;max-height:260px;overflow:auto;
+}
+.blk .bh{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:5px 6px 5px 12px;border-bottom:1px dashed var(--line)}
+.blk .bh span{font-size:10.5px;color:var(--sub);letter-spacing:.15em}
+.blk .bh button{background:transparent;border:1px solid var(--line);color:var(--acc);border-radius:6px;padding:3px 12px;font-size:12px}
+.nobody{
+  border:1px dashed var(--warn);color:var(--warn);border-radius:8px;
+  padding:10px 12px;font-size:12.5px;margin-bottom:10px;line-height:1.7;
+}
+.editbox{display:none;margin-top:10px}
+.editbox.show{display:block}
+.mini{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap}
+.mini input{flex:1;min-width:90px;font-family:'IBM Plex Mono',monospace;font-size:13px;padding:8px 10px}
+.mini button{flex:none}
+.empty{font-size:12.5px;color:var(--sub);text-align:center;padding:14px 0}
+.acc-item{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)}
+.acc-item:last-child{border-bottom:none}
+.acc-dot{flex:none;width:14px;height:14px;border-radius:50%}
+.acc-item input{flex:1}
+.acc-item button{flex:none}
+
+.ana{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px;font-size:13px;line-height:1.9;display:none}
+.ana.show{display:block}
+.ana h3{font-size:11px;color:var(--acc);letter-spacing:.14em;margin:10px 0 4px}
+.ana h3:first-child{margin-top:0}
+.ana table{width:100%;border-collapse:collapse;font-size:12.5px}
+.ana td{padding:3px 4px;border-bottom:1px dashed var(--line)}
+.ana td:nth-child(2),.ana td:nth-child(3){font-family:'IBM Plex Mono',monospace;text-align:right;white-space:nowrap}
+.ana .win{color:#43B58C;font-weight:700}
+.ana .cap{font-size:11px;color:var(--sub)}
+.ana ol{padding-left:20px}
+.ana ol li{margin-bottom:4px;font-size:12.5px;word-break:break-all}
+
+#toasts{position:fixed;left:0;right:0;bottom:14px;display:flex;flex-direction:column;align-items:center;gap:8px;z-index:60;pointer-events:none}
+.toast{pointer-events:auto;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 14px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.45);max-width:92vw}
+footer{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--sub);letter-spacing:.15em;margin-top:24px}
+details.io summary{font-size:12px;color:var(--sub);letter-spacing:.12em;cursor:pointer;list-style:none}
+details.io summary::before{content:"▸ ";color:var(--acc)}
+details.io[open] summary::before{content:"▾ "}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="brand">NIGHTSKY-TOOLS</div>
+  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.3</span></h1>
+  <div class="lead">アカウントごとに当たり投稿を表示数順で保管・分析。名前はこの端末にだけ保存されます</div>
+</header>
+
+<div class="tabs" id="tabBar"></div>
+
+<div class="card" id="accCard" style="display:none">
+  <h2><span class="num">A</span>アカウント管理(追加・改名・削除)</h2>
+  <div class="mini">
+    <input type="text" id="newAccName" placeholder="新しいアカウント名" maxlength="20" style="font-family:'Zen Kaku Gothic New',sans-serif">
+    <button class="btn-acc" onclick="addAcc()">追加</button>
+  </div>
+  <div id="accList" style="margin-top:12px"></div>
+  <div class="note">ここで付けた名前は<b>この端末のブラウザ内にだけ</b>保存され、コードには残りません(他人がページを開いても見えません)。削除は投稿・連携設定ごと消えます(2回押しで確定)。取込枠①②は既存スキャナからの取り込みに対応した枠のため改名のみ可能です。</div>
+</div>
+
+<div class="card">
+  <details class="io" id="linkBox">
+    <summary>Threads API連携(このアカウント用の設定)</summary>
+    <span class="lbl">ThreadsユーザーID(数字)</span>
+    <input type="text" id="lkUid" placeholder="例 1784xxxxxxxxxxx" style="font-family:'IBM Plex Mono',monospace">
+    <span class="lbl">アクセストークン(この端末にのみ保存)</span>
+    <input type="password" id="lkTok" placeholder="TH... で始まる長い文字列">
+    <div class="row">
+      <button class="btn-acc" onclick="saveLink()">連携設定を保存</button>
+      <button class="btn-line" onclick="clearLink()">この垢の設定を消す</button>
+    </div>
+    <div class="row">
+      <button class="btn-main" id="fetchBtn" onclick="fetchDirect()">APIから投稿+表示数を取り込む(直近30件)</button>
+    </div>
+    <span class="lbl">別ルート: GAS中継URL(任意)</span>
+    <input type="text" id="lkGas" placeholder="https://script.google.com/macros/s/xxxx/exec" style="font-family:'IBM Plex Mono',monospace">
+    <div class="row"><button class="btn-line" onclick="fetchGas()">GAS経由で取り込む</button></div>
+    <span class="lbl">最終手段: 取得JSONを貼り付け(必ず動く)</span>
+    <textarea id="lkJson" style="min-height:60px;font-size:12px" placeholder='{"posts":[{"text":"...","views":12345}]} または配列'></textarea>
+    <div class="row"><button class="btn-line" onclick="importFetchedJson()">貼り付けJSONを取り込む</button></div>
+    <div class="status" id="lkStatus"></div>
+    <div class="note">
+      ・取り込みは<b>読み取りのみ</b>(投稿はしません)。トークンの権限はthreads_basicとthreads_manage_insightsの2つだけにするのが安全です(投稿権限threads_content_publishは付けない)。<br>
+      ・トークンはパスワード同等。<b>この端末のブラウザ内にしか保存されず</b>、バックアップ書き出しにも含めません。端末を他人に触らせないでください。<br>
+      ・<b>正直な注意</b>: ブラウザから直接graph.threads.netに繋がるか(CORS)は公開情報で確認できませんでした。ブロックされる場合はエラー表示になるだけでデータは壊れません。その場合は付属のGASスクリプト(中継)を使えば確実に取得できます。
+    </div>
+  </details>
+</div>
+
+<div class="card">
+  <h2><span class="num">01</span>投稿を登録(全文貼り付け) → <span id="curAccLbl" style="color:var(--acc)"></span></h2>
+  <textarea id="addText" placeholder="投稿の全文を貼り付け&#10;(1投稿目と2投稿目の間に ---- の行を入れると確実に分割。&#10;無ければ「、、、」行または最初の1行を1投稿目とみなします)"></textarea>
+  <div class="mini">
+    <input type="text" id="addViews" placeholder="表示数(例 82000)" inputmode="numeric" style="font-family:'IBM Plex Mono',monospace">
+    <button class="btn-acc" onclick="addPost()">この帳面に登録</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">02</span>ランキング(表示数順・押すと開く) <span id="countLbl" style="color:var(--acc)"></span></h2>
+  <div id="rankList"></div>
+</div>
+
+<div class="card">
+  <h2><span class="num">03</span>この垢のバズ分析</h2>
+  <div class="row">
+    <button class="btn-acc" onclick="runAnalysis()">簡易分析(この場で集計)</button>
+    <button class="btn-line" onclick="exportForAI(this)">AI精密分析用に書き出し(命令書つき)</button>
+  </div>
+  <div class="ana" id="anaOut"></div>
+  <div class="note">簡易分析は<b>この帳面に登録済みの実データだけ</b>を集計します(表示数0=未計測は除外)。件数が少ないうちは偶然の差が出やすいので、目安として見てください。AI書き出しは「捏造禁止・データに無いことは言わない」を明記した分析命令書と実データをセットでコピーします。AIチャットに貼れば、この垢専用の分析が受けられます。</div>
+</div>
+
+<div class="card" id="impCard">
+  <h2><span class="num">04</span>既存スキャナから取り込み(同じブラウザ限定)</h2>
+  <div class="row"><button class="btn-line" id="impBtn" onclick="importLegacy()"></button></div>
+  <div class="note" id="impNote"></div>
+</div>
+
+<div class="card">
+  <details class="io">
+    <summary>バックアップ(書き出し/取り込み・2端末間の移動用)</summary>
+    <div class="row">
+      <button class="btn-line" onclick="exportJSON(this)">全データ書き出し</button>
+      <button class="btn-line" onclick="importJSON()">貼り付けて取り込み</button>
+    </div>
+    <textarea id="ioArea" style="min-height:70px;margin-top:10px;font-size:12px" placeholder="書き出したJSONの保管・貼り付け欄"></textarea>
+    <div class="note">iPhoneのSafariは7日間未使用サイトの保存データを消すことがあります。登録後は書き出しを控えておくと安全です。書き出しに<b>トークンは含めません</b>(安全のため。連携設定は端末ごとに入れ直してください)。</div>
+  </details>
+</div>
+
+<div class="card">
+  <h2><span class="num">!!</span>再投稿の注意(正直な話)</h2>
+  <div class="note" style="margin-top:0">
+    ・Threadsは高頻度投稿や同一・類似投稿の繰り返しがスパム判定されやすい運用報告があります。<b>完全に同じ文の再投稿は削除・制限のリスク</b>があるため、間隔を空けるか言葉を変えるのが安全です。<br>
+    ・この庫は「当たりの原文を見ながら言い換え版を作る」使い方を推奨します。<br>
+    ・このアプリが行うのは保管・コピー・集計・<b>読み取り専用のAPI取得</b>だけ。自動投稿は行いません。
+  </div>
+</div>
+
+<footer>REBUZZ v1.3 / READ-ONLY・NOINDEX</footer>
+</div>
+<div id="toasts"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ===== 保存 ===== */
+var mem = {};
+function save(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ mem[k]=JSON.stringify(v); } }
+function load(k){
+  try{ var v=localStorage.getItem(k); if(v!==null) return JSON.parse(v); }catch(e){ if(mem[k]) return JSON.parse(mem[k]); }
+  return null;
+}
+var PALETTE = ["#E3C173","#43B58C","#7FA8E0","#D98BB4","#B7A0E8","#E0A35C","#8FCF9F","#E27A6E","#6EC6D9","#C9C56A"];
+function uid(){ return Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8); }
+function dk(a){ var s=""; for(var i=0;i<a.length;i++){ s+=String.fromCharCode(a[i]); } return s; }
+/* 旧アプリの保存キー(素読みされにくいよう数値化。復元可能なので完全な秘匿ではない) */
+var K1 = dk([115,111,114,97,95,98,117,122,122,95,115,116,97,116,101,95,118,50]);
+var K2 = dk([105,107,117,109,111,117,95,104,111,111,107,115]);
+
+/* ===== DB v2 (id移行: 旧sora→s1, 旧iku→s2) ===== */
+var DB = load("rebuzz_db_v2");
+if(DB){
+  var ren = {}; ren[dk([115,111,114,97])]="s1"; ren[dk([105,107,117])]="s2";
+  if(Array.isArray(DB.accounts)) DB.accounts.forEach(function(a){ if(a && ren[a.id]) a.id = ren[a.id]; });
+  if(DB.posts && typeof DB.posts==="object"){
+    Object.keys(ren).forEach(function(o){
+      if(Array.isArray(DB.posts[o])){ DB.posts[ren[o]] = DB.posts[o]; delete DB.posts[o]; }
+    });
+  }
+}
+if(!DB || !Array.isArray(DB.accounts) || typeof DB.posts!=="object" || DB.posts===null){
+  DB = { accounts:[
+      { id:"s1", name:"アカウントA", color:"#E3C173" },
+      { id:"s2", name:"アカウントB", color:"#43B58C" }
+    ], posts:{ s1:[], s2:[] } };
+}
+["s1","s2"].forEach(function(id,i){
+  if(!DB.accounts.some(function(a){return a.id===id;})){
+    DB.accounts.push({ id:id, name:(i===0?"アカウントA":"アカウントB"), color:(i===0?"#E3C173":"#43B58C") });
+  }
+  if(!Array.isArray(DB.posts[id])) DB.posts[id]=[];
+});
+function persist(){ save("rebuzz_db_v2", DB); }
+persist();
+
+/* 連携設定(トークン)は本体DBと分離。バックアップ書き出しに含めない */
+var LINKS = load("rebuzz_links_v1") || {};
+(function(){
+  var ren = {}; ren[dk([115,111,114,97])]="s1"; ren[dk([105,107,117])]="s2";
+  Object.keys(ren).forEach(function(o){ if(LINKS[o]){ LINKS[ren[o]]=LINKS[o]; delete LINKS[o]; } });
+})();
+function persistLinks(){ save("rebuzz_links_v1", LINKS); }
+
+var acc = load("rebuzz_last_acc");
+if(acc===dk([115,111,114,97])) acc="s1";
+if(acc===dk([105,107,117])) acc="s2";
+if(!DB.accounts.some(function(a){return a.id===acc;})) acc = DB.accounts[0].id;
+var openId = null, accPanel = false;
+
+function accOf(id){ for(var i=0;i<DB.accounts.length;i++){ if(DB.accounts[i].id===id) return DB.accounts[i]; } return null; }
+function nextColor(){
+  for(var i=0;i<PALETTE.length;i++){
+    var c=PALETTE[i];
+    if(!DB.accounts.some(function(a){return a.color===c;})) return c;
+  }
+  return PALETTE[DB.accounts.length % PALETTE.length];
+}
+function toast(msg){
+  var w=document.getElementById("toasts");
+  var t=document.createElement("div"); t.className="toast"; t.textContent=msg;
+  w.appendChild(t);
+  setTimeout(function(){ if(t.parentNode) t.parentNode.removeChild(t); }, 4500);
+}
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function fmtViews(v){
+  v=Number(v)||0;
+  if(!v) return "未計測";
+  if(v>=10000) return (v/10000).toFixed(1).replace(/\.0$/,"")+"万";
+  return v.toLocaleString();
+}
+function viewsCls(v){
+  v=Number(v)||0;
+  if(v>=80000) return "big";
+  if(v>=10000) return "mid";
+  if(v>0 && v<1000) return "dead";
+  return "";
+}
+
+/* ===== 分割 ===== */
+function smartSplit(raw){
+  raw = String(raw).replace(/\r\n/g,"\n").trim();
+  if(!raw) return ["",""];
+  var parts = raw.split(/\n-{3,}\n/);
+  if(parts.length>1) return [parts[0].trim(), parts.slice(1).join("\n").trim()];
+  var lines = raw.split("\n");
+  for(var i=0;i<Math.min(lines.length,4);i++){
+    if(/、{2,}\s*$/.test(lines[i]) && !/さん\s*$/.test(lines[i])){
+      return [lines.slice(0,i+1).join("\n").trim(), lines.slice(i+1).join("\n").trim()];
+    }
+  }
+  var idx=-1;
+  for(var j=0;j<lines.length;j++){ if(lines[j].trim()!==""){ idx=j; break; } }
+  if(idx<0) return ["",""];
+  return [lines[idx].trim(), lines.slice(idx+1).join("\n").replace(/^\s*\n+/,"").trim()];
+}
+
+/* ===== タブ・アカウント管理 ===== */
+function renderTabs(){
+  var bar=document.getElementById("tabBar");
+  bar.innerHTML = DB.accounts.map(function(a){
+    var on = a.id===acc;
+    return "<div class='tab"+(on?" on":"")+"' style='"+(on?"background:"+a.color+";":"")+"' onclick=\"switchAcc('"+a.id+"')\">"+esc(a.name)+"</div>";
+  }).join("") + "<div class='tab plus' onclick='toggleAccPanel()'>＋ 管理</div>";
+  document.getElementById("accCard").style.display = accPanel ? "block" : "none";
+  if(accPanel) renderAccList();
+}
+function renderAccList(){
+  var el=document.getElementById("accList");
+  el.innerHTML = DB.accounts.map(function(a){
+    var fixed = (a.id==="s1"||a.id==="s2");
+    var n = (DB.posts[a.id]||[]).length;
+    return "<div class='acc-item'>"
+      + "<span class='acc-dot' style='background:"+a.color+"'></span>"
+      + "<input type='text' id='an-"+a.id+"' value='"+esc(a.name)+"' maxlength='20'>"
+      + "<button class='btn-line' onclick=\"renameAcc('"+a.id+"')\">改名</button>"
+      + (fixed
+          ? "<button class='btn-line' disabled>取込枠"+(a.id==="s1"?"①":"②")+"</button>"
+          : "<button class='btn-red' id='ad-"+a.id+"' onclick=\"delAcc('"+a.id+"',this)\">削除("+n+"件)</button>")
+      + "</div>";
+  }).join("");
+}
+window.toggleAccPanel = function(){ accPanel = !accPanel; renderTabs(); };
+window.addAcc = function(){
+  var inp=document.getElementById("newAccName");
+  var name=inp.value.trim();
+  if(!name){ toast("アカウント名を入力してください"); return; }
+  if(DB.accounts.some(function(a){return a.name===name;})){ toast("同名のアカウントがあります"); return; }
+  var id="a-"+uid();
+  DB.accounts.push({ id:id, name:name, color:nextColor() });
+  DB.posts[id]=[];
+  persist();
+  inp.value="";
+  acc=id; save("rebuzz_last_acc", acc);
+  toast("「"+name+"」を追加しました(名前はこの端末にのみ保存)");
+  renderAll();
+};
+window.renameAcc = function(id){
+  var a=accOf(id); if(!a) return;
+  var name=document.getElementById("an-"+id).value.trim();
+  if(!name){ toast("名前が空です"); return; }
+  a.name=name; persist(); toast("改名しました"); renderAll();
+};
+var accDelArm = {};
+window.delAcc = function(id, btn){
+  if(id==="s1"||id==="s2") return;
+  if(!accDelArm[id]){
+    accDelArm[id]=true; btn.textContent="もう一度で完全削除";
+    setTimeout(function(){ accDelArm[id]=false; var b=document.getElementById("ad-"+id); if(b) b.textContent="削除("+(DB.posts[id]||[]).length+"件)"; },2600);
+    return;
+  }
+  DB.accounts = DB.accounts.filter(function(a){return a.id!==id;});
+  delete DB.posts[id];
+  delete LINKS[id]; persistLinks();
+  if(acc===id){ acc=DB.accounts[0].id; save("rebuzz_last_acc", acc); }
+  persist(); toast("アカウントを削除しました"); renderAll();
+};
+window.switchAcc = function(a){
+  acc = a; openId = null;
+  save("rebuzz_last_acc", a);
+  renderAll();
+};
+
+/* ===== 描画 ===== */
+function renderAll(){
+  var a=accOf(acc);
+  document.documentElement.style.setProperty("--acc", a ? a.color : "#E3C173");
+  document.getElementById("curAccLbl").textContent = a ? a.name : "";
+  var legacy = (acc==="s1"||acc==="s2");
+  document.getElementById("impCard").style.display = legacy ? "block" : "none";
+  if(legacy){
+    document.getElementById("impBtn").textContent =
+      acc==="s1" ? "既存スキャナ①の履歴を取り込む(表示数なし)" : "既存スキャナ②の履歴を取り込む(表示数つき)";
+    document.getElementById("impNote").innerHTML =
+      "既存スキャナと<b>同じブラウザ・同じサイトに設置した場合のみ</b>読めます。取り込めるのは1投稿目(掴み)"
+      + (acc==="s2" ? "と表示数" : "")
+      + "だけで、<b>本文は空で入ります</b>。各項目を開いて本文を貼り足してください。"
+      + (acc==="s1" ? "掴みは定型から復元するため、実物と違えば編集を。表示数は記録が無いため未計測(0)で入ります。" : "");
+  }
+  document.getElementById("anaOut").classList.remove("show");
+  var lk = LINKS[acc] || {};
+  document.getElementById("lkUid").value = lk.uid || "";
+  document.getElementById("lkTok").value = lk.tok || "";
+  document.getElementById("lkGas").value = lk.gas || "";
+  setStatus("", "");
+  renderTabs();
+  render();
+}
+function render(){
+  var list = (DB.posts[acc]||[]).slice().sort(function(a,b){ return (Number(b.v)||0)-(Number(a.v)||0); });
+  document.getElementById("countLbl").textContent = list.length ? list.length+"件" : "";
+  var el = document.getElementById("rankList");
+  if(!list.length){
+    el.innerHTML = "<div class='empty'>まだ登録がありません。貼り付け登録か、上のAPI連携から取り込んでください。</div>";
+    return;
+  }
+  el.innerHTML = list.map(function(p,i){
+    var firstLine = (p.h||"").split("\n").filter(function(x){return x.trim();}).pop() || "(掴み未登録)";
+    var open = p.id===openId;
+    var bodyHtml="";
+    if(open){
+      var b1 = "<div class='blk'><div class='bh'><span>ブロック1 1投稿目</span><button onclick=\"copyBlk('"+p.id+"',1,this)\">コピー</button></div><pre>"+esc(p.h||"")+"</pre></div>";
+      var b2 = (p.b && p.b.trim())
+        ? "<div class='blk'><div class='bh'><span>ブロック2 2投稿目</span><button onclick=\"copyBlk('"+p.id+"',2,this)\">コピー</button></div><pre>"+esc(p.b)+"</pre></div>"
+        : "<div class='nobody'>本文が未登録です。下の「編集」で本文を貼り足すと再投稿に使えます。</div>";
+      bodyHtml =
+        "<div class='rank-body'>"
+        + "<button class='btn-main' style='margin-bottom:10px' onclick=\"seqCopy('"+p.id+"',this)\">ワンタッチ順番コピー(①1投稿目→②2投稿目)</button>"
+        + b1 + b2
+        + "<div class='mini'><input type='text' id='v-"+p.id+"' value='"+(Number(p.v)||0)+"' inputmode='numeric'><button class='btn-line' onclick=\"saveViews('"+p.id+"')\">表示数を更新</button></div>"
+        + "<div class='row'><button class='btn-acc' onclick=\"toggleEdit('"+p.id+"')\">編集(掴み/本文)</button><button class='btn-red' id='del-"+p.id+"' onclick=\"delPost('"+p.id+"',this)\">削除</button></div>"
+        + "<div class='editbox' id='eb-"+p.id+"'><textarea id='et-"+p.id+"' style='min-height:180px'></textarea><div class='row'><button class='btn-acc' onclick=\"saveEdit('"+p.id+"')\">保存(----の上=1投稿目/下=2投稿目)</button></div></div>"
+        + "</div>";
+    }
+    return "<div class='rank-item"+(open?" open":"")+"'>"
+      + "<div class='rank-head' onclick=\"toggleOpen('"+p.id+"')\">"
+      + "<div class='rank-no'>"+(i+1)+"</div>"
+      + "<div class='rank-hook'>"+esc(firstLine)+((p.h||"").indexOf("\n")>=0?"<span class='sub'>"+esc((p.h||"").split("\n")[0])+"</span>":"")+"</div>"
+      + "<div class='views "+viewsCls(p.v)+"'>"+fmtViews(p.v)+"</div>"
+      + "</div>" + bodyHtml + "</div>";
+  }).join("");
+}
+window.toggleOpen = function(id){ openId = (openId===id ? null : id); render(); };
+function find(id){ var arr=DB.posts[acc]||[]; for(var i=0;i<arr.length;i++){ if(arr[i].id===id) return arr[i]; } return null; }
+
+/* ===== 登録・編集・削除 ===== */
+window.addPost = function(){
+  var raw = document.getElementById("addText").value;
+  if(!raw.trim()){ toast("投稿の全文を貼り付けてください"); return; }
+  var sp = smartSplit(raw);
+  var v = parseInt(String(document.getElementById("addViews").value).replace(/[^0-9]/g,""),10)||0;
+  DB.posts[acc].push({ id:uid(), h:sp[0], b:sp[1], v:v, ts:Date.now() });
+  persist();
+  document.getElementById("addText").value="";
+  document.getElementById("addViews").value="";
+  var a=accOf(acc);
+  toast("登録しました("+(a?a.name:"")+")");
+  render();
+};
+window.saveViews = function(id){
+  var p=find(id); if(!p) return;
+  var v = parseInt(String(document.getElementById("v-"+id).value).replace(/[^0-9]/g,""),10)||0;
+  p.v = v; persist(); toast("表示数を更新: "+fmtViews(v)); render();
+};
+window.toggleEdit = function(id){
+  var p=find(id); if(!p) return;
+  var eb=document.getElementById("eb-"+id);
+  var show = !eb.classList.contains("show");
+  eb.classList.toggle("show", show);
+  if(show) document.getElementById("et-"+id).value = (p.h||"") + "\n----\n" + (p.b||"");
+};
+window.saveEdit = function(id){
+  var p=find(id); if(!p) return;
+  var sp = smartSplit(document.getElementById("et-"+id).value);
+  p.h = sp[0]; p.b = sp[1];
+  persist(); toast("保存しました"); render();
+};
+var delArm = {};
+window.delPost = function(id, btn){
+  if(!delArm[id]){
+    delArm[id]=true; btn.textContent="もう一度押すと削除";
+    setTimeout(function(){ delArm[id]=false; var b=document.getElementById("del-"+id); if(b) b.textContent="削除"; }, 2500);
+    return;
+  }
+  DB.posts[acc] = (DB.posts[acc]||[]).filter(function(x){ return x.id!==id; });
+  persist(); openId=null; toast("削除しました"); render();
+};
+
+/* ===== コピー ===== */
+function doCopy(text, btn, msg){
+  function done(){
+    if(!btn) return;
+    var o=btn.textContent; btn.textContent=msg||"コピー済";
+    setTimeout(function(){ btn.textContent=o; },1800);
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(function(){ fb(text); done(); });
+  } else { fb(text); done(); }
+  function fb(t){
+    var ta=document.createElement("textarea"); ta.value=t;
+    ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); }catch(e){}
+    document.body.removeChild(ta);
+  }
+}
+window.copyBlk = function(id,n,btn){
+  var p=find(id); if(!p) return;
+  doCopy(n===1 ? (p.h||"") : (p.b||""), btn);
+};
+var seq = {};
+window.seqCopy = function(id, btn){
+  var p=find(id); if(!p) return;
+  if(!p.b || !p.b.trim()){ doCopy(p.h||"", btn, "本文未登録のため1投稿目のみコピー"); return; }
+  if(!seq[id]){
+    doCopy(p.h||"", btn, "①コピー済→Threadsに貼ったらもう一度");
+    seq[id]=true;
+  } else {
+    doCopy(p.b||"", btn, "②コピー済→貼れば完了");
+    seq[id]=false;
+  }
+};
+
+/* ===== バズ分析(登録済み実データのみ・端末内で集計) ===== */
+function hookFeat(h){
+  var t=String(h||"");
+  return {
+    len: t.replace(/\n/g,"").length,
+    lines: t.split("\n").filter(function(x){return x.trim();}).length,
+    q: /[?？]/.test(t)?1:0,
+    num: /[0-9０-９]/.test(t)?1:0,
+    ten: /、、/.test(t)?1:0,
+    ex: /[!！]/.test(t)?1:0
+  };
+}
+function avgFeat(arr){
+  var s={len:0,lines:0,q:0,num:0,ten:0,ex:0}, n=arr.length||1;
+  arr.forEach(function(p){ var f=hookFeat(p.h); for(var k in s){ s[k]+=f[k]; } });
+  for(var k in s){ s[k]=s[k]/n; }
+  return s;
+}
+function median(a){
+  var b=a.slice().sort(function(x,y){return x-y;});
+  var m=Math.floor(b.length/2);
+  return b.length%2 ? b[m] : Math.round((b[m-1]+b[m])/2);
+}
+function pct(x){ return Math.round(x*100)+"%"; }
+function n1(x){ return (Math.round(x*10)/10).toString(); }
+window.runAnalysis = function(){
+  var el=document.getElementById("anaOut");
+  el.classList.add("show");
+  var all=(DB.posts[acc]||[]).filter(function(p){ return (Number(p.v)||0)>0; });
+  var zero=(DB.posts[acc]||[]).length - all.length;
+  if(all.length<3){
+    el.innerHTML="<span class='cap'>表示数が入った投稿が3件以上必要です(現在"+all.length+"件"+(zero?"・未計測"+zero+"件は対象外":"")+")。表示数を入れるかAPI取込をしてから再度どうぞ。</span>";
+    return;
+  }
+  var arr=all.slice().sort(function(a,b){ return b.v-a.v; });
+  var n=arr.length;
+  var k=Math.max(1, Math.ceil(n*0.3));
+  var top=arr.slice(0,k), low=arr.slice(-k);
+  var ft=avgFeat(top), fl=avgFeat(low);
+  var views=arr.map(function(p){return Number(p.v)||0;});
+  var sum=views.reduce(function(a,b){return a+b;},0);
+  function row(name, tv, lv, fmt){
+    var f=fmt||function(x){return x;};
+    var wt = tv>lv ? " class='win'" : "", wl = lv>tv ? " class='win'" : "";
+    return "<tr><td>"+name+"</td><td"+wt+">"+f(tv)+"</td><td"+wl+">"+f(lv)+"</td></tr>";
+  }
+  var html="";
+  html+="<h3>全体("+n+"件・表示数入りのみ"+(zero?"/未計測"+zero+"件除外":"")+")</h3>";
+  html+="最高 "+fmtViews(arr[0].v)+" / 中央値 "+fmtViews(median(views))+" / 平均 "+fmtViews(Math.round(sum/n));
+  html+="<h3>上位"+k+"件 vs 下位"+k+"件(掴みの特徴)</h3>";
+  html+="<table><tr><td class='cap'></td><td class='cap'>上位</td><td class='cap'>下位</td></tr>";
+  html+=row("掴み文字数(平均)", n1(ft.len), n1(fl.len));
+  html+=row("行数(平均)", n1(ft.lines), n1(fl.lines));
+  html+=row("「?」あり率", ft.q, fl.q, pct);
+  html+=row("数字あり率", ft.num, fl.num, pct);
+  html+=row("「、、」あり率", ft.ten, fl.ten, pct);
+  html+=row("「!」あり率", ft.ex, fl.ex, pct);
+  html+="</table>";
+  html+="<h3>上位フック(実物)</h3><ol>";
+  arr.slice(0,Math.min(5,n)).forEach(function(p){
+    var fl2=(p.h||"").split("\n").filter(function(x){return x.trim();}).pop()||"";
+    html+="<li>"+esc(fl2)+" <span class='cap'>("+fmtViews(p.v)+")</span></li>";
+  });
+  html+="</ol>";
+  var withTime=top.filter(function(p){return p.tsp;});
+  if(withTime.length){
+    var hs=withTime.map(function(p){
+      var d=new Date(p.tsp);
+      return isNaN(d.getTime()) ? null : d.getHours()+"時";
+    }).filter(Boolean);
+    html+="<h3>上位の投稿時刻(分かる分のみ"+hs.length+"件)</h3>"+esc(hs.join(" / "));
+  } else {
+    html+="<h3>投稿時刻</h3><span class='cap'>時刻データなし(API取込した投稿のみ持ちます)</span>";
+  }
+  if(n<10) html+="<div class='cap' style='margin-top:8px'>※"+n+"件はまだ少数。差は偶然の可能性が高いので、傾向の当たりを付ける程度に。</div>";
+  el.innerHTML=html;
+};
+
+/* AI精密分析用の書き出し(命令書は汎用文のみ。アカウント固有情報はコードに含まれない) */
+var AI_DIRECTIVE =
+"あなたは投稿分析の専門家です。以下は私のあるSNSアカウントの実投稿と実表示数のデータです。次のルールを厳守して分析してください。\n"
++"【絶対ルール(捏造禁止)】\n"
++"1. このデータに書かれている事実だけを根拠にする。データに無いことを事実のように書かない\n"
++"2. 推測を書く場合は文頭に【推測】と明記する\n"
++"3. 一般論やSNSノウハウの受け売りを、私のデータから導いた結論のように書かない(書く場合は【一般論】と明記)\n"
++"4. 表示数0は「未計測」であり「0回表示」ではない。分析対象から外す\n"
++"5. 件数が少ない場合(10件未満)は、信頼度が低いことを冒頭に明記する\n"
++"6. 架空の投稿・架空の数値・架空の比較対象を作らない\n"
++"【出力してほしいもの】\n"
++"① 上位投稿に共通するパターン(根拠となる投稿番号を添える)\n"
++"② 下位投稿との違い(同上)\n"
++"③ 上位パターンに沿った新しい掴み案を10個(これは創作なので自由。ただし誇大・断定・不安煽りすぎは避ける)\n"
++"④ 避けた方がよさそうなパターン(根拠つき)\n";
+window.exportForAI = function(btn){
+  var posts=(DB.posts[acc]||[]).slice().sort(function(a,b){ return (Number(b.v)||0)-(Number(a.v)||0); });
+  if(!posts.length){ toast("この垢にはまだ投稿がありません"); return; }
+  var lines=posts.map(function(p,i){
+    return "【投稿"+(i+1)+"】表示数:"+(Number(p.v)||0)
+      +(p.tsp?" 投稿日時:"+p.tsp:"")
+      +"\n1投稿目:\n"+(p.h||"(なし)")
+      +"\n2投稿目:"+(p.b && p.b.trim() ? "\n"+p.b : "(未登録)");
+  }).join("\n\n");
+  var out=AI_DIRECTIVE+"\n===実データ("+posts.length+"件・表示数降順)===\n\n"+lines;
+  doCopy(out, btn, "コピー済→AIチャットに貼り付け");
+  toast("命令書+実データ"+posts.length+"件をコピーしました");
+};
+
+/* ===== Threads API連携(読み取り専用) ===== */
+function setStatus(msg, cls){
+  var el=document.getElementById("lkStatus");
+  el.textContent = msg;
+  el.className = "status" + (cls ? " "+cls : "");
+}
+window.saveLink = function(){
+  LINKS[acc] = LINKS[acc] || {};
+  LINKS[acc].uid = document.getElementById("lkUid").value.trim();
+  LINKS[acc].tok = document.getElementById("lkTok").value.trim();
+  LINKS[acc].gas = document.getElementById("lkGas").value.trim();
+  persistLinks();
+  toast("連携設定を保存しました(この端末のみ)");
+};
+window.clearLink = function(){
+  delete LINKS[acc]; persistLinks();
+  document.getElementById("lkUid").value="";
+  document.getElementById("lkTok").value="";
+  document.getElementById("lkGas").value="";
+  toast("このアカウントの連携設定を消しました");
+};
+function normHook(s){ return String(s).replace(/[、。\s]/g,""); }
+function mergeFetched(list){
+  var added=0, updated=0, skipped=0;
+  (Array.isArray(list)?list:[]).forEach(function(x){
+    if(!x) return;
+    var text = typeof x.text==="string" ? x.text : (typeof x.h==="string" ? x.h : "");
+    if(!text.trim()) return;
+    var views = Number(x.views!=null ? x.views : x.v) || 0;
+    var tsp = (typeof x.timestamp==="string" && x.timestamp) ? x.timestamp : null;
+    var n = normHook(text);
+    var hit = (DB.posts[acc]||[]).filter(function(p){
+      return normHook(p.h)===n
+          || normHook((p.h||"")+(p.b||""))===n
+          || normHook((p.h||"").split("\n").pop())===normHook(text.split("\n")[0]||"");
+    })[0];
+    if(hit){
+      var ch=false;
+      if(views>0 && views!==Number(hit.v)){ hit.v = views; ch=true; }
+      if(tsp && !hit.tsp){ hit.tsp = tsp; ch=true; }
+      if(ch) updated++; else skipped++;
+      return;
+    }
+    var sp = smartSplit(text);
+    var np={ id:uid(), h:sp[0], b:sp[1], v:views, ts:Date.now() };
+    if(tsp) np.tsp=tsp;
+    DB.posts[acc].push(np);
+    added++;
+  });
+  persist();
+  render();
+  return { added:added, updated:updated, skipped:skipped };
+}
+var fetching=false;
+window.fetchDirect = async function(){
+  if(fetching) return;
+  var lk=LINKS[acc]||{};
+  var u=(document.getElementById("lkUid").value||lk.uid||"").trim();
+  var t=(document.getElementById("lkTok").value||lk.tok||"").trim();
+  if(!u||!t){ setStatus("ユーザーIDとトークンを入力し、先に「連携設定を保存」を押してください","err"); return; }
+  fetching=true;
+  var btn=document.getElementById("fetchBtn");
+  btn.disabled=true;
+  try{
+    setStatus("投稿一覧を取得中…","");
+    var base="https://graph.threads.net/v1.0/";
+    var res=await fetch(base+encodeURIComponent(u)+"/threads?fields=id,text,timestamp,permalink&limit=30&access_token="+encodeURIComponent(t));
+    if(!res.ok){
+      var bodyTxt=""; try{ bodyTxt=(await res.text()).slice(0,300); }catch(e){}
+      throw new Error("HTTP "+res.status+" "+bodyTxt);
+    }
+    var data=await res.json();
+    var items=Array.isArray(data.data)?data.data:[];
+    if(!items.length){ setStatus("投稿が0件でした(IDと権限を確認してください)","err"); return; }
+    var out=[];
+    for(var i=0;i<items.length;i++){
+      var it=items[i];
+      if(!it || typeof it.text!=="string" || !it.text.trim()) continue;
+      setStatus("表示数を取得中… "+(i+1)+"/"+items.length,"");
+      var views=0;
+      try{
+        var r2=await fetch(base+encodeURIComponent(it.id)+"/insights?metric=views&access_token="+encodeURIComponent(t));
+        if(r2.ok){
+          var d2=await r2.json();
+          var m=(Array.isArray(d2.data)?d2.data:[]).filter(function(x){return x&&x.name==="views";})[0];
+          if(m){
+            if(m.total_value && m.total_value.value!=null) views=Number(m.total_value.value)||0;
+            else if(Array.isArray(m.values)&&m.values.length) views=Number(m.values[m.values.length-1].value)||0;
+          }
+        }
+      }catch(e){ /* 個別失敗はviews=0のまま続行 */ }
+      out.push({ text:it.text, views:views, timestamp:it.timestamp||"" });
+      await new Promise(function(r){ setTimeout(r,150); });
+    }
+    var s=mergeFetched(out);
+    setStatus("完了: 追加"+s.added+"件 / 更新"+s.updated+"件 / 変化なし"+s.skipped+"件","ok");
+    toast("APIから取り込みました");
+  }catch(e){
+    setStatus("取得失敗: "+(e&&e.message?e.message:"通信エラー")+" 。ブラウザ直通信が遮断されている場合は付属のGAS中継か、JSON貼り付けを使ってください。","err");
+  }finally{
+    fetching=false; btn.disabled=false;
+  }
+};
+window.fetchGas = async function(){
+  if(fetching) return;
+  var g=(document.getElementById("lkGas").value||"").trim();
+  if(!/^https?:\/\/\S+$/.test(g)){ setStatus("GASのURLを入力してください","err"); return; }
+  fetching=true;
+  try{
+    setStatus("GASから取得中…","");
+    var a=accOf(acc);
+    var url=g+(g.indexOf("?")>=0?"&":"?")+"acc="+encodeURIComponent(a?a.name:"");
+    var res=await fetch(url);
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    var data=await res.json();
+    if(data && data.error){ throw new Error(String(data.error)); }
+    var list=Array.isArray(data)?data:(Array.isArray(data.posts)?data.posts:null);
+    if(!list) throw new Error("GASの返答形式が不正です");
+    var s=mergeFetched(list);
+    setStatus("完了: 追加"+s.added+"件 / 更新"+s.updated+"件 / 変化なし"+s.skipped+"件","ok");
+    toast("GAS経由で取り込みました");
+  }catch(e){
+    setStatus("GAS取得失敗: "+(e&&e.message?e.message:"通信エラー"),"err");
+  }finally{ fetching=false; }
+};
+window.importFetchedJson = function(){
+  var t=document.getElementById("lkJson").value.trim();
+  if(!t){ setStatus("JSONを貼り付けてください","err"); return; }
+  var obj=null;
+  try{ obj=JSON.parse(t); }catch(e){ setStatus("JSONを読み取れません","err"); return; }
+  var list=Array.isArray(obj)?obj:(Array.isArray(obj.posts)?obj.posts:null);
+  if(!list){ setStatus("形式が不正です({posts:[...]} か配列)","err"); return; }
+  var s=mergeFetched(list);
+  setStatus("完了: 追加"+s.added+"件 / 更新"+s.updated+"件 / 変化なし"+s.skipped+"件","ok");
+  document.getElementById("lkJson").value="";
+};
+
+/* ===== 既存スキャナからの取り込み(s1/s2のみ・同一オリジン) ===== */
+function existsHook(accId, h){
+  var n=normHook(h);
+  return (DB.posts[accId]||[]).some(function(p){
+    return normHook(p.h)===n || normHook((p.h||"").split("\n").pop())===n;
+  });
+}
+window.importLegacy = function(){
+  var added=0, skipped=0;
+  if(acc==="s2"){
+    var raw=null;
+    try{ raw = JSON.parse(localStorage.getItem(K2)||"null"); }catch(e){}
+    if(!Array.isArray(raw)){ toast("スキャナ②のデータが見つかりません(同じサイトに設置されていますか?)"); return; }
+    raw.forEach(function(x){
+      if(!x || typeof x.h!=="string" || !x.h.trim()) return;
+      if(existsHook("s2", x.h)){ skipped++; return; }
+      DB.posts.s2.push({ id:uid(), h:x.h.trim(), b:"", v:Number(x.v)||0, ts:Date.now() });
+      added++;
+    });
+  } else if(acc==="s1"){
+    var st=null;
+    try{ st = JSON.parse(localStorage.getItem(K1)||"null"); }catch(e){}
+    if(!st || !Array.isArray(st.hist)){ toast("スキャナ①のデータが見つかりません(同じサイトに設置されていますか?)"); return; }
+    var g=-1;
+    (Array.isArray(st.gT)?st.gT:[]).forEach(function(t){ if(t&&t.k==="hist"&&Number(t.ts)>g) g=Number(t.ts); });
+    var tomb={};
+    (Array.isArray(st.histT)?st.histT:[]).forEach(function(t){
+      if(!t||typeof t.k!=="string") return;
+      var v=Number(t.ts)||0;
+      if(!(t.k in tomb)||v>tomb[t.k]) tomb[t.k]=v;
+    });
+    st.hist.forEach(function(h){
+      if(!h || typeof h.phrase!=="string" || !h.phrase.trim()) return;
+      var k=(h.sign||"?")+"\t"+normHook(h.phrase);
+      var ts=Number(h.ts)||0;
+      var e=Math.max((k in tomb)?tomb[k]:-1, g);
+      if(ts<=e) return;
+      var hook=(h.sign && h.sign!=="?" ? h.sign+"の皆さん\n" : "")+h.phrase+"、、、";
+      if(existsHook("s1", hook)||existsHook("s1", h.phrase)){ skipped++; return; }
+      DB.posts.s1.push({ id:uid(), h:hook, b:"", v:0, ts:Date.now() });
+      added++;
+    });
+  } else return;
+  persist();
+  toast("取り込み: 追加"+added+"件 / 既存スキップ"+skipped+"件");
+  render();
+};
+
+/* ===== バックアップ(トークン非含有) ===== */
+window.exportJSON = function(btn){
+  var json = JSON.stringify({ app:"rebuzz", v:2, accounts:DB.accounts, posts:DB.posts });
+  var ta=document.getElementById("ioArea");
+  ta.value=json; ta.select();
+  doCopy(json, btn, "コピー済(メモ等に保管を)");
+};
+window.importJSON = function(){
+  var ta=document.getElementById("ioArea");
+  var t=ta.value.trim();
+  if(!t){ toast("書き出したJSONを貼り付けてから押してください"); return; }
+  var obj=null;
+  try{ obj=JSON.parse(t); }catch(e){ toast("JSONを読み取れません。書き出した内容をそのまま貼ってください"); return; }
+  var added=0, accAdded=0;
+  var oldMap={}; oldMap[dk([115,111,114,97])]="s1"; oldMap[dk([105,107,117])]="s2";
+  function mergePosts(accId, arr){
+    (Array.isArray(arr)?arr:[]).forEach(function(p){
+      if(!p || typeof p.h!=="string") return;
+      var n=normHook(p.h);
+      var dup=(DB.posts[accId]||[]).some(function(x){ return normHook(x.h)===n; });
+      if(dup) return;
+      var np={ id:uid(), h:p.h, b:String(p.b||""), v:Number(p.v)||0, ts:Date.now() };
+      if(typeof p.tsp==="string" && p.tsp) np.tsp=p.tsp;
+      DB.posts[accId].push(np);
+      added++;
+    });
+  }
+  if(obj && obj.v===2 && Array.isArray(obj.accounts) && obj.posts){
+    obj.accounts.forEach(function(fa){
+      if(!fa || typeof fa.name!=="string") return;
+      var faId = oldMap[fa.id] || fa.id;
+      var target=null;
+      if(faId==="s1"||faId==="s2"){ target=faId; }
+      else {
+        var same=DB.accounts.filter(function(a){return a.name===fa.name;})[0];
+        if(same) target=same.id;
+        else {
+          var nid="a-"+uid();
+          DB.accounts.push({ id:nid, name:fa.name, color:nextColor() });
+          DB.posts[nid]=[]; target=nid; accAdded++;
+        }
+      }
+      mergePosts(target, obj.posts[fa.id]);
+    });
+  } else {
+    var d = obj && obj.data ? obj.data : obj;
+    if(!d){ toast("形式が不正です"); return; }
+    var k1=dk([115,111,114,97]), k2=dk([105,107,117]);
+    if(!Array.isArray(d[k1]) && !Array.isArray(d[k2])){ toast("形式が不正です"); return; }
+    mergePosts("s1", d[k1]);
+    mergePosts("s2", d[k2]);
+  }
+  persist();
+  toast(added+"件を取り込みました"+(accAdded?"(アカウント"+accAdded+"件を新規作成)":"")+"(重複はスキップ)");
+  renderAll();
+};
+
+/* ===== 起動 ===== */
+try{ localStorage.setItem("__rb_probe","1"); localStorage.removeItem("__rb_probe"); }
+catch(e){ toast("この環境では保存が使えないため、閉じるとデータが消えます(設置先では保存されます)"); }
+renderAll();
+})();
+</script>
+</body>
+</html>
+<!-- ▲▲▲ 工房ツール ここまで | フォルダ: rebuzz ▲▲▲ -->
