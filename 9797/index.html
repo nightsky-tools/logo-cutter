@@ -1,4 +1,4 @@
-<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 万バズ再投稿庫 v1.3 | 中立化+アカウント別バズ分析 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
+<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.4 | v1.3からの変更: ①API取込で自分の返信を本文に自動ペア(要threads_read_replies) ②表示数取得エラーの可視化 のみ | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -123,7 +123,7 @@ details.io[open] summary::before{content:"▾ "}
 <div class="wrap">
 <header>
   <div class="brand">NIGHTSKY-TOOLS</div>
-  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.3</span></h1>
+  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.4</span></h1>
   <div class="lead">アカウントごとに当たり投稿を表示数順で保管・分析。名前はこの端末にだけ保存されます</div>
 </header>
 
@@ -157,13 +157,14 @@ details.io[open] summary::before{content:"▾ "}
     <input type="text" id="lkGas" placeholder="https://script.google.com/macros/s/xxxx/exec" style="font-family:'IBM Plex Mono',monospace">
     <div class="row"><button class="btn-line" onclick="fetchGas()">GAS経由で取り込む</button></div>
     <span class="lbl">最終手段: 取得JSONを貼り付け(必ず動く)</span>
-    <textarea id="lkJson" style="min-height:60px;font-size:12px" placeholder='{"posts":[{"text":"...","views":12345}]} または配列'></textarea>
+    <textarea id="lkJson" style="min-height:60px;font-size:12px" placeholder='{"posts":[{"text":"...","views":12345,"body":"2投稿目(任意)"}]} または配列'></textarea>
     <div class="row"><button class="btn-line" onclick="importFetchedJson()">貼り付けJSONを取り込む</button></div>
     <div class="status" id="lkStatus"></div>
     <div class="note">
-      ・取り込みは<b>読み取りのみ</b>(投稿はしません)。トークンの権限はthreads_basicとthreads_manage_insightsの2つだけにするのが安全です(投稿権限threads_content_publishは付けない)。<br>
-      ・トークンはパスワード同等。<b>この端末のブラウザ内にしか保存されず</b>、バックアップ書き出しにも含めません。端末を他人に触らせないでください。<br>
-      ・<b>正直な注意</b>: ブラウザから直接graph.threads.netに繋がるか(CORS)は公開情報で確認できませんでした。ブロックされる場合はエラー表示になるだけでデータは壊れません。その場合は付属のGASスクリプト(中継)を使えば確実に取得できます。
+      ・取り込みは<b>読み取りのみ</b>(投稿はしません)。基本権限はthreads_basicとthreads_manage_insightsの2つ(投稿権限threads_content_publishは付けない)。<br>
+      ・<b>ぶら下げ投稿の自動ペア</b>: アプリに threads_read_replies 権限を追加し、トークン発行時の同意画面で「Read replies」をオンにすると、1投稿目への<b>自分の返信を2投稿目(ブロック2)として自動で組みます</b>。権限が無い間はペアだけスキップされ、他は今まで通り動きます。<br>
+      ・トークンはパスワード同等。<b>この端末のブラウザ内にしか保存されず</b>、バックアップ書き出しにも含めません。<br>
+      ・表示数の取得に失敗した場合は、失敗理由がこの下のステータスに表示されます(黙って0にはしません)。
     </div>
   </details>
 </div>
@@ -219,7 +220,7 @@ details.io[open] summary::before{content:"▾ "}
   </div>
 </div>
 
-<footer>REBUZZ v1.3 / READ-ONLY・NOINDEX</footer>
+<footer>REBUZZ v1.4 / READ-ONLY・NOINDEX</footer>
 </div>
 <div id="toasts"></div>
 
@@ -408,7 +409,7 @@ function renderAll(){
       "既存スキャナと<b>同じブラウザ・同じサイトに設置した場合のみ</b>読めます。取り込めるのは1投稿目(掴み)"
       + (acc==="s2" ? "と表示数" : "")
       + "だけで、<b>本文は空で入ります</b>。各項目を開いて本文を貼り足してください。"
-      + (acc==="s1" ? "掴みは定型から復元するため、実物と違えば編集を。表示数は記録が無いため未計測(0)で入ります。" : "");
+      + (acc==="s1" ? "掴みは定型から復元するため、実物と違えば編集を。表示数は記録が無いため未計測(0)で入ります(後からAPI取込が成功すると同じ掴みに表示数が上書きされます)。" : "");
   }
   document.getElementById("anaOut").classList.remove("show");
   var lk = LINKS[acc] || {};
@@ -663,6 +664,7 @@ window.clearLink = function(){
   toast("このアカウントの連携設定を消しました");
 };
 function normHook(s){ return String(s).replace(/[、。\s]/g,""); }
+/* v1.4: x.body(自分の返信=2投稿目)が来たらブロック2として保存/補完する */
 function mergeFetched(list){
   var added=0, updated=0, skipped=0;
   (Array.isArray(list)?list:[]).forEach(function(x){
@@ -671,6 +673,7 @@ function mergeFetched(list){
     if(!text.trim()) return;
     var views = Number(x.views!=null ? x.views : x.v) || 0;
     var tsp = (typeof x.timestamp==="string" && x.timestamp) ? x.timestamp : null;
+    var body = (typeof x.body==="string" && x.body.trim()) ? x.body.trim() : "";
     var n = normHook(text);
     var hit = (DB.posts[acc]||[]).filter(function(p){
       return normHook(p.h)===n
@@ -681,11 +684,17 @@ function mergeFetched(list){
       var ch=false;
       if(views>0 && views!==Number(hit.v)){ hit.v = views; ch=true; }
       if(tsp && !hit.tsp){ hit.tsp = tsp; ch=true; }
+      if(body && !(hit.b && hit.b.trim())){ hit.b = body; ch=true; }
       if(ch) updated++; else skipped++;
       return;
     }
-    var sp = smartSplit(text);
-    var np={ id:uid(), h:sp[0], b:sp[1], v:views, ts:Date.now() };
+    var np;
+    if(body){
+      np = { id:uid(), h:text.trim(), b:body, v:views, ts:Date.now() };
+    } else {
+      var sp = smartSplit(text);
+      np = { id:uid(), h:sp[0], b:sp[1], v:views, ts:Date.now() };
+    }
     if(tsp) np.tsp=tsp;
     DB.posts[acc].push(np);
     added++;
@@ -704,9 +713,16 @@ window.fetchDirect = async function(){
   fetching=true;
   var btn=document.getElementById("fetchBtn");
   btn.disabled=true;
+  var insErr="", repState="";
   try{
-    setStatus("投稿一覧を取得中…","");
     var base="https://graph.threads.net/v1.0/";
+    /* 自分のusername(返信の見分けに使用)。失敗してもペア無しで続行 */
+    var myName="";
+    try{
+      var rm=await fetch(base+"me?fields=username&access_token="+encodeURIComponent(t));
+      if(rm.ok){ var dm=await rm.json(); if(dm && typeof dm.username==="string") myName=dm.username; }
+    }catch(e){}
+    setStatus("投稿一覧を取得中…","");
     var res=await fetch(base+encodeURIComponent(u)+"/threads?fields=id,text,timestamp,permalink&limit=30&access_token="+encodeURIComponent(t));
     if(!res.ok){
       var bodyTxt=""; try{ bodyTxt=(await res.text()).slice(0,300); }catch(e){}
@@ -716,10 +732,11 @@ window.fetchDirect = async function(){
     var items=Array.isArray(data.data)?data.data:[];
     if(!items.length){ setStatus("投稿が0件でした(IDと権限を確認してください)","err"); return; }
     var out=[];
+    var repliesBlocked=false;
     for(var i=0;i<items.length;i++){
       var it=items[i];
       if(!it || typeof it.text!=="string" || !it.text.trim()) continue;
-      setStatus("表示数を取得中… "+(i+1)+"/"+items.length,"");
+      setStatus("取得中… "+(i+1)+"/"+items.length,"");
       var views=0;
       try{
         var r2=await fetch(base+encodeURIComponent(it.id)+"/insights?metric=views&access_token="+encodeURIComponent(t));
@@ -730,13 +747,37 @@ window.fetchDirect = async function(){
             if(m.total_value && m.total_value.value!=null) views=Number(m.total_value.value)||0;
             else if(Array.isArray(m.values)&&m.values.length) views=Number(m.values[m.values.length-1].value)||0;
           }
+        } else if(!insErr){
+          try{ insErr=(await r2.text()).slice(0,200); }catch(e){ insErr="HTTP "+r2.status; }
         }
-      }catch(e){ /* 個別失敗はviews=0のまま続行 */ }
-      out.push({ text:it.text, views:views, timestamp:it.timestamp||"" });
+      }catch(e){ if(!insErr) insErr=String(e&&e.message?e.message:"通信エラー"); }
+      /* 自分の返信(=2投稿目)を探す。権限が無い場合は1回目の失敗で以後スキップ */
+      var body="";
+      if(!repliesBlocked && myName){
+        try{
+          var r3=await fetch(base+encodeURIComponent(it.id)+"/replies?fields=text,username&access_token="+encodeURIComponent(t));
+          if(r3.ok){
+            var d3=await r3.json();
+            var arr3=Array.isArray(d3.data)?d3.data:[];
+            for(var j3=0;j3<arr3.length;j3++){
+              var r=arr3[j3];
+              if(r && r.username===myName && typeof r.text==="string" && r.text.trim()){ body=r.text.trim(); break; }
+            }
+            repState="ok";
+          } else {
+            repliesBlocked=true;
+            if(!repState){ try{ repState="err:"+(await r3.text()).slice(0,160); }catch(e){ repState="err:HTTP "+r3.status; } }
+          }
+        }catch(e){ repliesBlocked=true; if(!repState) repState="err:"+String(e&&e.message?e.message:"通信エラー"); }
+      }
+      out.push({ text:it.text, views:views, timestamp:it.timestamp||"", body:body });
       await new Promise(function(r){ setTimeout(r,150); });
     }
     var s=mergeFetched(out);
-    setStatus("完了: 追加"+s.added+"件 / 更新"+s.updated+"件 / 変化なし"+s.skipped+"件","ok");
+    var msg="完了: 追加"+s.added+"件 / 更新"+s.updated+"件 / 変化なし"+s.skipped+"件";
+    if(insErr) msg+=" ／表示数の取得に失敗: "+insErr;
+    if(repState && repState.indexOf("err:")===0) msg+=" ／本文ペアは未取得(threads_read_replies権限を追加しトークン再発行で有効): "+repState.slice(4);
+    setStatus(msg, insErr ? "err" : "ok");
     toast("APIから取り込みました");
   }catch(e){
     setStatus("取得失敗: "+(e&&e.message?e.message:"通信エラー")+" 。ブラウザ直通信が遮断されている場合は付属のGAS中継か、JSON貼り付けを使ってください。","err");
