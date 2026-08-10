@@ -1,4 +1,4 @@
-<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.4 | v1.3からの変更: ①API取込で自分の返信を本文に自動ペア(要threads_read_replies) ②表示数取得エラーの可視化 のみ | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
+<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.5 | v1.4からの変更: 新規垢ウィザードの追加のみ(取り込み・保存・分析ロジックは不変) | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -111,6 +111,12 @@ button:disabled{opacity:.45;cursor:default}
 .ana ol{padding-left:20px}
 .ana ol li{margin-bottom:4px;font-size:12.5px;word-break:break-all}
 
+.wiz-step{border-bottom:1px dashed var(--line);padding:9px 0;font-size:12.5px;color:var(--sub);line-height:1.8}
+.wiz-step:last-child{border-bottom:none}
+.wiz-step b{color:var(--warn)}
+.wiz-step .wn{font-family:'IBM Plex Mono',monospace;color:var(--acc);margin-right:6px}
+.wiz-step button{margin:4px 4px 0 0}
+
 #toasts{position:fixed;left:0;right:0;bottom:14px;display:flex;flex-direction:column;align-items:center;gap:8px;z-index:60;pointer-events:none}
 .toast{pointer-events:auto;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 14px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.45);max-width:92vw}
 footer{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--sub);letter-spacing:.15em;margin-top:24px}
@@ -123,7 +129,7 @@ details.io[open] summary::before{content:"▾ "}
 <div class="wrap">
 <header>
   <div class="brand">NIGHTSKY-TOOLS</div>
-  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.4</span></h1>
+  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.5</span></h1>
   <div class="lead">アカウントごとに当たり投稿を表示数順で保管・分析。名前はこの端末にだけ保存されます</div>
 </header>
 
@@ -153,7 +159,7 @@ details.io[open] summary::before{content:"▾ "}
     <div class="row">
       <button class="btn-main" id="fetchBtn" onclick="fetchDirect()">APIから投稿+表示数を取り込む(直近30件)</button>
     </div>
-    <span class="lbl">別ルート: GAS中継URL(任意)</span>
+    <span class="lbl">別ルート: GAS中継URL(全垢共通・推奨)</span>
     <input type="text" id="lkGas" placeholder="https://script.google.com/macros/s/xxxx/exec" style="font-family:'IBM Plex Mono',monospace">
     <div class="row"><button class="btn-line" onclick="fetchGas()">GAS経由で取り込む</button></div>
     <span class="lbl">最終手段: 取得JSONを貼り付け(必ず動く)</span>
@@ -166,6 +172,37 @@ details.io[open] summary::before{content:"▾ "}
       ・トークンはパスワード同等。<b>この端末のブラウザ内にしか保存されず</b>、バックアップ書き出しにも含めません。<br>
       ・表示数の取得に失敗した場合は、失敗理由がこの下のステータスに表示されます(黙って0にはしません)。
     </div>
+  </details>
+</div>
+
+<div class="card">
+  <details class="io" id="wizBox">
+    <summary>新しい垢をAPIに繋ぐ(ウィザード)</summary>
+    <div class="note" style="margin-top:8px">対象: いま開いているタブ「<b id="wizAccName"></b>」。先に「＋管理」で垢を追加(または改名)し、そのタブを開いてから進めてください。<b>手順3のスマホ承認だけは仕組み上、人の手が必要です</b>(自動化する方法は存在しません)。</div>
+    <span class="lbl">開発者アプリID(数字・任意。入れるとボタンが正しいページへ直行。この端末にのみ保存)</span>
+    <div class="mini">
+      <input type="text" id="wizAppId" placeholder="例 1234567890123456" inputmode="numeric">
+      <button class="btn-line" onclick="wizSaveAppId()">保存</button>
+    </div>
+    <div class="wiz-step"><span class="wn">1</span>上の連携欄にこの垢の<b>ThreadsユーザーID(数字)</b>を入力→「連携設定を保存」。IDが不明なら、トークン取得後に graph.threads.net/v1.0/me?fields=id,username&access_token=トークン をブラウザで開くと分かります。</div>
+    <div class="wiz-step"><span class="wn">2</span>テスター追加:
+      <button class="btn-line" onclick="wizOpenRoles()">開発者サイトの役割ページを開く</button><br>
+      「メンバーを追加」→一番下の<b>Threadsテスター</b>を選択→この垢のユーザーネームを検索→追加。
+    </div>
+    <div class="wiz-step"><span class="wn">3</span>スマホ承認: この垢のThreadsアプリ→設定→その他の設定→<b>Apps and Websites</b>→<b>Invites</b>タブ→threads-toolを開いて<b>同意</b>。(PC側の役割ページで「承認待ち」が消えたら完了)</div>
+    <div class="wiz-step"><span class="wn">4</span>トークン生成:
+      <button class="btn-line" onclick="wizOpenToken()">トークン生成ページを開く</button><br>
+      「ユーザートークン生成ツール」でこの垢の「トークンを生成」→<b>アクセス許可を編集</b>→<b>Read repliesをオン</b>・投稿と返信管理は<b>オフ</b>→続行→トークンをコピーしてメモに保管(チャット等に送らない)。
+    </div>
+    <div class="wiz-step"><span class="wn">5</span>GASに追記:
+      <button class="btn-line" onclick="wizCopyConfig(this)">この垢のCONFIG行をコピー</button><br>
+      script.google.comのCONFIGに貼る(同名の行が既にあれば中身を書き換え)→「ここにアクセストークン」を実物に置換→保存→<b>デプロイ→デプロイを管理→鉛筆→バージョン:新バージョン→デプロイ</b>。※これを忘れると反映されません。URLは変わりません。
+    </div>
+    <div class="wiz-step"><span class="wn">6</span>動作確認:
+      <button class="btn-line" onclick="wizOpenTest()">確認URLを開く</button><br>
+      JSONが出ればOK→上の「<b>GAS経由で取り込む</b>」でランキングに合流します。エラー文が出たらスクショで相談を。
+    </div>
+    <div class="note">・GAS中継URLは全垢共通です(上の欄に入れて「連携設定を保存」)。URLとトークンは人に教えないこと。<br>・Metaの画面やURL構成は変わることがあります。ボタンの行き先が違ったら開発者サイトのトップから「マイアプリ→アプリ」で辿ってください。</div>
   </details>
 </div>
 
@@ -220,7 +257,7 @@ details.io[open] summary::before{content:"▾ "}
   </div>
 </div>
 
-<footer>REBUZZ v1.4 / READ-ONLY・NOINDEX</footer>
+<footer>REBUZZ v1.5 / READ-ONLY・NOINDEX</footer>
 </div>
 <div id="toasts"></div>
 
@@ -275,6 +312,9 @@ var LINKS = load("rebuzz_links_v1") || {};
   Object.keys(ren).forEach(function(o){ if(LINKS[o]){ LINKS[ren[o]]=LINKS[o]; delete LINKS[o]; } });
 })();
 function persistLinks(){ save("rebuzz_links_v1", LINKS); }
+
+/* ウィザード用: 開発者アプリID(任意・この端末のみ) */
+var APPID = load("rebuzz_appid_v1") || "";
 
 var acc = load("rebuzz_last_acc");
 if(acc===dk([115,111,114,97])) acc="s1";
@@ -400,6 +440,8 @@ function renderAll(){
   var a=accOf(acc);
   document.documentElement.style.setProperty("--acc", a ? a.color : "#E3C173");
   document.getElementById("curAccLbl").textContent = a ? a.name : "";
+  var wn=document.getElementById("wizAccName"); if(wn) wn.textContent = a ? a.name : "";
+  var wi=document.getElementById("wizAppId"); if(wi && document.activeElement!==wi) wi.value = APPID;
   var legacy = (acc==="s1"||acc==="s2");
   document.getElementById("impCard").style.display = legacy ? "block" : "none";
   if(legacy){
@@ -535,6 +577,34 @@ window.seqCopy = function(id, btn){
   }
 };
 
+/* ===== 新規垢ウィザード(v1.5追加。案内とリンク生成のみ・データには触らない) ===== */
+function wizName(){ var a=accOf(acc); return a ? a.name : ""; }
+window.wizSaveAppId = function(){
+  APPID = (document.getElementById("wizAppId").value||"").trim().replace(/[^0-9]/g,"");
+  save("rebuzz_appid_v1", APPID);
+  document.getElementById("wizAppId").value = APPID;
+  toast(APPID ? "アプリIDを保存しました(この端末のみ)" : "アプリIDを消しました");
+};
+window.wizCopyConfig = function(btn){
+  var id=(document.getElementById("lkUid").value||"").trim();
+  if(!/^[0-9]+$/.test(id)){ toast("先に上の連携欄にこの垢のThreadsユーザーID(数字)を入力してください"); return; }
+  var line = ',"' + wizName() + '": { userId: "' + id + '", token: "ここにアクセストークン" }';
+  doCopy(line, btn, "コピー済→GASのCONFIGへ");
+};
+window.wizOpenRoles = function(){
+  var u = APPID ? "https://developers.facebook.com/apps/"+APPID+"/roles/roles/" : "https://developers.facebook.com/apps/";
+  window.open(u, "_blank", "noopener");
+};
+window.wizOpenToken = function(){
+  var u = APPID ? "https://developers.facebook.com/apps/"+APPID+"/use_cases/customize/settings/?use_case_enum=THREADS_API" : "https://developers.facebook.com/apps/";
+  window.open(u, "_blank", "noopener");
+};
+window.wizOpenTest = function(){
+  var g=(document.getElementById("lkGas").value||"").trim();
+  if(!/^https?:\/\//.test(g)){ toast("上の「GAS中継URL」に共通URLを入れてから押してください"); return; }
+  window.open(g+(g.indexOf("?")>=0?"&":"?")+"acc="+encodeURIComponent(wizName()), "_blank", "noopener");
+};
+
 /* ===== バズ分析(登録済み実データのみ・端末内で集計) ===== */
 function hookFeat(h){
   var t=String(h||"");
@@ -664,7 +734,7 @@ window.clearLink = function(){
   toast("このアカウントの連携設定を消しました");
 };
 function normHook(s){ return String(s).replace(/[、。\s]/g,""); }
-/* v1.4: x.body(自分の返信=2投稿目)が来たらブロック2として保存/補完する */
+/* x.body(自分の返信=2投稿目)が来たらブロック2として保存/補完する */
 function mergeFetched(list){
   var added=0, updated=0, skipped=0;
   (Array.isArray(list)?list:[]).forEach(function(x){
@@ -780,7 +850,7 @@ window.fetchDirect = async function(){
     setStatus(msg, insErr ? "err" : "ok");
     toast("APIから取り込みました");
   }catch(e){
-    setStatus("取得失敗: "+(e&&e.message?e.message:"通信エラー")+" 。ブラウザ直通信が遮断されている場合は付属のGAS中継か、JSON貼り付けを使ってください。","err");
+    setStatus("取得失敗: "+(e&&e.message?e.message:"通信エラー")+" 。ブラウザ直通信が遮断されている場合はGAS中継か、JSON貼り付けを使ってください。","err");
   }finally{
     fetching=false; btn.disabled=false;
   }
@@ -788,7 +858,7 @@ window.fetchDirect = async function(){
 window.fetchGas = async function(){
   if(fetching) return;
   var g=(document.getElementById("lkGas").value||"").trim();
-  if(!/^https?:\/\/\S+$/.test(g)){ setStatus("GASのURLを入力してください","err"); return; }
+  if(!/^https?:\/\//.test(g)){ setStatus("GASのURLを入力してください(https://で始まる/execのURL)","err"); return; }
   fetching=true;
   try{
     setStatus("GASから取得中…","");
