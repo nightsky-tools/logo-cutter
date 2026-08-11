@@ -1,4 +1,4 @@
-<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.6.1 | 変更: 手順内の全URLをタップで直接開けるリンク化のみ(ロジック不変) | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
+<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.7 | 変更: ①GAS全履歴取り込み(初投稿まで・続き自動取得)を追加 ②「全件を古い順に一括コピー」を追加 ③mergeFetchedの表示数更新を「大きい方を保持」に変更(同文再投稿の統合時に小さい値で上書きされるのを防止)。他ロジック不変。要threads-gas.gs v1.2 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -136,7 +136,7 @@ details.io[open] summary::before{content:"▾ "}
 <div class="wrap">
 <header>
   <div class="brand">NIGHTSKY-TOOLS</div>
-  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.6.1</span></h1>
+  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.7</span></h1>
   <div class="lead">アカウントごとに当たり投稿を表示数順で保管・分析。名前はこの端末にだけ保存されます</div>
 </header>
 
@@ -169,6 +169,7 @@ details.io[open] summary::before{content:"▾ "}
     <span class="lbl">別ルート: GAS中継URL(全垢共通・推奨)</span>
     <input type="text" id="lkGas" placeholder="https://script.google.com/macros/s/xxxx/exec" style="font-family:'IBM Plex Mono',monospace">
     <div class="row"><button class="btn-line" onclick="fetchGas()">GAS経由で取り込む</button></div>
+    <div class="row"><button class="btn-line" id="gasAllBtn" onclick="fetchGasAll()">全履歴を取り込む(最初の投稿まで遡る・初回用)</button></div>
     <span class="lbl">最終手段: 取得JSONを貼り付け(必ず動く)</span>
     <textarea id="lkJson" style="min-height:60px;font-size:12px" placeholder='{"posts":[{"text":"...","views":12345,"body":"2投稿目(任意)"}]} または配列'></textarea>
     <div class="row"><button class="btn-line" onclick="importFetchedJson()">貼り付けJSONを取り込む</button></div>
@@ -177,7 +178,8 @@ details.io[open] summary::before{content:"▾ "}
       ・取り込みは<b>読み取りのみ</b>(投稿はしません)。基本権限はthreads_basicとthreads_manage_insightsの2つ(投稿権限threads_content_publishは付けない)。<br>
       ・<b>ぶら下げ投稿の自動ペア</b>: アプリに threads_read_replies 権限を追加し、トークン発行時の同意画面で「Read replies」をオンにすると、1投稿目への<b>自分の返信を2投稿目(ブロック2)として自動で組みます</b>。権限が無い間はペアだけスキップされ、他は今まで通り動きます。<br>
       ・トークンはパスワード同等。<b>この端末のブラウザ内にしか保存されず</b>、バックアップ書き出しにも含めません。<br>
-      ・表示数の取得に失敗した場合は、失敗理由がこの下のステータスに表示されます(黙って0にはしません)。
+      ・表示数の取得に失敗した場合は、失敗理由がこの下のステータスに表示されます(黙って0にはしません)。<br>
+      ・<b>「全履歴を取り込む」</b>は最初の投稿まで遡って全件取得します(<b>GAS側がv1.2以降であることが必要</b>)。件数が多いと数分かかり、通信が続く間は画面を閉じないでください(Chrome推奨)。API呼び出しが多くなるため<b>基本は初回の1回だけ</b>。普段の更新は上の「GAS経由で取り込む」(直近50件)で足ります。途中で止まった場合は、もう一度押すと続きから再開します。
     </div>
   </details>
 </div>
@@ -246,6 +248,7 @@ details.io[open] summary::before{content:"▾ "}
 
 <div class="card">
   <h2><span class="num">02</span>ランキング(表示数順・押すと開く) <span id="countLbl" style="color:var(--acc)"></span></h2>
+  <div class="row"><button class="btn-line" onclick="copyAllChrono(this)">全件を古い順に一括コピー(最初の投稿→最新)</button></div>
   <div id="rankList"></div>
 </div>
 
@@ -286,7 +289,7 @@ details.io[open] summary::before{content:"▾ "}
   </div>
 </div>
 
-<footer>REBUZZ v1.6.1 / READ-ONLY・NOINDEX</footer>
+<footer>REBUZZ v1.7 / READ-ONLY・NOINDEX</footer>
 </div>
 <div id="toasts"></div>
 
@@ -797,7 +800,7 @@ function mergeFetched(list){
     })[0];
     if(hit){
       var ch=false;
-      if(views>0 && views!==Number(hit.v)){ hit.v = views; ch=true; }
+      if(views>(Number(hit.v)||0)){ hit.v = views; ch=true; }
       if(tsp && !hit.tsp){ hit.tsp = tsp; ch=true; }
       if(body && !(hit.b && hit.b.trim())){ hit.b = body; ch=true; }
       if(ch) updated++; else skipped++;
@@ -919,6 +922,90 @@ window.fetchGas = async function(){
   }catch(e){
     setStatus("GAS取得失敗: "+(e&&e.message?e.message:"通信エラー"),"err");
   }finally{ fetching=false; }
+};
+
+/* ===== 全履歴取り込み(GAS v1.2の all=1 を使用。続きがある限り自動で追加取得) ===== */
+var allAfter = {};
+window.fetchGasAll = async function(){
+  if(fetching) return;
+  var g=(document.getElementById("lkGas").value||"").trim();
+  if(!/^https?:\/\//.test(g)){ setStatus("GASのURLを入力してください(https://で始まる/execのURL)","err"); return; }
+  fetching=true;
+  var btn=document.getElementById("gasAllBtn"); if(btn) btn.disabled=true;
+  var a=accOf(acc);
+  var after=allAfter[acc]||"";
+  var loops=0, tAdd=0, tUpd=0, tSkip=0, got=0;
+  try{
+    while(true){
+      loops++;
+      if(loops>60){
+        allAfter[acc]=after;
+        setStatus("安全弁: 通信60回に達したため一旦停止(累計"+got+"件処理)。もう一度押すと続きから再開します。","err");
+        return;
+      }
+      setStatus("全履歴を取得中… 通信"+loops+"回目(累計"+got+"件)。件数が多いと数分かかります。画面を閉じずにお待ちください","");
+      var url=g+(g.indexOf("?")>=0?"&":"?")+"acc="+encodeURIComponent(a?a.name:"")+"&all=1"+(after?"&after="+encodeURIComponent(after):"");
+      var res=await fetch(url);
+      if(!res.ok) throw new Error("HTTP "+res.status);
+      var data=await res.json();
+      var list=Array.isArray(data)?data:(Array.isArray(data.posts)?data.posts:null);
+      if(!list) throw new Error("GASの返答形式が不正です");
+      got+=list.length;
+      var s=mergeFetched(list);
+      tAdd+=s.added; tUpd+=s.updated; tSkip+=s.skipped;
+      if(typeof data.done==="undefined"){
+        delete allAfter[acc];
+        setStatus("注意: GAS側がv1.1のまま(全履歴機能なし)の可能性があります。今回は直近分のみ取り込みました(追加"+tAdd+"/更新"+tUpd+"/変化なし"+tSkip+")。threads-gas.gsをv1.2に貼り替え→デプロイを管理→「新バージョン」で再デプロイしてから、もう一度どうぞ。","err");
+        return;
+      }
+      if(data.error){
+        allAfter[acc]=(typeof data.nextAfter==="string"&&data.nextAfter)?data.nextAfter:after;
+        setStatus("途中でエラー: "+String(data.error)+" ／ここまで 追加"+tAdd+"件/更新"+tUpd+"件/変化なし"+tSkip+"件。もう一度押すと続きから再試行します。","err");
+        return;
+      }
+      if(data.done===false){
+        if(typeof data.nextAfter==="string" && data.nextAfter){ after=data.nextAfter; allAfter[acc]=after; continue; }
+        delete allAfter[acc];
+        setStatus("途中で中断(続き情報なし・累計"+got+"件)。もう一度押すと最初から再確認します(取り込み済み分は重複スキップ)。","err");
+        return;
+      }
+      delete allAfter[acc];
+      setStatus("全履歴の取り込み完了: 追加"+tAdd+"件 / 更新"+tUpd+"件 / 変化なし"+tSkip+"件(通信"+loops+"回)","ok");
+      toast("全履歴を取り込みました(最初の投稿まで到達)");
+      return;
+    }
+  }catch(e){
+    allAfter[acc]=after;
+    setStatus("全履歴の取得失敗: "+(e&&e.message?e.message:"通信エラー")+" ／ここまで 追加"+tAdd+"件/更新"+tUpd+"件/変化なし"+tSkip+"件。もう一度押すと続きから再試行します。","err");
+  }finally{ fetching=false; if(btn) btn.disabled=false; }
+};
+
+/* ===== 全件を古い順に一括コピー(最初の投稿→最新。日時不明分は末尾) ===== */
+function pad2(n){ return (n<10?"0":"")+n; }
+window.copyAllChrono = function(btn){
+  var arr=(DB.posts[acc]||[]).slice();
+  if(!arr.length){ toast("この垢にはまだ投稿がありません"); return; }
+  var dated=[], undated=[];
+  arr.forEach(function(p){
+    var t=p.tsp ? Date.parse(p.tsp) : NaN;
+    if(isNaN(t)) undated.push(p); else dated.push({p:p,t:t});
+  });
+  dated.sort(function(x,y){ return x.t-y.t; });
+  var list=dated.map(function(x){ return x.p; }).concat(undated);
+  var body=list.map(function(p,i){
+    var d="不明";
+    if(p.tsp){
+      var dt=new Date(p.tsp);
+      if(!isNaN(dt.getTime())) d=dt.getFullYear()+"-"+pad2(dt.getMonth()+1)+"-"+pad2(dt.getDate())+" "+pad2(dt.getHours())+":"+pad2(dt.getMinutes());
+    }
+    var vv=Number(p.v)||0;
+    return "【"+(i+1)+"】投稿日時:"+d+" / 表示数:"+(vv?vv:"未計測")
+      +"\n1投稿目:\n"+(p.h||"(なし)")
+      +"\n2投稿目:"+(p.b&&p.b.trim()?("\n"+p.b):"(未登録)");
+  }).join("\n\n");
+  var head="===全投稿 "+list.length+"件(古い順=最初の投稿→最新"+(undated.length?"・日時不明"+undated.length+"件は末尾":"")+")===\n\n";
+  doCopy(head+body, btn, "全"+list.length+"件コピー済");
+  toast("全"+list.length+"件を古い順でコピーしました");
 };
 window.importFetchedJson = function(){
   var t=document.getElementById("lkJson").value.trim();
