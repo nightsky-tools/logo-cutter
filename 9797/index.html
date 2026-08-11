@@ -1,4 +1,4 @@
-<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.10 | 変更(v1.9から): ①ランキング一覧の各行に投稿日時(複数回なら回数と初回/最終日)を表示 ②API連携欄を最初から開いた状態にし、GAS中継URL+取り込みボタンを最上部へ移動(直接取得は「別ルート」に降格・ステータス表示をボタン直下へ)。取り込み・保存ロジックは不変。要threads-gas.gs v1.2 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
+<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.11 | 変更(v1.10から): ランキングに絞り込み検索を追加(12星座ボタン=漢字/ひらがな/カタカナ表記に一致、＋自由キーワード欄。掴みと本文の両方を対象。件数は「◯件/全◯件」表示、タブ切替で解除)。表示だけの絞り込みで、取り込み・保存ロジックは不変。要threads-gas.gs v1.2 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -90,6 +90,9 @@ a.btn-line{display:inline-block;text-decoration:none;text-align:center}
 }
 .editbox{display:none;margin-top:10px}
 .editbox.show{display:block}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{background:transparent;border:1px solid var(--line);color:var(--sub);border-radius:999px;padding:6px 11px;font-size:12px;font-weight:700}
+.chip.on{border-color:var(--acc);color:var(--acc)}
 .mini{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap}
 .mini input{flex:1;min-width:90px;font-family:'IBM Plex Mono',monospace;font-size:13px;padding:8px 10px}
 .mini button{flex:none}
@@ -248,7 +251,12 @@ details.io[open] summary::before{content:"▾ "}
 
 <div class="card">
   <h2><span class="num">02</span>ランキング(表示数順・押すと開く) <span id="countLbl" style="color:var(--acc)"></span></h2>
-  <div class="row"><button class="btn-line" onclick="copyAllChrono(this)">全件を古い順に一括コピー(最初の投稿→最新)</button></div>
+  <div class="chips" id="signChips"></div>
+  <div class="mini">
+    <input type="text" id="filterQ" placeholder="キーワードで絞り込み(掴み+本文を検索)" oninput="setFilterQ(this.value)">
+    <button class="btn-line" onclick="clearFilter()">絞り込み解除</button>
+  </div>
+  <div class="row"><button class="btn-line" onclick="copyAllChrono(this)">全件を古い順に一括コピー(最初の投稿→最新)※絞り込み中も全件</button></div>
   <div id="rankList"></div>
 </div>
 
@@ -519,8 +527,63 @@ window.delAcc = function(id, btn){
 };
 window.switchAcc = function(a){
   acc = a; openId = null;
+  clearFilter(false);
   save("rebuzz_last_acc", a);
   renderAll();
+};
+
+/* ===== 絞り込み(v1.11・表示のみ。データは変更しない) ===== */
+var SIGNS = [
+  { l:"牡羊座", w:["牡羊座","おひつじ座","オヒツジ座"] },
+  { l:"牡牛座", w:["牡牛座","おうし座","オウシ座"] },
+  { l:"双子座", w:["双子座","ふたご座","フタゴ座"] },
+  { l:"蟹座",   w:["蟹座","かに座","カニ座"] },
+  { l:"獅子座", w:["獅子座","しし座","シシ座"] },
+  { l:"乙女座", w:["乙女座","おとめ座","オトメ座"] },
+  { l:"天秤座", w:["天秤座","てんびん座","テンビン座"] },
+  { l:"蠍座",   w:["蠍座","さそり座","サソリ座"] },
+  { l:"射手座", w:["射手座","いて座","イテ座"] },
+  { l:"山羊座", w:["山羊座","やぎ座","ヤギ座"] },
+  { l:"水瓶座", w:["水瓶座","みずがめ座","ミズガメ座"] },
+  { l:"魚座",   w:["魚座","うお座","ウオ座"] }
+];
+var filterSign = -1;  // SIGNSの添字。-1=星座絞り込みなし
+var filterQ = "";     // 自由キーワード
+function postText(p){ return (p.h||"") + "\n" + (p.b||""); }
+function filterActive(){ return filterSign>=0 || !!filterQ.trim(); }
+function passFilter(p){
+  var t = postText(p);
+  if(filterSign>=0){
+    var ws = SIGNS[filterSign].w, hit=false, i;
+    for(i=0;i<ws.length;i++){ if(t.indexOf(ws[i])>=0){ hit=true; break; } }
+    if(!hit) return false;
+  }
+  var q = filterQ.trim();
+  if(q && t.indexOf(q)<0) return false;
+  return true;
+}
+function renderChips(){
+  var el = document.getElementById("signChips");
+  if(!el) return;
+  el.innerHTML = SIGNS.map(function(s,i){
+    return "<button class='chip"+(i===filterSign?" on":"")+"' onclick='pickSign("+i+")'>"+s.l+"</button>";
+  }).join("");
+}
+window.pickSign = function(i){
+  filterSign = (filterSign===i ? -1 : i); // 同じ星座をもう一度押すと解除
+  openId = null;
+  renderChips(); render();
+};
+window.setFilterQ = function(v){
+  filterQ = String(v||"");
+  openId = null;
+  render();
+};
+window.clearFilter = function(redraw){
+  filterSign = -1; filterQ = "";
+  var inp = document.getElementById("filterQ");
+  if(inp) inp.value = "";
+  if(redraw!==false){ openId=null; renderChips(); render(); }
 };
 
 /* ===== 描画 ===== */
@@ -569,14 +632,23 @@ function renderAll(){
   setStatus("", "");
   wizRender();
   renderTabs();
+  renderChips();
   render();
 }
 function render(){
-  var list = (DB.posts[acc]||[]).slice().sort(function(a,b){ return (Number(b.v)||0)-(Number(a.v)||0); });
-  document.getElementById("countLbl").textContent = list.length ? list.length+"件" : "";
+  var all = (DB.posts[acc]||[]);
+  var list = all.slice().sort(function(a,b){ return (Number(b.v)||0)-(Number(a.v)||0); });
+  if(filterActive()) list = list.filter(passFilter);
+  document.getElementById("countLbl").textContent =
+    filterActive() ? (list.length+"件 / 全"+all.length+"件(絞り込み中)")
+                   : (all.length ? all.length+"件" : "");
   var el = document.getElementById("rankList");
-  if(!list.length){
+  if(!all.length){
     el.innerHTML = "<div class='empty'>まだ登録がありません。貼り付け登録か、上のAPI連携から取り込んでください。</div>";
+    return;
+  }
+  if(!list.length){
+    el.innerHTML = "<div class='empty'>絞り込み条件に一致する投稿がありません(全"+all.length+"件中0件)。「絞り込み解除」で全件に戻ります。</div>";
     return;
   }
   el.innerHTML = list.map(function(p,i){
