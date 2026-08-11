@@ -1,4 +1,4 @@
-<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.9 | 変更(v1.8から): 同じ文の複数回投稿を「1項目+投稿履歴(各回の日時と表示数)」に統合保存する方式へ変更。ランキング順位は最高表示数。旧v1.8の別項目データは起動時に自動統合。一括コピーにも全回数分の日時を出力。他ロジック不変。要threads-gas.gs v1.2 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
+<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.10 | 変更(v1.9から): ①ランキング一覧の各行に投稿日時(複数回なら回数と初回/最終日)を表示 ②API連携欄を最初から開いた状態にし、GAS中継URL+取り込みボタンを最上部へ移動(直接取得は「別ルート」に降格・ステータス表示をボタン直下へ)。取り込み・保存ロジックは不変。要threads-gas.gs v1.2 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -136,7 +136,7 @@ details.io[open] summary::before{content:"▾ "}
 <div class="wrap">
 <header>
   <div class="brand">NIGHTSKY-TOOLS</div>
-  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.9</span></h1>
+  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.10</span></h1>
   <div class="lead">アカウントごとに当たり投稿を表示数順で保管・分析。名前はこの端末にだけ保存されます</div>
 </header>
 
@@ -153,27 +153,26 @@ details.io[open] summary::before{content:"▾ "}
 </div>
 
 <div class="card">
-  <details class="io" id="linkBox">
+  <details class="io" id="linkBox" open>
     <summary>Threads API連携(このアカウント用の設定)</summary>
-    <span class="lbl">ThreadsユーザーID(数字)</span>
-    <input type="text" id="lkUid" placeholder="例 1784xxxxxxxxxxx" style="font-family:'IBM Plex Mono',monospace">
-    <span class="lbl">アクセストークン(この端末にのみ保存)</span>
-    <input type="password" id="lkTok" placeholder="TH... で始まる長い文字列">
+    <span class="lbl">GAS中継URL(全垢共通・これが本ルート)</span>
+    <input type="text" id="lkGas" placeholder="https://script.google.com/macros/s/xxxx/exec" style="font-family:'IBM Plex Mono',monospace">
     <div class="row">
       <button class="btn-acc" onclick="saveLink()">連携設定を保存</button>
       <button class="btn-line" onclick="clearLink()">この垢の設定を消す</button>
     </div>
-    <div class="row">
-      <button class="btn-main" id="fetchBtn" onclick="fetchDirect()">APIから投稿+表示数を取り込む(直近30件)</button>
-    </div>
-    <span class="lbl">別ルート: GAS中継URL(全垢共通・推奨)</span>
-    <input type="text" id="lkGas" placeholder="https://script.google.com/macros/s/xxxx/exec" style="font-family:'IBM Plex Mono',monospace">
-    <div class="row"><button class="btn-line" onclick="fetchGas()">GAS経由で取り込む</button></div>
+    <div class="row"><button class="btn-main" onclick="fetchGas()">GAS経由で取り込む(普段はこれ・直近50件)</button></div>
     <div class="row"><button class="btn-line" id="gasAllBtn" onclick="fetchGasAll()">全履歴を取り込む(最初の投稿まで遡る・初回用)</button></div>
+    <div class="status" id="lkStatus"></div>
+    <span class="lbl">別ルート: 直接取得(通常は不要。ID・トークンをこの端末に保存する方式)</span>
+    <input type="text" id="lkUid" placeholder="ThreadsユーザーID(数字) 例 1784xxxxxxxxxxx" style="font-family:'IBM Plex Mono',monospace">
+    <input type="password" id="lkTok" placeholder="アクセストークン(TH...で始まる長い文字列)">
+    <div class="row">
+      <button class="btn-line" id="fetchBtn" onclick="fetchDirect()">APIから直接取り込む(直近30件)</button>
+    </div>
     <span class="lbl">最終手段: 取得JSONを貼り付け(必ず動く)</span>
     <textarea id="lkJson" style="min-height:60px;font-size:12px" placeholder='{"posts":[{"text":"...","views":12345,"body":"2投稿目(任意)"}]} または配列'></textarea>
     <div class="row"><button class="btn-line" onclick="importFetchedJson()">貼り付けJSONを取り込む</button></div>
-    <div class="status" id="lkStatus"></div>
     <div class="note">
       ・取り込みは<b>読み取りのみ</b>(投稿はしません)。基本権限はthreads_basicとthreads_manage_insightsの2つ(投稿権限threads_content_publishは付けない)。<br>
       ・<b>ぶら下げ投稿の自動ペア</b>: アプリに threads_read_replies 権限を追加し、トークン発行時の同意画面で「Read replies」をオンにすると、1投稿目への<b>自分の返信を2投稿目(ブロック2)として自動で組みます</b>。権限が無い間はペアだけスキップされ、他は今まで通り動きます。<br>
@@ -290,7 +289,7 @@ details.io[open] summary::before{content:"▾ "}
   </div>
 </div>
 
-<footer>REBUZZ v1.9 / READ-ONLY・NOINDEX</footer>
+<footer>REBUZZ v1.10 / READ-ONLY・NOINDEX</footer>
 </div>
 <div id="toasts"></div>
 
@@ -404,6 +403,12 @@ function fmtViews(v){
   if(!v) return "未計測";
   if(v>=10000) return (v/10000).toFixed(1).replace(/\.0$/,"")+"万";
   return v.toLocaleString();
+}
+function fmtDShort(d){
+  if(!d) return "日時不明";
+  var t=new Date(d);
+  if(isNaN(t.getTime())) return "日時不明";
+  return t.getFullYear()+"-"+pad2(t.getMonth()+1)+"-"+pad2(t.getDate());
 }
 function fmtD(d){
   if(!d) return "日時不明";
@@ -577,6 +582,13 @@ function render(){
   el.innerHTML = list.map(function(p,i){
     var firstLine = (p.h||"").split("\n").filter(function(x){return x.trim();}).pop() || "(掴み未登録)";
     var open = p.id===openId;
+    var dline="";
+    if(Array.isArray(p.hist) && p.hist.length){
+      var hf=p.hist[0], hl=p.hist[p.hist.length-1];
+      dline = p.hist.length>1
+        ? p.hist.length+"回投稿 初"+fmtDShort(hf&&hf.d)+" 最終"+fmtDShort(hl&&hl.d)
+        : "投稿 "+fmtDShort(hf&&hf.d);
+    } else if(p.tsp){ dline="投稿 "+fmtDShort(p.tsp); }
     var bodyHtml="";
     if(open){
       var b1 = "<div class='blk'><div class='bh'><span>ブロック1 1投稿目</span><button onclick=\"copyBlk('"+p.id+"',1,this)\">コピー</button></div><pre>"+esc(p.h||"")+"</pre></div>";
@@ -604,7 +616,7 @@ function render(){
     return "<div class='rank-item"+(open?" open":"")+"'>"
       + "<div class='rank-head' onclick=\"toggleOpen('"+p.id+"')\">"
       + "<div class='rank-no'>"+(i+1)+"</div>"
-      + "<div class='rank-hook'>"+esc(firstLine)+((p.h||"").indexOf("\n")>=0?"<span class='sub'>"+esc((p.h||"").split("\n")[0])+"</span>":"")+"</div>"
+      + "<div class='rank-hook'>"+esc(firstLine)+((p.h||"").indexOf("\n")>=0?"<span class='sub'>"+esc((p.h||"").split("\n")[0])+"</span>":"")+(dline?"<span class='sub'>"+esc(dline)+"</span>":"")+"</div>"
       + "<div class='views "+viewsCls(p.v)+"'>"+fmtViews(p.v)+"</div>"
       + "</div>" + bodyHtml + "</div>";
   }).join("");
