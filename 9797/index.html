@@ -1,4 +1,4 @@
-<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.6 | v1.5からの変更: ウィザード拡充(初期設定〜垢追加の全手順とURLを常設)のみ。取り込み・保存・分析ロジックは不変 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
+<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.6.1 | 変更: 手順内の全URLをタップで直接開けるリンク化のみ(ロジック不変) | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -118,6 +118,7 @@ a.btn-line{display:inline-block;text-decoration:none;text-align:center}
 .wiz-step .wn{font-family:'IBM Plex Mono',monospace;color:var(--acc);margin-right:6px}
 .wiz-step button,.wiz-step a.btn-line{margin:4px 4px 0 0}
 .wiz-url{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--sub);word-break:break-all;display:block;margin-top:2px}
+a.wiz-url{color:var(--acc);text-decoration:underline}
 .wiz-sec{margin-top:10px}
 .wiz-sec summary{font-size:12px;color:var(--acc);letter-spacing:.1em;cursor:pointer;list-style:none;padding:8px 0}
 .wiz-sec summary::before{content:"▸ "}
@@ -135,7 +136,7 @@ details.io[open] summary::before{content:"▾ "}
 <div class="wrap">
 <header>
   <div class="brand">NIGHTSKY-TOOLS</div>
-  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.6</span></h1>
+  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.6.1</span></h1>
   <div class="lead">アカウントごとに当たり投稿を表示数順で保管・分析。名前はこの端末にだけ保存されます</div>
 </header>
 
@@ -195,19 +196,19 @@ details.io[open] summary::before{content:"▾ "}
       <summary>初期設定(最初の1回だけ。済んでいれば飛ばす)</summary>
       <div class="wiz-step"><span class="wn">A1</span><b>Facebook個人アカウント(本名・1個だけ)</b>を用意。開発者サイトのログイン鍵としてだけ使う。複アカは規約違反なので作らない。
         <br><a class="btn-line" href="https://www.facebook.com/" target="_blank" rel="noopener">Facebookを開く</a>
-        <span class="wiz-url">https://www.facebook.com/</span></div>
+        <a class="wiz-url" href="https://www.facebook.com/" target="_blank" rel="noopener">https://www.facebook.com/</a></div>
       <div class="wiz-step"><span class="wn">A2</span><b>Meta開発者登録(無料)</b>: Register(規約同意)→Verify(SMS認証。エラー「Accounts Centerでのみ完了できます」が出たらアカウントセンターで電話番号を確認、それでも駄目なら画面下の「クレジットカードを追加して認証」でも通る)→Contact(メール認証)→About(役割は実態に近いもの。マーケター等)→登録完了。
         <br><a class="btn-line" href="https://developers.facebook.com/async/registration" target="_blank" rel="noopener">開発者登録を開く</a>
-        <span class="wiz-url">https://developers.facebook.com/async/registration</span></div>
+        <a class="wiz-url" href="https://developers.facebook.com/async/registration" target="_blank" rel="noopener">https://developers.facebook.com/async/registration</a></div>
       <div class="wiz-step"><span class="wn">A3</span><b>アプリ作成(1個だけ)</b>: 「アプリを作成」→アプリ名は中立に(例: threads-tool)→ユースケースで<b>「Threads APIにアクセス」</b>を選択→ビジネスポートフォリオは「リンクしない」→要件は素通り→作成。
         <br><a class="btn-line" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">マイアプリを開く</a>
-        <span class="wiz-url">https://developers.facebook.com/apps/</span></div>
+        <a class="wiz-url" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">https://developers.facebook.com/apps/</a></div>
       <div class="wiz-step"><span class="wn">A4</span><b>権限を読み取り専用に</b>: ユースケース→カスタマイズ→アクセス許可で、threads_basic(最初から有効)に加えて<b>threads_manage_insights「追加」</b>(表示数用)と<b>threads_read_replies「追加」</b>(2投稿目ペア用)。<b>threads_content_publish(投稿)や削除・検索系は追加しない</b>。
-        <br><button class="btn-line" onclick="wizOpenPerms()">権限ページを開く</button>
-        <span class="wiz-url" id="wizUrlPerms"></span></div>
+        <br><a class="btn-line" id="wizBtnPerms" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">権限ページを開く</a>
+        <a class="wiz-url" id="wizUrlPerms" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener"></a></div>
       <div class="wiz-step"><span class="wn">A5</span><b>GAS中継を設置(1個・全垢共通)</b>: 新しいプロジェクト→最初のコードを全部消す→付属のthreads-gas.gsを全部貼る→CONFIGに垢情報を記入→⌘S→デプロイ→新しいデプロイ→種類「ウェブアプリ」→実行「自分」/アクセス「<b>全員</b>」→デプロイ→警告が出たら「詳細(Advanced)」→「(プロジェクト名)に移動」→「Continue/許可」→出た<b>/execのURL</b>をコピーして上の「GAS中継URL」欄に貼り「連携設定を保存」。<b>このURLは誰にも教えない</b>。
         <br><a class="btn-line" href="https://script.google.com/" target="_blank" rel="noopener">script.google.comを開く</a>
-        <span class="wiz-url">https://script.google.com/</span></div>
+        <a class="wiz-url" href="https://script.google.com/" target="_blank" rel="noopener">https://script.google.com/</a></div>
     </details>
 
     <details class="wiz-sec" open>
@@ -215,19 +216,19 @@ details.io[open] summary::before{content:"▾ "}
       <div class="wiz-step"><span class="wn">1</span>「＋管理」でこの垢のタブを作る(改名可)→上の連携欄に<b>ThreadsユーザーID(数字)</b>を入力→「連携設定を保存」。IDが不明ならトークン取得後に次のURLをブラウザで開くと分かる:
         <span class="wiz-url">https://graph.threads.net/v1.0/me?fields=id,username&access_token=(トークン)</span></div>
       <div class="wiz-step"><span class="wn">2</span><b>テスター追加</b>: 役割ページ→「メンバーを追加」→一覧の一番下<b>「Threadsテスター」</b>を選択→この垢のユーザーネームを検索→「追加」。(「削除」は招待の取り消しなので押さない)
-        <br><button class="btn-line" onclick="wizOpenRoles()">役割ページを開く</button>
-        <span class="wiz-url" id="wizUrlRoles"></span></div>
+        <br><a class="btn-line" id="wizBtnRoles" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">役割ページを開く</a>
+        <a class="wiz-url" id="wizUrlRoles" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener"></a></div>
       <div class="wiz-step"><span class="wn">3</span><b>スマホで承認(人力)</b>: この垢のThreadsアプリ→プロフィール右上⚙設定→その他の設定→<b>Apps and Websites</b>→<b>Invites</b>タブ→threads-toolの名前をタップ→<b>同意</b>。役割ページを再読み込みして「承認待ち」が消えたら完了(表示反映に数分かかることあり)。</div>
       <div class="wiz-step"><span class="wn">4</span><b>トークン生成</b>: 生成ページ下部の「ユーザートークン生成ツール」→この垢の「トークンを生成」→ログイン→<b>「アクセス許可を編集」で Read replies をオン・投稿(Create and share)と返信管理(Manage replies)はオフ</b>→「(垢名)として続行」→「理解しました」→コピー→<b>まずメモに貼って保管</b>(チャット等に送らない)。
-        <br><button class="btn-line" onclick="wizOpenToken()">生成ページを開く</button>
-        <span class="wiz-url" id="wizUrlToken"></span></div>
+        <br><a class="btn-line" id="wizBtnToken" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">生成ページを開く</a>
+        <a class="wiz-url" id="wizUrlToken" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener"></a></div>
       <div class="wiz-step"><span class="wn">5</span><b>GASに追記して再デプロイ</b>:
         <button class="btn-line" onclick="wizCopyConfig(this)">この垢のCONFIG行をコピー</button>
         →script.google.comのCONFIG内に貼る(同名の行が既にあれば中身だけ書き換え)→「ここにアクセストークン」を実物に置換→⌘S→<b>デプロイ→デプロイを管理→鉛筆マーク→バージョン「新バージョン」→デプロイ</b>。<b>※この再デプロイを忘れると反映されません(URLは変わりません)</b>。
         <br><a class="btn-line" href="https://script.google.com/" target="_blank" rel="noopener">script.google.comを開く</a></div>
       <div class="wiz-step"><span class="wn">6</span><b>動作確認→取り込み</b>: 確認URLを開いてJSONの塊が出ればOK→上の「<b>GAS経由で取り込む</b>」でランキングに表示数と本文が合流。エラー文が出たらその画面をスクショでAIへ。
-        <br><button class="btn-line" onclick="wizOpenTest()">確認URLを開く</button>
-        <span class="wiz-url" id="wizUrlTest"></span></div>
+        <br><a class="btn-line" id="wizBtnTest" href="#" onclick="return wizTestGuard()">確認URLを開く</a>
+        <a class="wiz-url" id="wizUrlTest" href="#" onclick="return wizTestGuard()"></a></div>
     </details>
 
     <div class="note">・GAS中継URLとトークンは<b>人に教えない</b>(知られると投稿一覧と表示数を読まれます。投稿されることはありません)。<br>・トークンには有効期限があり、切れたら手順4だけやり直してGASのトークンを貼り替え→再デプロイ。データは消えません。</div>
@@ -285,7 +286,7 @@ details.io[open] summary::before{content:"▾ "}
   </div>
 </div>
 
-<footer>REBUZZ v1.6 / READ-ONLY・NOINDEX</footer>
+<footer>REBUZZ v1.6.1 / READ-ONLY・NOINDEX</footer>
 </div>
 <div id="toasts"></div>
 
@@ -477,9 +478,13 @@ function wizRender(){
   var wn=document.getElementById("wizAccName"); if(wn) wn.textContent = wizName();
   var wi=document.getElementById("wizAppId"); if(wi && document.activeElement!==wi) wi.value = APPID;
   var u=wizUrls();
-  var e1=document.getElementById("wizUrlRoles"); if(e1) e1.textContent=u.roles;
-  var e2=document.getElementById("wizUrlToken"); if(e2) e2.textContent=u.token;
-  var e3=document.getElementById("wizUrlPerms"); if(e3) e3.textContent=u.perms;
+  function setL(btnId, urlId, url){
+    var b=document.getElementById(btnId); if(b) b.href=url;
+    var s=document.getElementById(urlId); if(s){ s.textContent=url; s.href=url; }
+  }
+  setL("wizBtnRoles","wizUrlRoles",u.roles);
+  setL("wizBtnToken","wizUrlToken",u.token);
+  setL("wizBtnPerms","wizUrlPerms",u.perms);
   var e4=document.getElementById("wizUrlTest"); if(e4) e4.textContent=u.test;
 }
 function renderAll(){
@@ -636,13 +641,11 @@ window.wizCopyConfig = function(btn){
   var line = ',"' + wizName() + '": { userId: "' + id + '", token: "ここにアクセストークン" }';
   doCopy(line, btn, "コピー済→GASのCONFIGへ");
 };
-window.wizOpenRoles = function(){ window.open(wizUrls().roles, "_blank", "noopener"); };
-window.wizOpenToken = function(){ window.open(wizUrls().token, "_blank", "noopener"); };
-window.wizOpenPerms = function(){ window.open(wizUrls().perms, "_blank", "noopener"); };
-window.wizOpenTest = function(){
+window.wizTestGuard = function(){
   var g=(document.getElementById("lkGas").value||"").trim();
-  if(!/^https?:\/\//.test(g)){ toast("上の「GAS中継URL」に共通URLを入れてから押してください"); return; }
+  if(!/^https?:\/\//.test(g)){ toast("上の「GAS中継URL」に共通URLを入れてから押してください"); return false; }
   window.open(g+(g.indexOf("?")>=0?"&":"?")+"acc="+encodeURIComponent(wizName()), "_blank", "noopener");
+  return false;
 };
 
 /* ===== バズ分析(登録済み実データのみ・端末内で集計) ===== */
