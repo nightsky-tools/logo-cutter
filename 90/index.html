@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI×知識蒸留庫</title>
+<style>
+  :root{
+    --bg:#F4F6F8; --ink:#17263F; --sub:#5B6B84; --card:#fff; --line:#DFE5EC;
+    --accent:#0E7466; --accent-soft:#E2F1EE; --warn:#B45309; --warn-soft:#FDF1E3;
+    --bad:#B4232A; --bad-soft:#FBE9EA;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic Medium","Meiryo",sans-serif;}
+  header{padding:22px 18px 0}
+  .eyebrow{font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.14em}
+  h1{margin:4px 0 2px;font-size:24px;font-weight:800;letter-spacing:-.01em}
+  h1 .x,.x{color:var(--accent);font-weight:800;margin:0 2px}
+  .sub{font-size:12.5px;color:var(--sub)}
+  nav{display:flex;gap:6px;padding:16px 18px 0;overflow-x:auto}
+  nav button{flex-shrink:0;padding:9px 16px;border-radius:999px;border:1px solid var(--line);
+    background:var(--card);color:var(--ink);font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit}
+  nav button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+  main{padding:16px 18px 90px;max-width:720px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+  .st{font-size:15px;font-weight:700;margin-bottom:10px}
+  .hint{font-size:12.5px;color:var(--sub);line-height:1.7;margin-bottom:12px}
+  input,select,textarea{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);
+    font-size:14px;font-family:inherit;outline:none;background:#fff;color:var(--ink)}
+  textarea{font-size:13.5px;resize:vertical;line-height:1.6}
+  .grid{display:grid;gap:8px}
+  .btn{background:var(--accent);color:#fff;border:none;padding:11px 18px;border-radius:10px;
+    font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .btn.small{padding:7px 12px;font-size:12.5px}
+  .item{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
+  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+  .b-ok{color:var(--accent);background:var(--accent-soft)}
+  .b-warn{color:var(--warn);background:var(--warn-soft)}
+  .b-bad{color:var(--bad);background:var(--bad-soft)}
+  .count{font-size:12px;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:3px 10px;border-radius:999px}
+  .link-btn{border:none;background:none;color:var(--sub);font-size:12px;cursor:pointer;font-family:inherit;padding:0}
+  .link-btn.danger{color:var(--bad)}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .itext{font-size:13.5px;margin-top:6px;line-height:1.6}
+  .isub{font-size:11.5px;color:var(--sub);margin-top:4px}
+  .out{font-size:13.5px;line-height:1.75;white-space:pre-wrap}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+    padding:10px 18px;border-radius:10px;font-size:13px;z-index:50;max-width:88%;display:none}
+  .notice{background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.6;margin-bottom:14px}
+  .cat-open{margin-top:12px}
+  .qtitle{font-size:13px;font-weight:600;line-height:1.5}
+  .qurl{font-size:11.5px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .qdone{opacity:.55}
+  .flexwrap{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center}
+  label.pick{display:flex;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;cursor:pointer}
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">KNOWLEDGE DISTILLERY</div>
+  <h1>AI<span class="x">×</span>知識蒸留庫</h1>
+  <div class="sub" id="headSub">動画の知見を検証して蓄積</div>
+</header>
+<nav id="tabs"></nav>
+<main id="main"></main>
+<div id="toast"></div>
+
+<script>
+// ========== 状態 ==========
+const DATA_KEY = "aio-kakezan-data";
+const QUEUE_KEY = "aio-kakezan-queue";
+let state = { cats: [], knowledge: {} };
+let queue = [];
+let tab = "library";
+let analyzeResults = null;
+let genOutput = "";
+let openCatId = null;
+let reverify = null; // {rootId, busy, results:[{itemId,catId,text,verdict,reason,del}]}
+let storageOK = !!(window.storage && window.storage.get);
+let mem = {}; // 保存が使えない環境用の一時メモリ
+
+// ========== 保存 ==========
+async function sget(key){
+  if(storageOK){ try{ const r = await window.storage.get(key); return r && r.value ? r.value : null; }catch(e){ return null; } }
+  return mem[key] || null;
+}
+async function sset(key,val){
+  if(storageOK){ try{ await window.storage.set(key,val); return true; }catch(e){ return false; } }
+  mem[key]=val; return true;
+}
+async function loadAll(){
+  const d = await sget(DATA_KEY); if(d){ try{ state = JSON.parse(d); }catch(e){} }
+  const q = await sget(QUEUE_KEY); if(q){ try{ queue = JSON.parse(q); }catch(e){} }
+}
+async function persist(){ const ok = await sset(DATA_KEY, JSON.stringify(state)); if(!ok) toast("保存に失敗しました"); render(); }
+async function persistQueue(){ const ok = await sset(QUEUE_KEY, JSON.stringify(queue)); if(!ok) toast("保存に失敗しました"); render(); }
+
+// ========== 共通 ==========
+let toastTimer=null;
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.style.display="block";
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.style.display="none",2600); }
+function esc(s){ return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function kakezan(name,size){ const parts=String(name).split("×");
+  return '<span style="font-size:'+(size||15)+'px;font-weight:600">'+parts.map(p=>esc(p.trim())).join('<span class="x" style="font-weight:800;margin:0 3px">×</span>')+'</span>'; }
+function verdictBadge(v){ const m={"信頼できる":["b-ok","✓ 信頼できる"],"要検証":["b-warn","△ 要検証"],"誤りの可能性":["b-bad","✕ 誤りの可能性"]};
+  const x=m[v]||m["要検証"]; return '<span class="badge '+x[0]+'">'+x[1]+'</span>'; }
+function catOptions(sel){ const roots=state.cats.filter(c=>!c.parentId); let h="";
+  roots.forEach(r=>{ h+='<optgroup label="'+esc(r.name)+'">';
+    h+='<option value="'+r.id+'"'+(sel===r.id?" selected":"")+'>'+esc(r.name)+'</option>';
+    state.cats.filter(c=>c.parentId===r.id).forEach(c=>{
+      h+='<option value="'+c.id+'"'+(sel===c.id?" selected":"")+'>　└ '+esc(c.name)+'</option>'; });
+    h+='</optgroup>'; });
+  return h; }
+function collectKnowledge(catId){
+  const ids=[catId,...state.cats.filter(c=>c.parentId===catId).map(c=>c.id)];
+  const out=[]; ids.forEach(id=>{ const cat=state.cats.find(c=>c.id===id);
+    (state.knowledge[id]||[]).forEach(k=>out.push({...k,catName:cat?cat.name:""})); });
+  return out; }
+async function copyText(txt,okMsg){ try{ await navigator.clipboard.writeText(txt); toast(okMsg||"コピーしました"); }
+  catch(e){ toast("コピーに失敗しました。長押しで選択してください"); } }
+
+// ========== API ==========
+async function callClaude(userText, system, useSearch){
+  const body={ model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content:userText}] };
+  if(system) body.system=system;
+  if(useSearch) body.tools=[{type:"web_search_20250305",name:"web_search"}];
+  const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+    headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const data=await res.json();
+  if(!data.content) throw new Error("応答が取得できませんでした");
+  return data.content.map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
+}
+function parseJsonLoose(text){ const clean=text.replace(/```json|```/g,"").trim();
+  const s=clean.indexOf("{"),e=clean.lastIndexOf("}");
+  if(s===-1||e===-1) throw new Error("JSONが見つかりません");
+  return JSON.parse(clean.slice(s,e+1)); }
+
+// ========== 命令書テンプレ ==========
+const COLLECT_TEMPLATE = `以下の作業をYouTube上で実行してください。
+
+1. YouTubeで「AI 活用」を検索する
+2. フィルタで「アップロード日」の並べ替えを適用する
+3. 検索結果をスクロールし、25件を読み込む(ショート動画・広告は除外)
+4. 検索結果ページに表示されているタイトルだけを根拠に、「AI×何と組み合わせた動画か」を判定して仕分けする
+   ※各動画のページや概要欄は開かないこと(検索結果ページ上の情報のみ使用)
+
+   仕分けカテゴリの例:
+   - AI×Note(note記事作成・運用)
+   - AI×楽天ルーム
+   - AI×Threads(スレッズ)
+   - AI×Instagram
+   - AI×ブログ/SEO
+   - AI×YouTube運用
+   - 当てはまらない場合は新しいカテゴリを作る
+   - タイトルから判定できない一般的なAI解説動画は「分類不能」に分ける
+
+5. 結果は必ず「1つのコードブロック」に全カテゴリ分をまとめて出力する。
+   複数のブロックや表に分けないこと。出力量を抑えるため、形式は1動画1行で以下に限定:
+   カテゴリ | タイトル(先頭30文字まで) | URL | 公開日
+   ※チャンネル名・判定理由・その他の情報は書かない
+6. 並び順: カテゴリごとにまとめ、各カテゴリ内は公開日が新しい順。6ヶ月より古い動画はカテゴリ名の頭に「古?」を付ける
+7. コードブロックの外には説明文を一切書かない
+8. 【出力量の上限】コードブロック全体を3,000文字以内・25行以内に必ず収めること。収まらない場合は件数を減らすこと(切れた不完全なリストより、少なくても完全なリストを優先)
+9. 【最重要】URLは絶対に省略・短縮・途中切りしないこと。「...」等での省略も禁止。行を最後まで書けない場合は、その行ごと削除すること。YouTubeのURLは https://www.youtube.com/watch?v= の後に11文字のIDが必ず完全に含まれる形で書くこと
+
+禁止事項:
+- タイトルに書かれていない情報での判定禁止
+- 表示されていない公開日等の推測禁止(不明は「不明」と記載)
+- 動画の中身を見ていない段階で内容を断定しないこと`;
+
+function geminiTemplate(url){ return `以下のYouTube動画を解析してください。
+
+【URL】${url}
+
+出力してほしいもの:
+1. 話者の発言の文字起こし(全文。要約・省略・言い換え禁止。聞き取れない箇所は「(不明瞭)」と記載)
+2. 画面に映る内容の説明(スライドの文言、操作しているツールの画面、テロップ、図解など。おおよそのタイムスタンプ付き)
+3. 動画内で紹介されている具体的な手順・設定・プロンプトがあれば、そのまま書き出す
+4. 動画内で実際に使用されているAIツール名を特定して明記する(Claude / ChatGPT / Gemini / その他 / 言及なし)。画面に映っているツールのUIや発言から判定し、推測で断定しないこと
+
+禁止事項:
+- 動画に含まれていない情報の追加禁止
+- 内容の創作・補完禁止
+- 自信がない聞き取りは推測で確定させず「?」を付けること`; }
+
+function extractUrls(text){
+  const re=/https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=[\w-]+|youtu\.be\/[\w-]+|youtube\.com\/shorts\/[\w-]+)[^\s|,)"'\]]*/g;
+  const found=text.match(re)||[]; const lines=text.split("\n");
+  const items=[]; const broken=[]; const seen=new Set();
+  found.forEach(url=>{ if(seen.has(url))return; seen.add(url);
+    // 動画IDを取り出して11文字か検証(YouTubeの動画IDは11文字固定)
+    const m=url.match(/(?:watch\?v=|youtu\.be\/|shorts\/)([\w-]+)/);
+    const id=m?m[1]:"";
+    const line=lines.find(l=>l.includes(url))||"";
+    const title=line.replace(url,"").replace(/https?:\/\/\S+/g,"").replace(/[|,\t]+/g," ").trim().slice(0,80);
+    if(id.length===11){
+      // 行の先頭部分(最初の|より前)をカテゴリ名として抽出
+      let catName="";
+      const parts=line.split("|").map(s=>s.trim());
+      if(parts.length>=2 && !parts[0].includes("http")){
+        catName=parts[0].replace(/^古\?/,"").trim();
+      }
+      const isOld=/^古\?/.test(parts[0]||"");
+      items.push({url,title:(isOld?"(古い可能性) ":"")+title,catName});
+    }
+    else{ broken.push(url); }
+  });
+  return {items,broken}; }
+
+// ========== 描画 ==========
+const TABS=[["library","ライブラリ"],["queue","URLリスト"],["import","取り込み"],["generate","生成"],["export","命令書"]];
+
+function render(){
+  const total=Object.values(state.knowledge).reduce((a,arr)=>a+arr.length,0);
+  document.getElementById("headSub").textContent="動画の知見を検証して蓄積 — 現在 "+total+" 件の知識";
+  document.getElementById("tabs").innerHTML=TABS.map(([id,label])=>
+    '<button class="'+(tab===id?"on":"")+'" onclick="setTab(\''+id+'\')">'+label+'</button>').join("");
+  const m=document.getElementById("main");
+  let warn = storageOK ? "" :
+    '<div class="notice">この環境では自動保存が使えないため、閉じるとデータが消えます。長期保存はClaude内で開いた版をお使いください。命令書コピーやURL整理はこのまま使えます。</div>';
+  if(tab==="library") m.innerHTML=warn+renderLibrary();
+  else if(tab==="queue") m.innerHTML=warn+renderQueue();
+  else if(tab==="import") m.innerHTML=warn+renderImport();
+  else if(tab==="generate") m.innerHTML=warn+renderGenerate();
+  else m.innerHTML=warn+renderExport();
+}
+function setTab(t){ tab=t; render(); }
+
+// ---- ライブラリ ----
+function renderLibrary(){
+  const roots=state.cats.filter(c=>!c.parentId);
+  let h='<div class="card"><div class="st">カテゴリを追加</div><div class="grid">'+
+    '<input id="newCatName" placeholder="例: AI×Note、AI×楽天ルーム">'+
+    '<select id="newCatParent"><option value="">親カテゴリなし（トップに作成）</option>'+catOptions("")+'</select>'+
+    '<button class="btn" onclick="addCat()">追加する</button></div>'+
+    '<div class="hint" style="margin:8px 0 0">「AI×Note×Obsidian」のような組み合わせは、親に「AI×Note」を選ぶと階層化できます。</div></div>';
+  if(!roots.length) h+='<div class="card" style="text-align:center;color:var(--sub);font-size:13.5px">まだカテゴリがありません。上で最初の掛け算を作りましょう。</div>';
+  roots.forEach(root=>{
+    const children=state.cats.filter(c=>c.parentId===root.id);
+    const totalC=collectKnowledge(root.id).length;
+    const open=openCatId===root.id;
+    h+='<div class="card"><div class="row">'+kakezan(root.name,16)+
+      '<div style="display:flex;gap:8px;align-items:center"><span class="count">'+totalC+'件</span>'+
+      (totalC>0?'<button class="btn ghost small" onclick="startReverify(\''+root.id+'\')">再検証</button>':"")+
+      '<button class="btn ghost small" onclick="toggleOpen(\''+root.id+'\')">'+(open?"閉じる":"開く")+'</button></div></div>';
+    if(reverify&&reverify.rootId===root.id){
+      if(reverify.busy){
+        h+='<div class="hint" style="margin-top:10px">Claudeが最新情報と照合中…(件数により1〜数分かかります)</div>';
+      }else if(reverify.results){
+        const dels=reverify.results.filter(r=>r.del).length;
+        h+='<div style="margin-top:12px"><div style="font-size:13px;font-weight:700;margin-bottom:8px">再検証結果 — 削除するものを確認</div>';
+        reverify.results.forEach((r,i)=>{
+          const tone=r.judge==="古い・使えない"?"b-bad":(r.judge==="要確認"?"b-warn":"b-ok");
+          const label=r.judge==="古い・使えない"?"✕ 古い・使えない":(r.judge==="要確認"?"△ 要確認":"✓ 現在も有効");
+          h+='<label class="pick"><input type="checkbox" style="width:auto;margin-top:3px" '+(r.del?"checked":"")+
+            ' onchange="toggleRevDel('+i+')"><div><span class="badge '+tone+'">'+label+'</span>'+
+            '<div class="itext" style="margin-top:5px">'+esc(r.text)+'</div>'+
+            '<div class="isub">'+esc(r.reason||"")+'</div></div></label>';
+        });
+        h+='<div class="flexwrap"><button class="btn" onclick="applyReverify()">チェックした'+dels+'件を削除して反映</button>'+
+          '<button class="btn ghost" onclick="reverify=null;render()">キャンセル</button></div>'+
+          '<div class="hint" style="margin-top:8px">「現在も有効」は検証日付きで更新されます。Web検索でも全ての仕様変更を検出できるとは限らないため、判定は参考として最終確認してください。</div></div>';
+      }
+    }
+    if(open){
+      h+='<div class="cat-open">';
+      [root,...children].forEach(cat=>{
+        const items=state.knowledge[cat.id]||[];
+        if(children.length) h+='<div style="font-size:12.5px;font-weight:700;color:var(--sub);margin:8px 0 6px">'+kakezan(cat.name,12.5)+'</div>';
+        if(!items.length) h+='<div style="font-size:12.5px;color:var(--sub);margin-bottom:8px">知識はまだありません</div>';
+        items.forEach(k=>{
+          h+='<div class="item"><div class="row">'+verdictBadge(k.verdict)+
+            '<button class="link-btn" onclick="removeKnowledge(\''+cat.id+'\',\''+k.id+'\')">削除</button></div>'+
+            '<div class="itext">'+esc(k.text)+'</div>'+
+            (k.source?'<div class="isub">出典: '+esc(k.source)+'</div>':"")+'</div>'; });
+      });
+      h+='<button class="link-btn danger" onclick="removeCat(\''+root.id+'\')">このカテゴリを削除（下位カテゴリと知識も消えます）</button></div>';
+    }
+    h+='</div>';
+  });
+  return h;
+}
+function toggleOpen(id){ openCatId=openCatId===id?null:id; render(); }
+async function addCat(){
+  const name=document.getElementById("newCatName").value.trim();
+  const parent=document.getElementById("newCatParent").value;
+  if(!name) return;
+  state.cats.push({id:"c"+Date.now(),name,parentId:parent||null});
+  await persist(); toast("「"+name+"」を追加しました");
+}
+async function removeKnowledge(catId,itemId){
+  state.knowledge[catId]=(state.knowledge[catId]||[]).filter(k=>k.id!==itemId); await persist();
+}
+// ---- 再検証 ----
+async function startReverify(rootId){
+  const ids=[rootId,...state.cats.filter(c=>c.parentId===rootId).map(c=>c.id)];
+  const all=[];
+  ids.forEach(cid=>(state.knowledge[cid]||[]).forEach(k=>all.push({itemId:k.id,catId:cid,text:k.text})));
+  if(!all.length)return;
+  reverify={rootId,busy:true,results:null}; render();
+  const results=[];
+  try{
+    for(let i=0;i<all.length;i+=8){
+      const batch=all.slice(i,i+8);
+      const listText=batch.map((b,j)=>(j+1)+". "+b.text).join("\n");
+      const system=`あなたはAIツール・Webサービスの最新情報検証の専門家です。以下の知識リストの各項目について、web検索で現在(`+new Date().toISOString().slice(0,10)+`時点)も有効か確認してください。
+
+判定基準:
+- 「現在も有効」: 検索で現在も使える/正しいと確認できた
+- 「古い・使えない」: 機能廃止・仕様変更・誤りだと検索で確認できた
+- 「要確認」: 検索では確認しきれなかった(推測で有効/無効と断定しないこと)
+
+厳守: ハルシネーション禁止。検索で確認できないことを断定しない。
+出力は以下のJSONのみ。前置き・マークダウン禁止。
+{"results":[{"index":1,"judge":"現在も有効|古い・使えない|要確認","reason":"根拠を簡潔に"}]}`;
+      const raw=await callClaude("以下の知識を検証してください。\n\n"+listText,system,true);
+      const parsed=parseJsonLoose(raw);
+      (parsed.results||[]).forEach(r=>{
+        const b=batch[r.index-1]; if(!b)return;
+        results.push({itemId:b.itemId,catId:b.catId,text:b.text,judge:r.judge,reason:r.reason,
+          del:r.judge==="古い・使えない"});
+      });
+    }
+    reverify={rootId,busy:false,results};
+  }catch(e){
+    reverify=null; toast("再検証に失敗しました: "+e.message);
+  }
+  render();
+}
+function toggleRevDel(i){ reverify.results[i].del=!reverify.results[i].del; render(); }
+async function applyReverify(){
+  if(!reverify||!reverify.results)return;
+  const today=new Date().toISOString().slice(0,10);
+  let removed=0;
+  reverify.results.forEach(r=>{
+    const arr=state.knowledge[r.catId]||[];
+    if(r.del){ state.knowledge[r.catId]=arr.filter(k=>k.id!==r.itemId); removed++; }
+    else{
+      state.knowledge[r.catId]=arr.map(k=>{
+        if(k.id!==r.itemId)return k;
+        if(r.judge==="現在も有効")return{...k,verdict:"信頼できる",reason:"再検証済("+today+"): "+(r.reason||""),checked:today};
+        if(r.judge==="要確認")return{...k,verdict:"要検証",reason:"再検証("+today+")で確認しきれず: "+(r.reason||"")};
+        return k;
+      });
+    }
+  });
+  reverify=null; await persist();
+  toast(removed+"件を削除し、残りの判定を更新しました");
+}
+
+async function removeCat(catId){
+  const childIds=state.cats.filter(c=>c.parentId===catId).map(c=>c.id);
+  state.cats=state.cats.filter(c=>c.id!==catId&&c.parentId!==catId);
+  [catId,...childIds].forEach(id=>delete state.knowledge[id]);
+  await persist(); toast("カテゴリを削除しました");
+}
+
+// ---- URLリスト ----
+function renderQueue(){
+  const done=queue.filter(q=>q.done).length;
+  let h='<div class="card"><div class="st">STEP 0: 収集命令書(Claude in Chrome用)</div>'+
+    '<div class="hint">PCのChromeでClaude in Chrome(Proプラン以上・ベータ)を開き、この命令書を貼ると、YouTube検索→仕分け→URL一覧化まで実行します。検索語「AI 活用」は「AI 副業」「Claude 活用」等に差し替えて複数回使うと網羅性が上がります。出力された表は下にそのまま貼ればOKです。</div>'+
+    '<button class="btn ghost" onclick="copyText(COLLECT_TEMPLATE,\'収集命令書をコピーしました。Claude in Chromeに貼ってください\')">収集命令書をコピー</button></div>'+
+    '<div class="card"><div class="st">STEP 1: URLをまとめて貼り付け</div>'+
+    '<div class="hint">Claude in Chromeが出力したリストや、URLの羅列をそのまま貼るだけでOK。YouTubeのURLを自動で抽出し、重複は除外します。</div>'+
+    '<div class="grid"><textarea id="rawUrls" rows="6" placeholder="例:\nAI×noteで月5万 https://youtube.com/watch?v=xxxx\nhttps://youtu.be/yyyy\n(表やリストをそのまま貼っても抽出できます)"></textarea>'+
+    '<select id="bulkCat"><option value="">カテゴリ未定のまま追加(後から個別に設定可)</option>'+catOptions("")+'</select>'+
+    '<button class="btn" onclick="addBulk()">URLを抽出してリストに追加</button></div></div>';
+  if(queue.length){
+    const pending=queue.filter(q=>!q.done&&!q.copied);
+    const cur=pending[0];
+    h+='<div class="card"><div class="row" style="margin-bottom:8px"><div class="st" style="margin:0">STEP 2: 連続コピー枠</div>'+
+      '<span style="font-size:12.5px;font-weight:700;color:var(--accent)">残り '+pending.length+' 本</span></div>';
+    if(cur){
+      h+='<div class="item" style="background:var(--accent-soft);border-color:var(--accent)">'+
+        (cur.title?'<div class="qtitle">'+esc(cur.title)+'</div>':"")+
+        '<div class="qurl">'+esc(cur.url)+'</div></div>'+
+        '<div class="grid"><button class="btn" onclick="copyNext()">命令書をコピーして次へ ▶</button></div>'+
+        '<div class="hint" style="margin:8px 0 0">タップ→Geminiに貼る→戻ってまたタップ、の繰り返しで上から順に全URLを処理できます。</div>'+
+        '<button class="link-btn" onclick="resetCopied()">コピー位置を最初に戻す</button>';
+    }else{
+      h+='<div class="hint" style="margin:0">全URLのコピーが完了しています。'+
+        '</div><button class="link-btn" onclick="resetCopied()">コピー位置を最初に戻す</button>';
+    }
+    h+='</div>';
+    h+='<div class="card"><div class="row" style="margin-bottom:10px"><div class="st" style="margin:0">STEP 3: 処理リスト</div>'+
+      '<span style="font-size:12.5px;font-weight:700;color:var(--accent)">'+done+' / '+queue.length+' 完了</span></div>'+
+      '<div class="hint">使い方: 「命令書コピー」→ Geminiに貼って実行 → 結果を「取り込み」タブへ → 済にチェック</div>';
+    const groups=[]; const byCat={};
+    queue.forEach(q=>{ const key=q.catId||"__none__"; if(!byCat[key]){byCat[key]=[];groups.push(key);} byCat[key].push(q); });
+    groups.forEach(key=>{
+      const cat=state.cats.find(c=>c.id===key);
+      h+='<div style="margin-bottom:14px"><div style="font-size:13px;font-weight:700;color:var(--sub);margin-bottom:6px">'+
+        (cat?kakezan(cat.name,13):"カテゴリ未設定")+' <span style="font-weight:400">('+byCat[key].length+'本)</span></div>';
+      byCat[key].forEach(item=>{
+        h+='<div class="item'+(item.done?" qdone":"")+'">'+
+          '<div style="display:flex;gap:8px;align-items:flex-start">'+
+          '<input type="checkbox" style="width:auto;margin-top:3px" '+(item.done?"checked":"")+' onchange="toggleDone(\''+item.id+'\')">'+
+          '<div style="min-width:0;flex:1">'+(item.title?'<div class="qtitle">'+esc(item.title)+'</div>':"")+
+          '<div class="qurl">'+esc(item.url)+'</div></div></div>'+
+          '<div class="flexwrap">'+
+          '<button class="btn small" onclick="copyPrompt(\''+item.id+'\')">命令書コピー</button>'+
+          '<button class="btn ghost small" onclick="window.open(\'https://gemini.google.com\',\'_blank\')">Geminiを開く</button>'+
+          '<select style="width:auto;max-width:150px;padding:6px 8px;font-size:12px" onchange="setItemCat(\''+item.id+'\',this.value)">'+
+          '<option value="">カテゴリ設定</option>'+catOptions(item.catId||"")+'</select>'+
+          '<button class="link-btn" style="margin-left:auto" onclick="removeQItem(\''+item.id+'\')">削除</button>'+
+          '</div></div>';
+      });
+      h+='</div>';
+    });
+    h+='</div>';
+  }
+  return h;
+}
+async function addBulk(){
+  const raw=document.getElementById("rawUrls").value;
+  const catId=document.getElementById("bulkCat").value;
+  const {items,broken}=extractUrls(raw);
+  if(!items.length&&!broken.length){ toast("YouTubeのURLが見つかりませんでした"); return; }
+  const existing=new Set(queue.map(q=>q.url));
+  let createdCats=0;
+  const fresh=items.filter(it=>!existing.has(it.url)).map((it,i)=>{
+    // 行にカテゴリ名があれば自動振り分け(既存に一致すれば使用、なければ新規作成)
+    let assignId=catId||null;
+    if(it.catName){
+      const norm=it.catName.replace(/\s+/g,"").toLowerCase();
+      let found=state.cats.find(c=>c.name.replace(/\s+/g,"").toLowerCase()===norm);
+      if(!found && it.catName.length<=30 && norm!=="分類不能"){
+        found={id:"c"+Date.now()+"-"+i,name:it.catName,parentId:null};
+        state.cats.push(found); createdCats++;
+      }
+      if(found) assignId=found.id;
+    }
+    return {id:"q"+Date.now()+"-"+i,url:it.url,title:it.title,catId:assignId,done:false};
+  });
+  if(createdCats>0) await persist();
+  queue=[...queue,...fresh]; await persistQueue();
+  let msg=fresh.length+"件を追加しました";
+  if(createdCats>0) msg+="(新カテゴリ"+createdCats+"個を自動作成)";
+  if(items.length-fresh.length>0) msg+="(重複"+(items.length-fresh.length)+"件はスキップ)";
+  if(broken.length>0) msg+="。⚠️途中で切れた不完全なURLを"+broken.length+"件検出し除外しました。元のリストを確認してください";
+  toast(msg);
+}
+let copyNextBusy=false;
+async function copyNext(){
+  if(copyNextBusy)return;
+  copyNextBusy=true;
+  try{
+    const pending=queue.filter(q=>!q.done&&!q.copied);
+    const cur=pending[0]; if(!cur)return;
+    await copyText(geminiTemplate(cur.url),"コピーしました("+(cur.title||cur.url).slice(0,24)+"…)。Geminiに貼ってください");
+    queue=queue.map(q=>q.id===cur.id?{...q,copied:true}:q);
+    await persistQueue();
+  }finally{
+    setTimeout(()=>{copyNextBusy=false;},600);
+  }
+}
+async function resetCopied(){
+  queue=queue.map(q=>({...q,copied:false})); await persistQueue(); toast("コピー位置を最初に戻しました");
+}
+async function copyPrompt(id){ const item=queue.find(q=>q.id===id); if(!item)return;
+  await copyText(geminiTemplate(item.url),"命令書(URL入り)をコピーしました。Geminiに貼ってください"); }
+async function toggleDone(id){ queue=queue.map(q=>q.id===id?{...q,done:!q.done}:q); await persistQueue(); }
+async function removeQItem(id){ queue=queue.filter(q=>q.id!==id); await persistQueue(); }
+async function setItemCat(id,catId){ queue=queue.map(q=>q.id===id?{...q,catId:catId||null}:q); await persistQueue(); }
+
+// ---- 取り込み ----
+function renderImport(){
+  let h='<div class="card"><div class="st">動画の文字起こしを取り込む</div>'+
+    '<div class="hint">手順: URLリストの「命令書コピー」→ Geminiで実行 → 結果をここに貼る → Claudeが事実検証つきでノウハウを抽出します。</div>'+
+    '<div class="grid">'+
+    '<select id="impCat"><option value="">保存先カテゴリを選択</option>'+catOptions("")+'</select>'+
+    '<input id="impSource" placeholder="動画タイトルやURL（出典メモ・任意）">'+
+    '<textarea id="impText" rows="8" placeholder="Geminiが出力した文字起こし・画面説明をここに貼り付け"></textarea>'+
+    '<button class="btn" id="analyzeBtn" onclick="analyze()">分析して検証する</button></div>'+
+    '<div id="impError" style="color:var(--bad);font-size:13px;margin-top:10px"></div></div>';
+  if(analyzeResults){
+    h+='<div class="card"><div class="st">抽出結果 — 保存するものを選択</div>';
+    analyzeResults.forEach((r,i)=>{
+      h+='<label class="pick"><input type="checkbox" style="width:auto;margin-top:3px" '+(r.checked?"checked":"")+
+        ' onchange="togglePick('+i+')"><div>'+verdictBadge(r.verdict)+
+        '<div class="itext" style="margin-top:5px">'+esc(r.knowledge)+'</div>'+
+        '<div class="isub">'+esc(r.reason||"")+'</div></div></label>';
+    });
+    h+='<button class="btn" onclick="saveSelected()">選択した知識を保存</button></div>';
+  }
+  return h;
+}
+function togglePick(i){ analyzeResults[i].checked=!analyzeResults[i].checked; }
+async function analyze(){
+  const catId=document.getElementById("impCat").value;
+  const text=document.getElementById("impText").value;
+  const err=document.getElementById("impError");
+  if(!catId||!text.trim()){ err.textContent="カテゴリと文字起こしの両方を入力してください"; return; }
+  const btn=document.getElementById("analyzeBtn");
+  btn.disabled=true; btn.textContent="Claudeが検証中…（数十秒かかります）"; err.textContent="";
+  analyzeResults=null;
+  try{
+    const system=`あなたは知識検証の専門家です。ユーザーが貼り付けたYouTube動画の文字起こし（Geminiで生成）から、AIツール活用の質を上げるノウハウだけを抽出し、事実関係を検証してください。
+
+厳守事項:
+- ハルシネーション禁止。確信が持てないことは「要検証」とし、その理由を書く
+- 明らかに誤り・古い可能性が高い主張は「誤りの可能性」とする
+- 必要に応じてweb検索で事実確認してよい
+- 一般論すぎるもの・再現性のない体験談は除外する
+- 出力は以下のJSONのみ。前置き・後書き・マークダウン記法は一切禁止
+
+{"items":[{"knowledge":"抽出したノウハウを1〜2文で","verdict":"信頼できる|要検証|誤りの可能性","reason":"判定理由を簡潔に"}]}`;
+    const raw=await callClaude("以下の文字起こしを分析してください。\n\n"+text,system,true);
+    const parsed=parseJsonLoose(raw);
+    if(!parsed.items||!parsed.items.length){ err.textContent="抽出できるノウハウが見つかりませんでした。"; }
+    else{
+      analyzeResults=parsed.items.map((it,i)=>({...it,id:"k"+Date.now()+"-"+i,checked:it.verdict!=="誤りの可能性",_catId:catId,
+        _source:document.getElementById("impSource").value.trim()}));
+    }
+  }catch(e){ err.textContent="分析に失敗しました: "+e.message+"（Claude外で開いている場合、AI分析は使えません）"; }
+  btn.disabled=false; btn.textContent="分析して検証する"; render();
+}
+async function saveSelected(){
+  const picked=analyzeResults.filter(r=>r.checked); if(!picked.length)return;
+  const catId=picked[0]._catId;
+  const items=picked.map(r=>({id:r.id,text:r.knowledge,verdict:r.verdict,reason:r.reason,
+    source:r._source,date:new Date().toISOString().slice(0,10)}));
+  state.knowledge[catId]=[...(state.knowledge[catId]||[]),...items];
+  analyzeResults=null; await persist(); toast(items.length+"件の知識を保存しました");
+}
+
+// ---- 生成 ----
+function renderGenerate(){
+  let h='<div class="card"><div class="st">蓄積した知識で生成する</div><div class="grid">'+
+    '<select id="genCat"><option value="">使う知識ベースを選択</option>'+catOptions("")+'</select>'+
+    '<textarea id="genPrompt" rows="4" placeholder="例: この知識を活かしてNoteの記事構成案を3つ作って"></textarea>'+
+    '<button class="btn" id="genBtn" onclick="runGen()">知識を持ったClaudeに依頼</button></div>'+
+    '<div id="genError" style="color:var(--bad);font-size:13px;margin-top:10px"></div></div>';
+  if(genOutput){
+    h+='<div class="card"><div class="row" style="margin-bottom:8px"><div class="st" style="margin:0">生成結果</div>'+
+      '<button class="btn ghost small" onclick="copyText(genOutput)">コピー</button></div>'+
+      '<div class="out">'+esc(genOutput)+'</div></div>';
+  }
+  return h;
+}
+async function runGen(){
+  const catId=document.getElementById("genCat").value;
+  const prompt=document.getElementById("genPrompt").value;
+  const err=document.getElementById("genError");
+  if(!catId||!prompt.trim()){ err.textContent="知識ベースと依頼内容を入力してください"; return; }
+  const btn=document.getElementById("genBtn"); btn.disabled=true; btn.textContent="生成中…"; err.textContent="";
+  genOutput="";
+  try{
+    const items=collectKnowledge(catId);
+    const kb=items.map((k,i)=>(i+1)+". ["+k.verdict+"] "+k.text+(k.source?"（出典: "+k.source+"）":"")).join("\n");
+    const system=`あなたはユーザー専属のアシスタントです。以下はユーザーが検証・蓄積した知識ベースです。回答時はこの知識を最優先で活用してください。「要検証」の知識を使う場合はその旨を明示すること。知識ベースにない事柄を断定しないこと（ハルシネーション禁止）。
+
+## 知識ベース
+`+(kb||"（まだ知識がありません）");
+    genOutput=await callClaude(prompt,system,false);
+  }catch(e){ err.textContent="生成に失敗しました: "+e.message+"（Claude外で開いている場合、AI生成は使えません）"; }
+  btn.disabled=false; btn.textContent="知識を持ったClaudeに依頼"; render();
+}
+
+// ---- 命令書 ----
+function renderExport(){
+  let h='<div class="card"><div class="st">命令書として書き出す</div>'+
+    '<div class="hint">コピーした命令書は、claude.aiの「プロジェクト」のカスタム指示やナレッジに貼ると、そのプロジェクト内の全会話でClaudeがこの知識を持った状態になります。</div>'+
+    '<div class="grid"><select id="expCat" onchange="render()"><option value="">書き出すカテゴリを選択</option>'+catOptions(window._expCat||"")+'</select>'+
+    '<button class="btn" onclick="copyDoc()">命令書をコピー(プロジェクト用)</button>'+
+    '<button class="btn ghost" onclick="copyFableDoc()">検証+HTML再出力の一体依頼文をコピー(Fable 5に貼るだけ)</button></div></div>';
+  const sel=document.getElementById("expCat");
+  const catId=window._expCat||"";
+  if(catId){
+    const cat=state.cats.find(c=>c.id===catId);
+    const items=collectKnowledge(catId);
+    if(cat){
+      const doc=buildDoc(cat,items);
+      h+='<div class="card"><div class="out" style="font-size:12.5px">'+esc(doc)+'</div></div>';
+    }
+  }
+  return h;
+}
+function buildDoc(cat,items){
+  return "# "+cat.name+" 知識ベース命令書\n\n以下は動画等から抽出し検証済みの知識です。この分野の作業では必ずこの知識を参照し、活用してください。「要検証」の項目を根拠にする場合はその旨を明示してください。ここに無い事実を断定しないでください。\n\n"+
+    items.map((k,i)=>(i+1)+". ["+k.verdict+"] "+k.text+(k.source?"\n   出典: "+k.source:"")).join("\n")+"\n";
+}
+function buildFableDoc(cat,items){
+  return `あなた(Claude Fable 5)への依頼です。この1通で以下を全て実行してください。
+
+やってほしいこと:
+1. 下の知識ベースの各項目をWeb検索で今日時点でも有効か確認する
+2. 機能廃止・仕様変更・誤りと確認できたものは削除し、削除理由の一覧を先に提示する
+3. 検索で確認しきれないものは削除せず「要検証」マークを残す(推測で消さない・推測で残さない)
+4. 残った知識を整理し、HTMLファイルとして再出力する(カテゴリごとに整理、各項目に判定と検証日を記載、スマホで見やすいデザイン)
+
+禁止事項: ハルシネーション禁止。検索で確認できない削除・追加をしない。知識に無い情報を足さない。
+
+--- 以下、知識ベース(${cat.name} / ${items.length}件) ---
+
+`+items.map((k,i)=>(i+1)+". ["+k.verdict+"] "+k.text+(k.source?"（出典: "+k.source+"）":"")).join("\n")+"\n";
+}
+async function copyFableDoc(){
+  const catId=document.getElementById("expCat").value;
+  window._expCat=catId;
+  if(!catId){ toast("カテゴリを選択してください"); render(); return; }
+  const cat=state.cats.find(c=>c.id===catId);
+  const items=collectKnowledge(catId);
+  if(!items.length){ toast("このカテゴリに知識がありません"); render(); return; }
+  await copyText(buildFableDoc(cat,items),"一体依頼文をコピーしました。Fable 5のチャットに貼ってください");
+  render();
+}
+async function copyDoc(){
+  const catId=document.getElementById("expCat").value;
+  window._expCat=catId;
+  if(!catId){ toast("カテゴリを選択してください"); render(); return; }
+  const cat=state.cats.find(c=>c.id===catId);
+  const items=collectKnowledge(catId);
+  if(!items.length){ toast("このカテゴリに知識がありません"); render(); return; }
+  await copyText(buildDoc(cat,items),"命令書をコピーしました（"+items.length+"件）");
+  render();
+}
+// exportタブのselect変更を反映
+document.addEventListener("change",e=>{ if(e.target&&e.target.id==="expCat"){ window._expCat=e.target.value; render(); } });
+
+// ========== 起動 ==========
+(async()=>{ await loadAll(); render(); })();
+</script>
+</body>
+</html>
