@@ -79,16 +79,63 @@ let analyzeResults = null;
 let genOutput = "";
 let openCatId = null;
 let reverify = null; // {rootId, busy, results:[{itemId,catId,text,verdict,reason,del}]}
-let storageOK = !!(window.storage && window.storage.get);
-let mem = {}; // 保存が使えない環境用の一時メモリ
+let storageMode = "memory"; // "claude" | "idb" | "local" | "memory"
+let idb = null;
+try{ if(window.storage && window.storage.get){ storageMode="claude"; } }catch(e){}
+const apiAvailable = (storageMode==="claude");
+
+function idbOpen(){
+  return new Promise((res)=>{
+    try{
+      const req=indexedDB.open("kakezan-db",1);
+      req.onupgradeneeded=()=>{ req.result.createObjectStore("kv"); };
+      req.onsuccess=()=>res(req.result);
+      req.onerror=()=>res(null);
+    }catch(e){ res(null); }
+  });
+}
+function idbGet(key){
+  return new Promise((res)=>{
+    try{ const tx=idb.transaction("kv","readonly").objectStore("kv").get(key);
+      tx.onsuccess=()=>res(tx.result??null); tx.onerror=()=>res(null);
+    }catch(e){ res(null); }
+  });
+}
+function idbSet(key,val){
+  return new Promise((res)=>{
+    try{ const tx=idb.transaction("kv","readwrite").objectStore("kv").put(val,key);
+      tx.onsuccess=()=>res(true); tx.onerror=()=>res(false);
+    }catch(e){ res(false); }
+  });
+}
+async function initStorage(){
+  if(storageMode==="claude") return;
+  idb=await idbOpen();
+  if(idb){ storageMode="idb";
+    // localStorageからの引っ越し(初回のみ)
+    try{
+      for(const k of [DATA_KEY,QUEUE_KEY]){
+        const cur=await idbGet(k);
+        if(cur===null){ const old=localStorage.getItem(k); if(old!==null) await idbSet(k,old); }
+      }
+    }catch(e){}
+    return;
+  }
+  try{ localStorage.setItem("__test__","1"); localStorage.removeItem("__test__"); storageMode="local"; }catch(e){}
+}
+let mem = {}; // どの保存も使えない環境用の一時メモリ
 
 // ========== 保存 ==========
 async function sget(key){
-  if(storageOK){ try{ const r = await window.storage.get(key); return r && r.value ? r.value : null; }catch(e){ return null; } }
+  if(storageMode==="claude"){ try{ const r = await window.storage.get(key); return r && r.value ? r.value : null; }catch(e){ return null; } }
+  if(storageMode==="idb"){ return await idbGet(key); }
+  if(storageMode==="local"){ try{ return localStorage.getItem(key); }catch(e){ return null; } }
   return mem[key] || null;
 }
 async function sset(key,val){
-  if(storageOK){ try{ await window.storage.set(key,val); return true; }catch(e){ return false; } }
+  if(storageMode==="claude"){ try{ await window.storage.set(key,val); return true; }catch(e){ return false; } }
+  if(storageMode==="idb"){ return await idbSet(key,val); }
+  if(storageMode==="local"){ try{ localStorage.setItem(key,val); return true; }catch(e){ return false; } }
   mem[key]=val; return true;
 }
 async function loadAll(){
@@ -171,6 +218,39 @@ const COLLECT_TEMPLATE = `以下の作業をYouTube上で実行してくださ�
 - 表示されていない公開日等の推測禁止(不明は「不明」と記載)
 - 動画の中身を見ていない段階で内容を断定しないこと`;
 
+function verifyTemplate(text){ return `あなた(Claude)への依頼です。以下のYouTube動画の文字起こし(Geminiで生成)から、AIツール活用の質を上げるノウハウだけを抽出し、Web検索で事実検証してください。
+
+厳守事項:
+- ハルシネーション禁止。確信が持てないものは「要検証」
+- 明らかに誤り・古い可能性が高いものは「誤りの可能性」
+- 一般論すぎるもの・再現性のない体験談は除外
+- 出力は以下の形式の行のみ。前置き・後書き・表・マークダウン禁止
+- 1行1ノウハウで: 判定|ノウハウ本文(1〜2文)|判定理由|使用AIツール名
+- 判定は必ず「信頼できる」「要検証」「誤りの可能性」のいずれか
+
+出力例:
+信頼できる|Claudeのプロジェクト機能にナレッジを入れると全会話で参照される|公式機能として確認|Claude
+
+--- 以下、文字起こし ---
+`+text; }
+
+// Claudeの回答(判定|本文|理由|ツール 形式)を解析
+function parseVerifyReply(text){
+  const out=[];
+  text.split("\n").forEach((line,i)=>{
+    const parts=line.split("|").map(s=>s.trim());
+    if(parts.length>=2){
+      const v=parts[0].replace(/[「」\[\]\s]/g,"");
+      if(v==="信頼できる"||v==="要検証"||v==="誤りの可能性"){
+        out.push({id:"k"+Date.now()+"-"+i,knowledge:parts[1],verdict:v,
+          reason:(parts[2]||"")+(parts[3]?"(ツール: "+parts[3]+")":""),
+          checked:v!=="誤りの可能性"});
+      }
+    }
+  });
+  return out;
+}
+
 function geminiTemplate(url){ return `以下のYouTube動画を解析してください。
 
 【URL】${url}
@@ -219,8 +299,12 @@ function render(){
   document.getElementById("tabs").innerHTML=TABS.map(([id,label])=>
     '<button class="'+(tab===id?"on":"")+'" onclick="setTab(\''+id+'\')">'+label+'</button>').join("");
   const m=document.getElementById("main");
-  let warn = storageOK ? "" :
-    '<div class="notice">この環境では自動保存が使えないため、閉じるとデータが消えます。長期保存はClaude内で開いた版をお使いください。命令書コピーやURL整理はこのまま使えます。</div>';
+  let warn = "";
+  if(storageMode==="memory"){
+    warn='<div class="notice">この環境ではどの保存機能も使えないため、閉じるとデータが消えます。ブラウザ(Safari/Chrome)でファイルを開き直すか、Claude内で開いた版をお使いください。</div>';
+  }else if(storageMode==="idb"||storageMode==="local"){
+    warn='<div class="notice" style="background:var(--accent-soft);color:var(--accent)">データはこの端末のブラウザ内に自動保存されます'+(storageMode==="idb"?"(大容量モード)":"")+'。別の端末・Claude内とは共有されません。ブラウザのサイトデータを全消去すると消える点だけ注意。AIの検証・生成は下の「依頼文コピー→Claude in Chromeに貼る→回答を貼り戻す」方式で使えます。</div>';
+  }
   if(tab==="library") m.innerHTML=warn+renderLibrary();
   else if(tab==="queue") m.innerHTML=warn+renderQueue();
   else if(tab==="import") m.innerHTML=warn+renderImport();
@@ -296,6 +380,13 @@ async function removeKnowledge(catId,itemId){
 }
 // ---- 再検証 ----
 async function startReverify(rootId){
+  if(!apiAvailable){
+    const cat=state.cats.find(c=>c.id===rootId);
+    const items=collectKnowledge(rootId);
+    if(!items.length)return;
+    await copyText(buildFableDoc(cat,items),"検証+HTML再出力の一体依頼文をコピーしました。Claude in Chromeに貼ってください。古いと判定されたものは、ライブラリで手動削除してください");
+    return;
+  }
   const ids=[rootId,...state.cats.filter(c=>c.parentId===rootId).map(c=>c.id)];
   const all=[];
   ids.forEach(cid=>(state.knowledge[cid]||[]).forEach(k=>all.push({itemId:k.id,catId:cid,text:k.text})));
@@ -475,7 +566,12 @@ function renderImport(){
     '<select id="impCat"><option value="">保存先カテゴリを選択</option>'+catOptions("")+'</select>'+
     '<input id="impSource" placeholder="動画タイトルやURL（出典メモ・任意）">'+
     '<textarea id="impText" rows="8" placeholder="Geminiが出力した文字起こし・画面説明をここに貼り付け"></textarea>'+
-    '<button class="btn" id="analyzeBtn" onclick="analyze()">分析して検証する</button></div>'+
+    (apiAvailable
+      ? '<button class="btn" id="analyzeBtn" onclick="analyze()">分析して検証する</button>'
+      : '<button class="btn" onclick="copyVerifyPrompt()">検証依頼文をコピー(Claude in Chromeに貼る)</button>'+
+        '<textarea id="impReply" rows="5" placeholder="Claudeの回答(判定|ノウハウ|理由|ツール の行)をここに貼り戻す"></textarea>'+
+        '<button class="btn" onclick="importReply()">回答を取り込む</button>')+
+    '</div>'+
     '<div id="impError" style="color:var(--bad);font-size:13px;margin-top:10px"></div></div>';
   if(analyzeResults){
     h+='<div class="card"><div class="st">抽出結果 — 保存するものを選択</div>';
@@ -490,6 +586,21 @@ function renderImport(){
   return h;
 }
 function togglePick(i){ analyzeResults[i].checked=!analyzeResults[i].checked; }
+async function copyVerifyPrompt(){
+  const text=document.getElementById("impText").value;
+  if(!text.trim()){ toast("先に文字起こしを貼ってください"); return; }
+  await copyText(verifyTemplate(text),"検証依頼文をコピーしました。Claude in Chromeに貼ってください");
+}
+async function importReply(){
+  const catId=document.getElementById("impCat").value;
+  const reply=document.getElementById("impReply").value;
+  const err=document.getElementById("impError");
+  if(!catId||!reply.trim()){ err.textContent="カテゴリとClaudeの回答の両方を入力してください"; return; }
+  const parsed=parseVerifyReply(reply);
+  if(!parsed.length){ err.textContent="回答から抽出できませんでした。「判定|ノウハウ|理由|ツール」の行形式か確認してください"; return; }
+  analyzeResults=parsed.map(r=>({...r,_catId:catId,_source:document.getElementById("impSource").value.trim()}));
+  render();
+}
 async function analyze(){
   const catId=document.getElementById("impCat").value;
   const text=document.getElementById("impText").value;
@@ -533,14 +644,36 @@ function renderGenerate(){
   let h='<div class="card"><div class="st">蓄積した知識で生成する</div><div class="grid">'+
     '<select id="genCat"><option value="">使う知識ベースを選択</option>'+catOptions("")+'</select>'+
     '<textarea id="genPrompt" rows="4" placeholder="例: この知識を活かしてNoteの記事構成案を3つ作って"></textarea>'+
-    '<button class="btn" id="genBtn" onclick="runGen()">知識を持ったClaudeに依頼</button></div>'+
-    '<div id="genError" style="color:var(--bad);font-size:13px;margin-top:10px"></div></div>';
+    (apiAvailable
+      ? '<button class="btn" id="genBtn" onclick="runGen()">知識を持ったClaudeに依頼</button>'
+      : '<button class="btn" onclick="copyGenPrompt()">知識入り依頼文をコピー(Claude in Chromeに貼る)</button>')+
+    '</div>'+
+    '<div id="genError" style="color:var(--bad);font-size:13px;margin-top:10px"></div>'+
+    (apiAvailable?"":'<div class="hint" style="margin:10px 0 0">依頼文には選んだ知識ベースが丸ごと入ります。Claude側の回答をそのまま使ってください(貼り戻し不要)。</div>')+
+    '</div>';
   if(genOutput){
     h+='<div class="card"><div class="row" style="margin-bottom:8px"><div class="st" style="margin:0">生成結果</div>'+
       '<button class="btn ghost small" onclick="copyText(genOutput)">コピー</button></div>'+
       '<div class="out">'+esc(genOutput)+'</div></div>';
   }
   return h;
+}
+async function copyGenPrompt(){
+  const catId=document.getElementById("genCat").value;
+  const prompt=document.getElementById("genPrompt").value;
+  const err=document.getElementById("genError");
+  if(!catId||!prompt.trim()){ err.textContent="知識ベースと依頼内容を入力してください"; return; }
+  err.textContent="";
+  const items=collectKnowledge(catId);
+  const kb=items.map((k,i)=>(i+1)+". ["+k.verdict+"] "+k.text+(k.source?"（出典: "+k.source+"）":"")).join("\n");
+  const doc=`あなた(Claude)への依頼です。以下は私が検証・蓄積した知識ベースです。回答時はこの知識を最優先で活用してください。「要検証」の知識を使う場合はその旨を明示すること。知識ベースにない事柄を断定しないこと(ハルシネーション禁止)。
+
+## 知識ベース
+`+(kb||"（まだ知識がありません）")+`
+
+## 依頼
+`+prompt;
+  await copyText(doc,"知識入り依頼文をコピーしました。Claude in Chromeに貼ってください");
 }
 async function runGen(){
   const catId=document.getElementById("genCat").value;
@@ -623,7 +756,7 @@ async function copyDoc(){
 document.addEventListener("change",e=>{ if(e.target&&e.target.id==="expCat"){ window._expCat=e.target.value; render(); } });
 
 // ========== 起動 ==========
-(async()=>{ await loadAll(); render(); })();
+(async()=>{ await initStorage(); await loadAll(); render(); })();
 </script>
 </body>
 </html>
