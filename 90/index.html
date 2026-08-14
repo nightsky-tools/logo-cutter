@@ -166,8 +166,8 @@ function collectKnowledge(catId){
   const out=[]; ids.forEach(id=>{ const cat=state.cats.find(c=>c.id===id);
     (state.knowledge[id]||[]).forEach(k=>out.push({...k,catName:cat?cat.name:""})); });
   return out; }
-async function copyText(txt,okMsg){ try{ await navigator.clipboard.writeText(txt); toast(okMsg||"コピーしました"); }
-  catch(e){ toast("コピーに失敗しました。長押しで選択してください"); } }
+async function copyText(txt,okMsg){ try{ await navigator.clipboard.writeText(txt); toast(okMsg||"コピーしました"); return true; }
+  catch(e){ toast("コピーに失敗しました。長押しで選択してください"); return false; } }
 
 // ========== API ==========
 async function callClaude(userText, system, useSearch){
@@ -236,11 +236,13 @@ function verifyTemplate(text){ return `あなた(Claude)への依頼です。以
 
 // Claudeの回答(判定|本文|理由|ツール 形式)を解析
 function parseVerifyReply(text){
+  text=text.replace(/｜/g,"|"); // 全角パイプを正規化
   const out=[];
   text.split("\n").forEach((line,i)=>{
     const parts=line.split("|").map(s=>s.trim());
     if(parts.length>=2){
-      const v=parts[0].replace(/[「」\[\]\s]/g,"");
+      // 先頭の箇条書き記号・番号・括弧類を除去してから判定語を照合
+      const v=parts[0].replace(/^[\s\-*・>#0-9.)）(（]+/,"").replace(/[「」\[\]\s]/g,"");
       if(v==="信頼できる"||v==="要検証"||v==="誤りの可能性"){
         out.push({id:"k"+Date.now()+"-"+i,knowledge:parts[1],verdict:v,
           reason:(parts[2]||"")+(parts[3]?"(ツール: "+parts[3]+")":""),
@@ -267,6 +269,7 @@ function geminiTemplate(url){ return `以下のYouTube動画を解析してく�
 - 自信がない聞き取りは推測で確定させず「?」を付けること`; }
 
 function extractUrls(text){
+  text=text.replace(/｜/g,"|"); // 全角パイプを正規化
   const re=/https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=[\w-]+|youtu\.be\/[\w-]+|youtube\.com\/shorts\/[\w-]+)[^\s|,)"'\]]*/g;
   const found=text.match(re)||[]; const lines=text.split("\n");
   const items=[]; const broken=[]; const seen=new Set();
@@ -275,11 +278,17 @@ function extractUrls(text){
     const m=url.match(/(?:watch\?v=|youtu\.be\/|shorts\/)([\w-]+)/);
     const id=m?m[1]:"";
     const line=lines.find(l=>l.includes(url))||"";
-    const title=line.replace(url,"").replace(/https?:\/\/\S+/g,"").replace(/[|,\t]+/g," ").trim().slice(0,80);
+    const parts=line.split("|").map(s=>s.trim());
+    // タイトル: 構造化行(3列以上)なら2列目、それ以外は行からURL等を除いた残り
+    let title="";
+    if(parts.length>=3 && !parts[0].includes("http") && !parts[1].includes("http")){
+      title=parts[1].slice(0,80);
+    }else{
+      title=line.replace(url,"").replace(/https?:\/\/\S+/g,"").replace(/[|,\t]+/g," ").trim().slice(0,80);
+    }
     if(id.length===11){
       // 行の先頭部分(最初の|より前)をカテゴリ名として抽出
       let catName="";
-      const parts=line.split("|").map(s=>s.trim());
       if(parts.length>=2 && !parts[0].includes("http")){
         catName=parts[0].replace(/^古\?/,"").trim();
       }
@@ -542,7 +551,8 @@ async function copyNext(){
   try{
     const pending=queue.filter(q=>!q.done&&!q.copied);
     const cur=pending[0]; if(!cur)return;
-    await copyText(geminiTemplate(cur.url),"コピーしました("+(cur.title||cur.url).slice(0,24)+"…)。Geminiに貼ってください");
+    const ok=await copyText(geminiTemplate(cur.url),"コピーしました("+(cur.title||cur.url).slice(0,24)+"…)。Geminiに貼ってください");
+    if(!ok)return; // コピー失敗時は次へ進まない(飛ばし防止)
     queue=queue.map(q=>q.id===cur.id?{...q,copied:true}:q);
     await persistQueue();
   }finally{
@@ -711,7 +721,49 @@ function renderExport(){
       h+='<div class="card"><div class="out" style="font-size:12.5px">'+esc(doc)+'</div></div>';
     }
   }
+  h+='<div class="card"><div class="st">データの持ち出し・引っ越し</div>'+
+    '<div class="hint">全データ(カテゴリ・知識・URLリスト)をファイルやテキストで取り出せます。取り出したファイルはClaudeのチャットに添付して読ませることも、別の端末やClaude内版のこの欄に貼って復元することもできます。</div>'+
+    '<div class="grid">'+
+    '<button class="btn ghost" onclick="exportFile()">全データをファイルで保存(.txt)</button>'+
+    '<button class="btn ghost" onclick="exportCopy()">全データをコピー</button>'+
+    '<textarea id="restoreBox" rows="3" placeholder="ここに全データを貼って復元(現在のデータは上書きされます)"></textarea>'+
+    '<button class="btn" onclick="restoreData()">貼り付けた内容で復元</button>'+
+    '</div></div>';
   return h;
+}
+function exportPayload(){
+  return JSON.stringify({app:"kakezan-knowledge",exported:new Date().toISOString(),
+    cats:state.cats,knowledge:state.knowledge,queue:queue});
+}
+async function exportCopy(){
+  await copyText(exportPayload(),"全データをコピーしました");
+}
+function exportFile(){
+  try{
+    const blob=new Blob([exportPayload()],{type:"text/plain"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="kakezan-backup-"+new Date().toISOString().slice(0,10)+".txt";
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+    toast("ファイルを保存しました");
+  }catch(e){
+    toast("この環境ではファイル保存が使えません。「全データをコピー」を使ってメモ帳等に保存してください");
+  }
+}
+async function restoreData(){
+  const raw=document.getElementById("restoreBox").value.trim();
+  if(!raw){ toast("復元するデータを貼ってください"); return; }
+  try{
+    const d=JSON.parse(raw);
+    if(d.app!=="kakezan-knowledge") throw new Error("形式が違います");
+    state={cats:d.cats||[],knowledge:d.knowledge||{}};
+    queue=d.queue||[];
+    await persist(); await persistQueue();
+    toast("復元しました(カテゴリ"+state.cats.length+"個・URL"+queue.length+"件)");
+  }catch(e){
+    toast("復元に失敗しました。「全データをコピー」で取り出したテキストをそのまま貼ってください");
+  }
 }
 function buildDoc(cat,items){
   return "# "+cat.name+" 知識ベース命令書\n\n以下は動画等から抽出し検証済みの知識です。この分野の作業では必ずこの知識を参照し、活用してください。「要検証」の項目を根拠にする場合はその旨を明示してください。ここに無い事実を断定しないでください。\n\n"+
