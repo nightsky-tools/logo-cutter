@@ -281,6 +281,23 @@
   .done .newf { color: var(--tape); }
   .done .hint { font-size: 12px; color: var(--ink-soft); margin-top: 8px; }
 
+  .picknote { margin-top: 10px; font-size: 12px; color: var(--ink-soft); display: none; }
+  .picknote.show { display: block; }
+  .errbar {
+    display: none;
+    margin-top: 12px;
+    background: #faecec;
+    border: 1px solid var(--stamp);
+    color: #8f2320;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 12.5px;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .errbar.show { display: block; }
+  .badge.err { color: var(--stamp); border-color: var(--stamp); }
+
   footer { margin-top: 22px; font-size: 11.5px; color: var(--ink-soft); text-align: center; }
   @media (max-width: 460px) {
     body { padding: 14px 10px 48px; }
@@ -305,11 +322,13 @@
     <label class="small" for="memo" style="margin-top:12px">申し送りメモ(命令書)— 連結txtの冒頭 / ZIPのHANDOFF.txtに入ります</label>
     <textarea id="memo" placeholder="例: ◯◯アプリのソース一式。現在△△まで実装済み。既知のバグは□□。次は◇◇を実装したい。"></textarea>
     <div class="pickrow">
-      <button class="pick" id="pickFolder">📁 フォルダごと選択<span class="sub">中身を自動収集(対応ブラウザ)</span></button>
-      <button class="pick" id="pickFiles">📄 ファイルを選択<span class="sub">複数選択OK / ここにドロップも可</span></button>
+      <button type="button" class="pick" id="pickFolder">📁 フォルダごと選択<span class="sub">中身を自動収集(対応ブラウザ)</span></button>
+      <button type="button" class="pick" id="pickFiles">📄 ファイルを選択<span class="sub">複数選択OK / ここにドロップも可</span></button>
     </div>
     <input type="file" id="folderInput" webkitdirectory multiple>
     <input type="file" id="filesInput" multiple>
+    <div class="picknote" id="pickNote" role="status"></div>
+    <div class="errbar" id="errbar" role="alert"></div>
     <details class="rules">
       <summary>自動除外ルールを編集(コード読解に不要なものを除外)</summary>
       <textarea id="rules"></textarea>
@@ -323,7 +342,7 @@
 - コードについて回答する時は、必ず連結txt本文の該当箇所を参照してください
 - 連結txtには目次があります。全体を確認する作業の時は、目次と照合して読み漏れがないかチェックしてください
 - 日付の異なる連結txtが複数ある場合は、ファイル名の日付が最新のものだけを正とみなしてください</div>
-      <button class="copybtn" id="copyInst">📋 指示文をコピー</button>
+      <button type="button" class="copybtn" id="copyInst">📋 指示文をコピー</button>
       <div class="note">Claudeのプロジェクト画面 →「指示」に貼り付けて保存してください(最初の1回だけでOK)。</div>
     </details>
   </div>
@@ -338,8 +357,8 @@
   </div>
 
   <div class="actions">
-    <button class="btn primary" id="makeTxt">連結txtを作成(プロジェクト用)</button>
-    <button class="btn secondary" id="makeZip">.zip.txtを作成(チャット用)</button>
+    <button type="button" class="btn primary" id="makeTxt">連結txtを作成(プロジェクト用)</button>
+    <button type="button" class="btn secondary" id="makeZip">.zip.txtを作成(チャット用)</button>
   </div>
 
   <div class="done" id="done">
@@ -357,6 +376,42 @@
 (() => {
   const $ = id => document.getElementById(id);
 
+  /* ===== 安全な保存(localStorage禁止の表示環境では自動でメモリ保存に切替。以前はここで全停止していた) ===== */
+  const store = (() => {
+    try {
+      const t = "__cup_test__";
+      localStorage.setItem(t, "1");
+      localStorage.removeItem(t);
+      return {
+        persistent: true,
+        get: k => localStorage.getItem(k),
+        set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }
+      };
+    } catch (e) {
+      const m = new Map();
+      return {
+        persistent: false,
+        get: k => (m.has(k) ? m.get(k) : null),
+        set: (k, v) => { m.set(k, v); }
+      };
+    }
+  })();
+
+  /* ===== エラーは必ず画面に出す(iPhoneはコンソールが見えない。alertが出ない環境もある) ===== */
+  function showError(msg) {
+    const b = $("errbar");
+    b.textContent = "⚠ " + msg;
+    b.classList.add("show");
+  }
+  function clearError() { $("errbar").classList.remove("show"); }
+  window.addEventListener("error", e => showError("エラー: " + (e.message || e.type)));
+  window.addEventListener("unhandledrejection", e => {
+    const r = e.reason;
+    showError("エラー: " + (r && r.message ? r.message : String(r)));
+  });
+
+  const IS_IPHONE = /iPhone|iPod/.test(navigator.userAgent);
+
   const DEFAULT_RULES = [
     ".git/", "node_modules/", "DerivedData/", "xcuserdata", "build/", "Pods/",
     ".DS_Store", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.ico",
@@ -369,22 +424,26 @@
   let hashing = 0;       // 進行中カウンタ(世代管理)
 
   /* ===== 設定の保存/復元 ===== */
-  $("rules").value = localStorage.getItem("cup_rules") || DEFAULT_RULES;
-  $("rules").addEventListener("input", () => localStorage.setItem("cup_rules", $("rules").value));
-  $("proj").value = localStorage.getItem("cup_proj") || "";
+  $("rules").value = store.get("cup_rules") || DEFAULT_RULES;
+  $("rules").addEventListener("input", () => store.set("cup_rules", $("rules").value));
+  $("proj").value = store.get("cup_proj") || "";
   $("proj").addEventListener("input", () => {
-    localStorage.setItem("cup_proj", $("proj").value);
+    store.set("cup_proj", $("proj").value);
     loadPrev(); loadMemo(); refreshStatuses();
   });
   function projKey() { return ($("proj").value.trim() || "default").replace(/\s+/g, "_"); }
   function loadPrev() {
-    try { prevState = JSON.parse(localStorage.getItem("cup_prev_" + projKey()) || "{}"); }
+    try { prevState = JSON.parse(store.get("cup_prev_" + projKey()) || "{}"); }
     catch (e) { prevState = {}; }
   }
   loadPrev();
-  function loadMemo() { $("memo").value = localStorage.getItem("cup_memo_" + projKey()) || ""; }
-  $("memo").addEventListener("input", () => localStorage.setItem("cup_memo_" + projKey(), $("memo").value));
+  function loadMemo() { $("memo").value = store.get("cup_memo_" + projKey()) || ""; }
+  $("memo").addEventListener("input", () => store.set("cup_memo_" + projKey(), $("memo").value));
   loadMemo();
+  if (!store.persistent) {
+    document.querySelector("footer").textContent =
+      "完全オフライン動作。※この表示環境ではブラウザ保存が使えないため、設定と差分記録は今回かぎりです(SafariでこのHTMLを開くと保存されます)。";
+  }
 
   /* ===== 指示文コピー ===== */
   $("copyInst").addEventListener("click", async () => {
@@ -425,9 +484,32 @@
     const d = new Date();
     return String(d.getFullYear()) + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
   }
-  async function sha256hex(u8) {
-    const d = await crypto.subtle.digest("SHA-256", u8);
-    return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("");
+  function readBytes(file) {
+    if (typeof file.arrayBuffer === "function") {
+      return file.arrayBuffer().then(b => new Uint8Array(b));
+    }
+    // 古いWebKit向けフォールバック
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(new Uint8Array(r.result));
+      r.onerror = () => reject(r.error || new Error("読み込みに失敗しました"));
+      r.readAsArrayBuffer(file);
+    });
+  }
+  async function hashBytes(u8) {
+    if (window.crypto && crypto.subtle) {
+      try {
+        const d = await crypto.subtle.digest("SHA-256", u8);
+        return "s:" + [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("");
+      } catch (e) { /* 使えない環境では下のフォールバックへ */ }
+    }
+    // crypto.subtleが無い環境用の簡易ハッシュ(差分判定には十分)
+    let h1 = 0x811c9dc5, h2 = 0x811c9dc5 ^ 0x01000193;
+    for (let i = 0; i < u8.length; i++) {
+      h1 ^= u8[i]; h1 = Math.imul(h1, 0x01000193) >>> 0;
+      h2 = Math.imul(h2 ^ u8[i], 0x01000193) >>> 0; h2 = (h2 + 0x9e3779b9) >>> 0;
+    }
+    return "f:" + h1.toString(16) + "-" + h2.toString(16) + "-" + u8.length;
   }
   function decodeText(u8) {
     try { return new TextDecoder("utf-8", { fatal: true }).decode(u8); } catch (e) {}
@@ -458,30 +540,59 @@
   /* ===== ファイル収集 ===== */
   async function addEntries(list) {
     // list: [{path, file}]
+    clearError();
     const rules = parseRules();
-    let excluded = 0;
+    let excluded = 0, added = 0, replaced = 0;
     for (const { path, file } of list) {
       if (isExcluded(path, rules)) { excluded++; continue; }
-      if (items.some(x => x.path === path && x.size === file.size)) continue;
-      items.push({ path, file, size: file.size, hash: null, status: "…" });
+      const existing = items.find(x => x.path === path);
+      if (existing) {
+        // 同名は「最新で差し替え」。以前は同サイズだと古い方が残り、更新が反映されなかった
+        existing.file = file;
+        existing.size = file.size;
+        existing.hash = null;
+        existing.status = "…";
+        replaced++;
+      } else {
+        items.push({ path, file, size: file.size, hash: null, status: "…" });
+        added++;
+      }
     }
     exclCount += excluded;
+    let msg = `受け取り ${list.length} 件 → 追加 ${added} / 差し替え ${replaced} / 除外 ${excluded}`;
+    if (excluded && !added && !replaced) {
+      msg += "。すべて除外ルールに該当しました(「自動除外ルールを編集」で確認できます)";
+    }
+    pickNote(msg);
     $("done").classList.remove("show");
     render();
     await computeHashes();
+  }
+  function pickNote(msg) {
+    const n = $("pickNote");
+    n.textContent = msg;
+    n.classList.add("show");
   }
   async function computeHashes() {
     const gen = ++hashing;
     for (const it of items) {
       if (it.hash) continue;
-      const u8 = new Uint8Array(await it.file.arrayBuffer());
-      if (gen !== hashing) return; // 新しい選択が始まったら中断
-      it.hash = await sha256hex(u8);
+      try {
+        const u8 = await readBytes(it.file);
+        if (gen !== hashing) return; // 新しい選択が始まったら中断
+        it.hash = await hashBytes(u8);
+      } catch (e) {
+        if (gen !== hashing) return;
+        it.hash = "err";
+        it.status = "err";
+        showError("「" + it.path + "」を読み込めませんでした。×で外して選び直してください。" + (e && e.message ? "(" + e.message + ")" : ""));
+      }
     }
     refreshStatuses();
   }
   function refreshStatuses() {
     for (const it of items) {
+      if (it.status === "err") continue;
       if (!it.hash) { it.status = "…"; continue; }
       if (!(it.path in prevState)) it.status = "new";
       else if (prevState[it.path] !== it.hash) it.status = "chg";
@@ -500,8 +611,8 @@
       total += it.size;
       const li = document.createElement("li");
       const badge = document.createElement("span");
-      badge.className = "badge" + (it.status === "new" ? " new" : it.status === "chg" ? " chg" : "");
-      badge.textContent = it.status === "new" ? "新規" : it.status === "chg" ? "変更" : it.status === "same" ? "同一" : "…";
+      badge.className = "badge" + (it.status === "new" ? " new" : it.status === "chg" ? " chg" : it.status === "err" ? " err" : "");
+      badge.textContent = it.status === "new" ? "新規" : it.status === "chg" ? "変更" : it.status === "same" ? "同一" : it.status === "err" ? "読込不可" : "…";
       const name = document.createElement("span");
       name.className = "fname";
       name.textContent = it.path;
@@ -510,6 +621,7 @@
       size.className = "fsize";
       size.textContent = fmtSize(it.size);
       const rm = document.createElement("button");
+      rm.type = "button";
       rm.className = "remove";
       rm.textContent = "×";
       rm.setAttribute("aria-label", it.path + " を外す");
@@ -546,21 +658,41 @@
     const sn = document.createElement("span"); sn.className = "n"; sn.textContent = `新規 ${n}`;
     const sc = document.createElement("span"); sc.className = "c"; sc.textContent = `変更 ${c}`;
     const sr = document.createElement("span"); sr.className = "r"; sr.textContent = `削除 ${removed.length}`;
-    dl.append(sn, " / ", sc, " / ", sr, ` / 同一 ${items.length - n - c}`);
+    const s = items.filter(it => it.status === "same").length;
+    dl.append(sn, " / ", sc, " / ", sr, ` / 同一 ${s}`);
   }
 
   /* ===== 選択UI ===== */
-  $("pickFolder").addEventListener("click", () => $("folderInput").click());
+  if (IS_IPHONE) {
+    document.querySelector("#pickFolder .sub").textContent = "iPhoneは非対応 → ファイル複数選択を開きます";
+  }
+  $("pickFolder").addEventListener("click", () => {
+    if (IS_IPHONE) {
+      // iPhoneのWebKitはフォルダ選択(webkitdirectory)非対応のため、複数ファイル選択で代用
+      pickNote("iPhoneではフォルダごと選択が使えないため、ファイルの複数選択を開きます(長押し/タップで複数選べます)");
+      $("filesInput").click();
+      return;
+    }
+    $("folderInput").click();
+  });
   $("pickFiles").addEventListener("click", () => $("filesInput").click());
   $("folderInput").addEventListener("change", () => {
-    const list = [...$("folderInput").files].map(f => ({ path: f.webkitRelativePath || f.name, file: f }));
-    $("folderInput").value !== null && addEntries(list);
+    const files = [...$("folderInput").files];
     $("folderInput").value = "";
+    if (!files.length) {
+      pickNote("フォルダからファイルを受け取れませんでした(0件)。この環境ではフォルダ選択が使えない可能性があります。「📄 ファイルを選択」をお使いください。");
+      return;
+    }
+    addEntries(files.map(f => ({ path: f.webkitRelativePath || f.name, file: f })));
   });
   $("filesInput").addEventListener("change", () => {
-    const list = [...$("filesInput").files].map(f => ({ path: f.name, file: f }));
-    addEntries(list);
+    const files = [...$("filesInput").files];
     $("filesInput").value = "";
+    if (!files.length) {
+      pickNote("ファイルを受け取れませんでした(0件)。もう一度お試しください。");
+      return;
+    }
+    addEntries(files.map(f => ({ path: f.name, file: f })));
   });
   // ドラッグ&ドロップ(フォルダ対応・PC向け)
   const dz = $("pickFiles");
@@ -633,7 +765,7 @@
     let binCount = 0;
     for (let i = 0; i < sorted.length; i++) {
       const it = sorted[i];
-      const u8 = new Uint8Array(await it.file.arrayBuffer());
+      const u8 = await readBytes(it.file);
       const text = decodeText(u8);
       parts.push(`\n${BAR}\n== FILE ${i + 1}/${sorted.length}: ${it.path}(${fmtSize(it.size)})\n${BAR}\n`);
       if (text === null) {
@@ -692,9 +824,9 @@
   function saveState(outName) {
     const state = {};
     for (const it of items) state[it.path] = it.hash;
-    localStorage.setItem("cup_prev_" + projKey(), JSON.stringify(state));
-    const oldName = localStorage.getItem("cup_lastout_" + projKey()) || "";
-    localStorage.setItem("cup_lastout_" + projKey(), outName);
+    store.set("cup_prev_" + projKey(), JSON.stringify(state));
+    const oldName = store.get("cup_lastout_" + projKey()) || "";
+    store.set("cup_lastout_" + projKey(), outName);
     prevState = state;
     refreshStatuses();
     return oldName;
@@ -733,6 +865,10 @@
   }
   async function ready(btn) {
     if (!items.length) return false;
+    if (items.some(it => it.status === "err")) {
+      showError("読み込めなかったファイル(「読込不可」)があります。×で外すか、選び直してください。");
+      return false;
+    }
     if (items.some(it => !it.hash)) {
       btn.textContent = "ハッシュ計算中…少し待ってからもう一度";
       setTimeout(() => { $("makeTxt").textContent = "連結txtを作成(プロジェクト用)"; $("makeZip").textContent = ".zip.txtを作成(チャット用)"; }, 1500);
@@ -743,6 +879,7 @@
   $("makeTxt").addEventListener("click", async () => {
     const btn = $("makeTxt");
     if (!(await ready(btn))) return;
+    clearError();
     btn.disabled = true; btn.textContent = "作成中…";
     try {
       const r = await buildBundle();
@@ -750,12 +887,13 @@
       download(r.blob, name);
       const oldName = saveState(name);
       showChecklist("txt", name, oldName, r.binCount ? `(バイナリ${r.binCount}件は本文省略)` : "");
-    } catch (e) { alert("作成に失敗しました: " + e.message); }
+    } catch (e) { showError("作成に失敗しました: " + (e && e.message ? e.message : e)); }
     finally { btn.disabled = false; btn.textContent = "連結txtを作成(プロジェクト用)"; }
   });
   $("makeZip").addEventListener("click", async () => {
     const btn = $("makeZip");
     if (!(await ready(btn))) return;
+    clearError();
     btn.disabled = true; btn.textContent = "作成中…";
     try {
       const enc = new TextEncoder();
@@ -766,7 +904,7 @@
         zitems.push({ nameB: enc.encode("HANDOFF.txt"), stored: raw, method: 0, crc: crc32(raw), usize: raw.length });
       }
       for (const it of items) {
-        const raw = new Uint8Array(await it.file.arrayBuffer());
+        const raw = await readBytes(it.file);
         let stored = raw, method = 0;
         if (canDeflate && raw.length > 64) {
           const comp = await deflateRaw(raw);
@@ -778,7 +916,7 @@
       download(buildZip(zitems), name);
       // 注: .zip.txtはチャット用のため、差分の基準点(前回出力)は更新しない
       showChecklist("zip", name, "", "");
-    } catch (e) { alert("作成に失敗しました: " + e.message); }
+    } catch (e) { showError("作成に失敗しました: " + (e && e.message ? e.message : e)); }
     finally { btn.disabled = false; btn.textContent = ".zip.txtを作成(チャット用)"; }
   });
 })();
