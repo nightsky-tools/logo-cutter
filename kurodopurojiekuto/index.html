@@ -312,7 +312,7 @@
   <header>
     <div class="eyebrow">CLAUDE プロジェクト 更新伝票</div>
     <h1>更新おまとめ係
-      <small>フォルダを渡すだけ → 除外・差分チェック・日付入りファイル名まで自動</small>
+      <small>フォルダかZIPを渡すだけ → 除外・差分チェック・日付入りファイル名まで自動</small>
     </h1>
   </header>
 
@@ -323,7 +323,7 @@
     <textarea id="memo" placeholder="例: ◯◯アプリのソース一式。現在△△まで実装済み。既知のバグは□□。次は◇◇を実装したい。"></textarea>
     <div class="pickrow">
       <button type="button" class="pick" id="pickFolder">📁 フォルダごと選択<span class="sub">中身を自動収集(対応ブラウザ)</span></button>
-      <button type="button" class="pick" id="pickFiles">📄 ファイルを選択<span class="sub">複数選択OK / ここにドロップも可</span></button>
+      <button type="button" class="pick" id="pickFiles">📄 ファイルを選択<span class="sub">複数選択OK / ZIPは中身を自動展開</span></button>
     </div>
     <input type="file" id="folderInput" webkitdirectory multiple>
     <input type="file" id="filesInput" multiple>
@@ -413,7 +413,7 @@
   const IS_IPHONE = /iPhone|iPod/.test(navigator.userAgent);
 
   const DEFAULT_RULES = [
-    ".git/", "node_modules/", "DerivedData/", "xcuserdata", "build/", "Pods/",
+    ".git/", "node_modules/", "DerivedData/", "xcuserdata", "build/", "Pods/", "__MACOSX/",
     ".DS_Store", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.ico",
     "*.icns", "*.pdf", "*.zip", "*.jar", "*.mp4", "*.mp3"
   ].join("\n");
@@ -511,6 +511,91 @@
     }
     return "f:" + h1.toString(16) + "-" + h2.toString(16) + "-" + u8.length;
   }
+
+  /* ===== ZIP展開(iPhoneはフォルダ選択不可のため「フォルダを圧縮→ZIPで渡す」を受け付ける) ===== */
+  async function inflateRaw(u8) {
+    const ds = new DecompressionStream("deflate-raw");
+    const writer = ds.writable.getWriter();
+    const writing = writer.write(u8).then(() => writer.close());
+    const reader = ds.readable.getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const r = await reader.read();
+      if (r.done) break;
+      chunks.push(r.value);
+      total += r.value.length;
+    }
+    await writing;
+    const out = new Uint8Array(total);
+    let o = 0;
+    for (const c of chunks) { out.set(c, o); o += c.length; }
+    return out;
+  }
+  function looksLikeZipName(path) { return /\.zip(\.txt)?$/i.test(path); }
+  // 戻り値: {entries:[{path,file}], skipped, skippedWhy} / ZIPでなければ null
+  async function unzipToEntries(file) {
+    const u8 = await readBytes(file);
+    if (u8.length < 22 || u8[0] !== 0x50 || u8[1] !== 0x4b) return null; // "PK"でなければZIPではない
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    let eocd = -1;
+    const min = Math.max(0, u8.length - 22 - 65535);
+    for (let i = u8.length - 22; i >= min; i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error("ZIPの終端が見つかりません(ファイルが壊れている可能性)");
+    if (dv.getUint16(eocd + 4, true) !== 0) throw new Error("分割ZIPは未対応です");
+    const count = dv.getUint16(eocd + 10, true);
+    const cdOfs = dv.getUint32(eocd + 16, true);
+    if (count === 0xffff || cdOfs === 0xffffffff) throw new Error("ZIP64形式(4GB超・大量ファイル)は未対応です");
+    const entries = [];
+    let skipped = 0, totalRaw = 0;
+    const skippedWhy = [];
+    let p = cdOfs;
+    for (let n = 0; n < count; n++) {
+      if (p + 46 > u8.length || dv.getUint32(p, true) !== 0x02014b50) throw new Error("ZIPの目録が読めません(ファイルが壊れている可能性)");
+      const gp = dv.getUint16(p + 8, true);
+      const method = dv.getUint16(p + 10, true);
+      const csize = dv.getUint32(p + 20, true);
+      const nameLen = dv.getUint16(p + 28, true);
+      const extraLen = dv.getUint16(p + 30, true);
+      const cmtLen = dv.getUint16(p + 32, true);
+      const lho = dv.getUint32(p + 42, true);
+      const nameBytes = u8.subarray(p + 46, p + 46 + nameLen);
+      p += 46 + nameLen + extraLen + cmtLen;
+      let rawName;
+      if (gp & 0x0800) {
+        rawName = new TextDecoder("utf-8").decode(nameBytes); // UTF-8フラグ付き(iOS/Mac/最近のWindows)
+      } else {
+        const dec = decodeText(nameBytes); // UTF-8→Shift_JIS(日本語Windows製ZIP)の順で判定
+        rawName = dec !== null ? dec : new TextDecoder("utf-8").decode(nameBytes);
+      }
+      if (!rawName || rawName.endsWith("/")) continue; // フォルダ項目
+      const name = rawName.replace(/\\/g, "/").split("/").filter(s => s && s !== "." && s !== "..").join("/");
+      if (!name) continue;
+      const leaf = name.split("/").pop();
+      if (name.startsWith("__MACOSX/") || leaf.startsWith("._")) { skipped++; continue; } // Appleのメタデータ
+      if (gp & 0x0001) { skipped++; skippedWhy.push(leaf + "(パスワード付き)"); continue; }
+      if (lho + 30 > u8.length || dv.getUint32(lho, true) !== 0x04034b50) { skipped++; skippedWhy.push(leaf + "(ヘッダ不正)"); continue; }
+      const lnl = dv.getUint16(lho + 26, true);
+      const lel = dv.getUint16(lho + 28, true);
+      const start = lho + 30 + lnl + lel;
+      const comp = u8.subarray(start, start + csize);
+      let raw;
+      if (method === 0) {
+        raw = comp.slice();
+      } else if (method === 8) {
+        if (typeof DecompressionStream !== "function") {
+          skipped++; skippedWhy.push(leaf + "(この環境は圧縮ZIP展開に未対応 / iOS 16.4以上が必要)"); continue;
+        }
+        raw = await inflateRaw(comp);
+      } else { skipped++; skippedWhy.push(leaf + "(未対応の圧縮方式)"); continue; }
+      totalRaw += raw.length;
+      if (totalRaw > 200 * 1048576) throw new Error("展開後の合計が200MBを超えたため中止しました");
+      entries.push({ path: name, file: new File([raw], leaf) });
+    }
+    return { entries, skipped, skippedWhy };
+  }
   function decodeText(u8) {
     try { return new TextDecoder("utf-8", { fatal: true }).decode(u8); } catch (e) {}
     try { return new TextDecoder("shift_jis", { fatal: true }).decode(u8); } catch (e) {}
@@ -541,9 +626,30 @@
   async function addEntries(list) {
     // list: [{path, file}]
     clearError();
+    // ZIPは先に展開して中身を取り込む(展開後の各ファイルに除外ルールを適用)
+    const zipNotes = [];
+    const expanded = [];
+    for (const item of list) {
+      if (looksLikeZipName(item.path)) {
+        try {
+          const r = await unzipToEntries(item.file);
+          if (r === null) { expanded.push(item); continue; } // 名前だけzipで中身が違う場合は普通のファイル扱い
+          expanded.push(...r.entries);
+          let note = `ZIP「${item.path}」を展開 → ${r.entries.length} 件`;
+          if (r.skipped) {
+            note += `(スキップ ${r.skipped} 件` + (r.skippedWhy.length ? ": " + r.skippedWhy.slice(0, 3).join(", ") : "") + ")";
+          }
+          zipNotes.push(note);
+        } catch (e) {
+          showError(`ZIP「${item.path}」を展開できませんでした: ` + (e && e.message ? e.message : e));
+        }
+      } else {
+        expanded.push(item);
+      }
+    }
     const rules = parseRules();
     let excluded = 0, added = 0, replaced = 0;
-    for (const { path, file } of list) {
+    for (const { path, file } of expanded) {
       if (isExcluded(path, rules)) { excluded++; continue; }
       const existing = items.find(x => x.path === path);
       if (existing) {
@@ -559,8 +665,9 @@
       }
     }
     exclCount += excluded;
-    let msg = `受け取り ${list.length} 件 → 追加 ${added} / 差し替え ${replaced} / 除外 ${excluded}`;
-    if (excluded && !added && !replaced) {
+    let msg = (zipNotes.length ? zipNotes.join("。") + "。" : "") +
+      `受け取り ${expanded.length} 件 → 追加 ${added} / 差し替え ${replaced} / 除外 ${excluded}`;
+    if (expanded.length && excluded && !added && !replaced) {
       msg += "。すべて除外ルールに該当しました(「自動除外ルールを編集」で確認できます)";
     }
     pickNote(msg);
@@ -664,12 +771,12 @@
 
   /* ===== 選択UI ===== */
   if (IS_IPHONE) {
-    document.querySelector("#pickFolder .sub").textContent = "iPhoneは非対応 → ファイル複数選択を開きます";
+    document.querySelector("#pickFolder .sub").textContent = "iPhone非対応 → フォルダは「圧縮」してZIPで渡す";
   }
   $("pickFolder").addEventListener("click", () => {
     if (IS_IPHONE) {
       // iPhoneのWebKitはフォルダ選択(webkitdirectory)非対応のため、複数ファイル選択で代用
-      pickNote("iPhoneではフォルダごと選択が使えないため、ファイルの複数選択を開きます(長押し/タップで複数選べます)");
+      pickNote("iPhoneはフォルダ選択非対応です。Filesアプリでフォルダを長押し→「圧縮」し、できたZIPを選ぶと中身を自動展開します。");
       $("filesInput").click();
       return;
     }
