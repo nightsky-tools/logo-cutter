@@ -186,26 +186,30 @@ function parseJsonLoose(text){ const clean=text.replace(/```json|```/g,"").trim(
   return JSON.parse(clean.slice(s,e+1)); }
 
 // ========== 命令書テンプレ ==========
-const COLLECT_TEMPLATE = `以下の作業をYouTube上で実行してください。
+const COLLECT_TEMPLATE = `以下の作業をYouTube上で実行してください。不明点があっても質問で聞き返さず、このルールだけで即実行すること。
 
-1. YouTubeで「AI 活用」を検索する
-2. フィルタで「アップロード日」の並べ替えを適用する
-3. 検索結果をスクロールし、25件を読み込む(ショート動画・広告は除外)
-4. 検索結果ページに表示されているタイトルだけを根拠に、「AI×何と組み合わせた動画か」を判定して仕分けする
+【検索語】
+
+1. 検索語の決定:
+   - 上の【検索語】の後ろに語が書いてあれば、その語だけで検索する
+   - 何も書いていない(空欄の)場合も止まらず、既定リストの4語をこの順で全て検索する:
+     Claude 活用 / note Claude / スレッズ Claude / 楽天ルーム スレッズ
+2. 各検索で、フィルタ「アップロード日」の並べ替えを適用する
+3. 検索結果をスクロールして読み込む(ショート動画・広告は除外)。
+   【検索語】指定時は25件、既定リスト時は各語につき10件前後を読み込み、全語の結果を合算して同一URLの重複は1本にまとめる
+4. 検索結果ページに表示されているタイトルだけを根拠に、どのSNSの話かを判定して仕分けする
    ※各動画のページや概要欄は開かないこと(検索結果ページ上の情報のみ使用)
 
-   仕分けカテゴリの例:
-   - AI×Note(note記事作成・運用)
-   - AI×楽天ルーム
-   - AI×Threads(スレッズ)
-   - AI×Instagram
-   - AI×ブログ/SEO
-   - AI×YouTube運用
-   - 当てはまらない場合は新しいカテゴリを作る
+   仕分けカテゴリ(この名前のまま使うこと):
+   - Claude×Note(note記事の作成・運用・収益化系)
+   - Claude×Threads(スレッズの運用・集客系)
+   - Claude×Threads×楽天ルーム(スレッズ×楽天ルーム/楽天ROOMの組み合わせ系)
+   - 上記に当てはまらないがAI×SNS系なら新カテゴリを作ってよい(例: Claude×Instagram)
    - タイトルから判定できない一般的なAI解説動画は「分類不能」に分ける
+   ※カテゴリ名は蓄積先の棚の名前。タイトルにClaudeが無くても、そのSNSの話なら該当カテゴリに入れる
 
 5. 結果は必ず「1つのコードブロック」に全カテゴリ分をまとめて出力する。
-   複数のブロックや表に分けないこと。出力量を抑えるため、形式は1動画1行で以下に限定:
+   複数のブロックや表に分けないこと。形式は1動画1行で以下に限定:
    カテゴリ | タイトル(先頭30文字まで) | URL | 公開日
    ※チャンネル名・判定理由・その他の情報は書かない
 6. 並び順: カテゴリごとにまとめ、各カテゴリ内は公開日が新しい順。6ヶ月より古い動画はカテゴリ名の頭に「古?」を付ける
@@ -217,6 +221,91 @@ const COLLECT_TEMPLATE = `以下の作業をYouTube上で実行してくださ�
 - タイトルに書かれていない情報での判定禁止
 - 表示されていない公開日等の推測禁止(不明は「不明」と記載)
 - 動画の中身を見ていない段階で内容を断定しないこと`;
+
+const COLLECT_TEMPLATE_EXISTING = `以下の作業をYouTube上で実行してください。不明点があっても質問で聞き返さず、このルールだけで即実行すること。
+※これは「今すでにあるジャンルの定番動画」を発掘する用の命令書(新着探しではない)。
+
+【検索語】
+
+1. 検索語の決定:
+   - 上の【検索語】の後ろに語が書いてあれば、その語だけで検索する
+   - 何も書いていない(空欄の)場合も止まらず、既定リストの4語をこの順で全て検索する:
+     Claude 活用 / note Claude / スレッズ Claude / 楽天ルーム スレッズ
+2. 並べ替えフィルタは変更しない(関連度順のまま)。公開日の新しさは問わない
+3. 検索結果をスクロールして読み込む(ショート動画・広告は除外)。
+   【検索語】指定時は25件、既定リスト時は各語につき10件前後を読み込み、全語の結果を合算して同一URLの重複は1本にまとめる
+4. 検索結果ページに表示されているタイトルだけを根拠に、どのSNSの話かを判定して仕分けする
+   ※各動画のページや概要欄は開かないこと(検索結果ページ上の情報のみ使用)
+
+   仕分けカテゴリ(この名前のまま使うこと):
+   - Claude×Note(note記事の作成・運用・収益化系)
+   - Claude×Threads(スレッズの運用・集客系)
+   - Claude×Threads×楽天ルーム(スレッズ×楽天ルーム/楽天ROOMの組み合わせ系)
+   - 上記に当てはまらないがAI×SNS系なら新カテゴリを作ってよい(例: Claude×Instagram)
+   - タイトルから判定できない一般的なAI解説動画は「分類不能」に分ける
+   ※カテゴリ名は蓄積先の棚の名前。タイトルにClaudeが無くても、そのSNSの話なら該当カテゴリに入れる
+
+5. 結果は必ず「1つのコードブロック」に全カテゴリ分をまとめて出力する。
+   複数のブロックや表に分けないこと。形式は1動画1行で以下に限定:
+   カテゴリ | タイトル(先頭30文字まで) | URL | 公開日
+   ※チャンネル名・判定理由・その他の情報は書かない
+6. 並び順: カテゴリごとにまとめ、各カテゴリ内は検索結果の表示順のまま。6ヶ月より古い動画はカテゴリ名の頭に「古?」を付ける(既存発掘では古いのは想定内。除外せず目印として付けるだけ)
+7. コードブロックの外には説明文を一切書かない
+8. 【出力量の上限】コードブロック全体を3,000文字以内・25行以内に必ず収めること。収まらない場合は件数を減らすこと(切れた不完全なリストより、少なくても完全なリストを優先)
+9. 【最重要】URLは絶対に省略・短縮・途中切りしないこと。「...」等での省略も禁止。行を最後まで書けない場合は、その行ごと削除すること。YouTubeのURLは https://www.youtube.com/watch?v= の後に11文字のIDが必ず完全に含まれる形で書くこと
+
+禁止事項:
+- タイトルに書かれていない情報での判定禁止
+- 表示されていない公開日等の推測禁止(不明は「不明」と記載)
+- 動画の中身を見ていない段階で内容を断定しないこと`;
+
+// ジャンル別・既存発掘命令書(カテゴリ名から自動生成)
+function existingTemplateForCat(name){
+  const term=String(name).replace(/×/g," ").replace(/\s+/g," ").trim();
+  return `以下の作業をYouTube上で実行してください。不明点があっても質問で聞き返さず、このルールだけで即実行すること。
+※これはジャンル「${name}」の、今すでにある定番動画を発掘する用の命令書(新着探しではない)。
+
+【検索語】${term}
+
+1. 上の【検索語】で検索する(語が書き換えられていればその語を使う)
+2. 並べ替えフィルタは変更しない(関連度順のまま)。公開日の新しさは問わない
+3. 検索結果をスクロールし、25件を読み込む(ショート動画・広告は除外)。ヒットがほとんど無い場合のみ、語の表記ゆれ(例: Threads⇔スレッズ、楽天ルーム⇔楽天ROOM)で1回だけ再検索し、結果を合算して同一URLは1本にまとめる
+4. 検索結果ページに表示されているタイトルだけを根拠に、ジャンル「${name}」に該当する動画だけを選ぶ
+   ※各動画のページや概要欄は開かないこと(検索結果ページ上の情報のみ使用)
+   ※タイトルにClaudeが無くても、このジャンルの話なら該当とする
+   ※該当しない動画は出力に入れない(行ごと省く)
+
+5. 結果は必ず「1つのコードブロック」にまとめて出力する。
+   複数のブロックや表に分けないこと。形式は1動画1行で以下に限定:
+   ${name} | タイトル(先頭30文字まで) | URL | 公開日
+   ※カテゴリ欄は必ず「${name}」とそのまま書く(アプリの自動仕分けに使うため)
+   ※チャンネル名・判定理由・その他の情報は書かない
+6. 並び順: 検索結果の表示順のまま。6ヶ月より古い動画はカテゴリ名の頭に「古?」を付ける(既存発掘では古いのは想定内。除外せず目印として付けるだけ)
+7. コードブロックの外には説明文を一切書かない
+8. 【出力量の上限】コードブロック全体を3,000文字以内・25行以内に必ず収めること。収まらない場合は件数を減らすこと(切れた不完全なリストより、少なくても完全なリストを優先)
+9. 【最重要】URLは絶対に省略・短縮・途中切りしないこと。「...」等での省略も禁止。行を最後まで書けない場合は、その行ごと削除すること。YouTubeのURLは https://www.youtube.com/watch?v= の後に11文字のIDが必ず完全に含まれる形で書くこと
+
+禁止事項:
+- タイトルに書かれていない情報での判定禁止
+- 表示されていない公開日等の推測禁止(不明は「不明」と記載)
+- 動画の中身を見ていない段階で内容を断定しないこと`;
+}
+async function copyExistingFor(catId){
+  const cat=state.cats.find(c=>c.id===catId); if(!cat)return;
+  await copyText(existingTemplateForCat(cat.name),"「"+cat.name+"」の既存発掘命令書をコピーしました。Claude in Chromeに貼ってください");
+}
+function existingGenreButtons(){
+  const roots=state.cats.filter(c=>!c.parentId);
+  if(!roots.length) return '<div class="hint" style="margin:10px 0 0">カテゴリを作る/取り込むと、ここにジャンル別の既存発掘ボタンが自動で増えます。</div>';
+  let h='<div class="hint" style="margin:12px 0 6px">ジャンル別の既存発掘(カテゴリから自動生成。タップでそのジャンル専用の命令書をコピー):</div><div class="flexwrap" style="margin-top:0">';
+  roots.forEach(r=>{
+    h+='<button class="btn ghost small" onclick="copyExistingFor(\''+r.id+'\')">'+kakezan(r.name,12.5)+'</button>';
+    state.cats.filter(c=>c.parentId===r.id).forEach(c=>{
+      h+='<button class="btn ghost small" onclick="copyExistingFor(\''+c.id+'\')">'+kakezan(c.name,12.5)+'</button>';
+    });
+  });
+  return h+'</div>';
+}
 
 function verifyTemplate(text){ return `あなた(Claude)への依頼です。以下のYouTube動画の文字起こし(Geminiで生成)から、AIツール活用の質を上げるノウハウだけを抽出し、Web検索で事実検証してください。
 
@@ -278,23 +367,28 @@ function geminiTemplate(url){ return `以下のYouTube動画を解析してく�
 
 function extractUrls(text){
   text=text.replace(/｜/g,"|"); // 全角パイプを正規化
-  const re=/https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=[\w-]+|youtu\.be\/[\w-]+|youtube\.com\/shorts\/[\w-]+)[^\s|,)"'\]]*/g;
+  // youtube.com / youtu.be のURLを広く拾う(www. / m. / music. などのサブドメイン対応)
+  const re=/https?:\/\/(?:[\w-]+\.)*(?:youtube\.com|youtu\.be)\/[^\s|,)"'\]]*/g;
   const found=text.match(re)||[]; const lines=text.split("\n");
   const items=[]; const broken=[]; const seen=new Set();
-  found.forEach(url=>{ if(seen.has(url))return; seen.add(url);
+  found.forEach(raw=>{
     // 動画IDを取り出して11文字か検証(YouTubeの動画IDは11文字固定)
-    const m=url.match(/(?:watch\?v=|youtu\.be\/|shorts\/)([\w-]+)/);
-    const id=m?m[1]:"";
-    const line=lines.find(l=>l.includes(url))||"";
+    const mv=raw.match(/[?&]v=([\w-]+)/);
+    const mp=raw.match(/(?:youtu\.be\/|\/shorts\/|\/live\/|\/embed\/)([\w-]+)/);
+    const id=mv?mv[1]:(mp?mp[1]:null);
+    if(id===null) return; // 動画URLではない(チャンネル・再生リスト等)は無視
+    if(seen.has(id))return; seen.add(id);
+    const line=lines.find(l=>l.includes(raw))||"";
     const parts=line.split("|").map(s=>s.trim());
     // タイトル: 構造化行(3列以上)なら2列目、それ以外は行からURL等を除いた残り
     let title="";
     if(parts.length>=3 && !parts[0].includes("http") && !parts[1].includes("http")){
       title=parts[1].slice(0,80);
     }else{
-      title=line.replace(url,"").replace(/https?:\/\/\S+/g,"").replace(/[|,\t]+/g," ").trim().slice(0,80);
+      title=line.replace(raw,"").replace(/https?:\/\/\S+/g,"").replace(/[|,\t]+/g," ").trim().slice(0,80);
     }
     if(id.length===11){
+      const url="https://www.youtube.com/watch?v="+id; // 保存形式を統一(m.youtube.com・youtu.be等もここに正規化)
       // 行の先頭部分(最初の|より前)をカテゴリ名として抽出
       let catName="";
       if(parts.length>=2 && !parts[0].includes("http")){
@@ -303,7 +397,7 @@ function extractUrls(text){
       const isOld=/^古\?/.test(parts[0]||"");
       items.push({url,title:(isOld?"(古い可能性) ":"")+title,catName});
     }
-    else{ broken.push(url); }
+    else{ broken.push(raw); }
   });
   return {items,broken}; }
 
@@ -467,20 +561,39 @@ async function removeCat(catId){
 }
 
 // ---- URLリスト ----
+function qItemCard(item){
+  return '<div class="item'+(item.done?" qdone":"")+'">'+
+          '<div style="display:flex;gap:8px;align-items:flex-start">'+
+          '<input type="checkbox" style="width:auto;margin-top:3px" '+(item.done?"checked":"")+' onchange="toggleDone(\''+item.id+'\')">'+
+          '<div style="min-width:0;flex:1">'+(item.title?'<div class="qtitle">'+esc(item.title)+'</div>':"")+
+          '<div class="qurl">'+esc(item.url)+'</div></div></div>'+
+          '<div class="flexwrap">'+
+          '<button class="btn small" onclick="copyPrompt(\''+item.id+'\')">命令書コピー</button>'+
+          '<button class="btn ghost small" onclick="window.open(\'https://gemini.google.com\',\'_blank\')">Geminiを開く</button>'+
+          '<select style="width:auto;max-width:150px;padding:6px 8px;font-size:12px" onchange="setItemCat(\''+item.id+'\',this.value)">'+
+          '<option value="">カテゴリ設定</option>'+catOptions(item.catId||"")+'</select>'+
+          '<button class="link-btn" style="margin-left:auto" onclick="removeQItem(\''+item.id+'\')">削除</button>'+
+          '</div></div>';
+}
 function renderQueue(){
   const done=queue.filter(q=>q.done).length;
   let h='<div class="card"><div class="st">STEP 0: 収集命令書(Claude in Chrome用)</div>'+
-    '<div class="hint">PCのChromeでClaude in Chrome(Proプラン以上・ベータ)を開き、この命令書を貼ると、YouTube検索→仕分け→URL一覧化まで実行します。検索語「AI 活用」は「AI 副業」「Claude 活用」等に差し替えて複数回使うと網羅性が上がります。出力された表は下にそのまま貼ればOKです。</div>'+
-    '<button class="btn ghost" onclick="copyText(COLLECT_TEMPLATE,\'収集命令書をコピーしました。Claude in Chromeに貼ってください\')">収集命令書をコピー</button></div>'+
-    '<div class="card"><div class="st">STEP 1: URLをまとめて貼り付け</div>'+
-    '<div class="hint">Claude in Chromeが出力したリストや、URLの羅列をそのまま貼るだけでOK。YouTubeのURLを自動で抽出し、重複は除外します。</div>'+
+    '<div class="hint">PCのChromeでClaude in Chrome(Proプラン以上・ベータ)を開き、この命令書を貼ると、YouTube検索→仕分け→URL一覧化まで実行します。命令書は2種類: (新着)はアップロード日順で新しい動画を、(既存)は関連度順でジャンルの定番動画を発掘します。どちらもそのまま貼れば既定4語(Claude 活用 / note Claude / スレッズ Claude / 楽天ルーム スレッズ)で検索します。1語だけ調べたい時は、貼った後に【検索語】の後ろに語を書き足してください。出力された表は下にそのまま貼ればOKです。</div>'+
+    '<div class="flexwrap" style="margin-top:0"><button class="btn ghost" onclick="copyText(COLLECT_TEMPLATE,\'収集命令書(新着)をコピーしました。Claude in Chromeに貼ってください\')">収集命令書(新着)をコピー</button><button class="btn ghost" onclick="copyText(COLLECT_TEMPLATE_EXISTING,\'収集命令書(既存)をコピーしました。Claude in Chromeに貼ってください\')">収集命令書(既存)をコピー</button></div>'+existingGenreButtons()+'</div>'+
+    '<div class="card"><div class="st">STEP 1: 自動収集の結果を貼り付け</div>'+
+    '<div class="hint">Claude in Chromeが出力したリストを貼る欄です(カテゴリ自動振り分け→連続コピー枠まで連動します)。自分で調べたURLは下の「手動追加(連動なし)」へ。YouTubeのURL(youtu.be・スマホ版m.youtube.com・共有リンク等)を自動で抽出して形式を統一し、同じ動画の重複は除外します。</div>'+
     '<div class="grid"><textarea id="rawUrls" rows="6" placeholder="例:\nAI×noteで月5万 https://youtube.com/watch?v=xxxx\nhttps://youtu.be/yyyy\n(表やリストをそのまま貼っても抽出できます)"></textarea>'+
     '<select id="bulkCat"><option value="">カテゴリ未定のまま追加(後から個別に設定可)</option>'+catOptions("")+'</select>'+
     '<button class="btn" onclick="addBulk()">URLを抽出してリストに追加</button></div></div>';
+  h+='<div class="card"><div class="st">手動追加(連動なし)</div>'+
+    '<div class="hint">自分で調べたURLはこちらへ。連続コピー枠には入らず、下のリストの「手動追加(連動外)」に別枠で入ります。カテゴリの自動作成・自動振り分けもしません(必要なら下で選ぶだけ)。1本ずつ「命令書コピー」でGeminiに渡してください。</div>'+
+    '<div class="grid"><textarea id="manualUrls" rows="3" placeholder="例:\nhttps://youtu.be/xxxx\nhttps://m.youtube.com/watch?v=yyyy"></textarea>'+
+    '<select id="manualCat"><option value="">カテゴリ未定のまま追加(任意)</option>'+catOptions("")+'</select>'+
+    '<button class="btn ghost" onclick="addBulkManual()">手動URLをリストに追加</button></div></div>';
   if(queue.length){
-    const pending=queue.filter(q=>!q.done&&!q.copied);
+    const pending=queue.filter(q=>!q.done&&!q.copied&&!q.manual);
     const cur=pending[0];
-    h+='<div class="card"><div class="row" style="margin-bottom:8px"><div class="st" style="margin:0">STEP 2: 連続コピー枠</div>'+
+    h+='<div class="card"><div class="row" style="margin-bottom:8px"><div class="st" style="margin:0">STEP 2: 連続コピー枠(自動収集分)</div>'+
       '<span style="font-size:12.5px;font-weight:700;color:var(--accent)">残り '+pending.length+' 本</span></div>';
     if(cur){
       h+='<div class="item" style="background:var(--accent-soft);border-color:var(--accent)">'+
@@ -498,30 +611,38 @@ function renderQueue(){
       '<span style="font-size:12.5px;font-weight:700;color:var(--accent)">'+done+' / '+queue.length+' 完了</span></div>'+
       '<div class="hint">使い方: 「命令書コピー」→ Geminiに貼って実行 → 結果を「取り込み」タブへ → 済にチェック</div>';
     const groups=[]; const byCat={};
-    queue.forEach(q=>{ const key=q.catId||"__none__"; if(!byCat[key]){byCat[key]=[];groups.push(key);} byCat[key].push(q); });
+    queue.filter(q=>!q.manual).forEach(q=>{ const key=q.catId||"__none__"; if(!byCat[key]){byCat[key]=[];groups.push(key);} byCat[key].push(q); });
     groups.forEach(key=>{
       const cat=state.cats.find(c=>c.id===key);
       h+='<div style="margin-bottom:14px"><div style="font-size:13px;font-weight:700;color:var(--sub);margin-bottom:6px">'+
         (cat?kakezan(cat.name,13):"カテゴリ未設定")+' <span style="font-weight:400">('+byCat[key].length+'本)</span></div>';
-      byCat[key].forEach(item=>{
-        h+='<div class="item'+(item.done?" qdone":"")+'">'+
-          '<div style="display:flex;gap:8px;align-items:flex-start">'+
-          '<input type="checkbox" style="width:auto;margin-top:3px" '+(item.done?"checked":"")+' onchange="toggleDone(\''+item.id+'\')">'+
-          '<div style="min-width:0;flex:1">'+(item.title?'<div class="qtitle">'+esc(item.title)+'</div>':"")+
-          '<div class="qurl">'+esc(item.url)+'</div></div></div>'+
-          '<div class="flexwrap">'+
-          '<button class="btn small" onclick="copyPrompt(\''+item.id+'\')">命令書コピー</button>'+
-          '<button class="btn ghost small" onclick="window.open(\'https://gemini.google.com\',\'_blank\')">Geminiを開く</button>'+
-          '<select style="width:auto;max-width:150px;padding:6px 8px;font-size:12px" onchange="setItemCat(\''+item.id+'\',this.value)">'+
-          '<option value="">カテゴリ設定</option>'+catOptions(item.catId||"")+'</select>'+
-          '<button class="link-btn" style="margin-left:auto" onclick="removeQItem(\''+item.id+'\')">削除</button>'+
-          '</div></div>';
-      });
+      byCat[key].forEach(item=>{ h+=qItemCard(item); });
       h+='</div>';
     });
+    const manualQ=queue.filter(q=>q.manual);
+    if(manualQ.length){
+      h+='<div style="margin-top:4px"><div style="font-size:13px;font-weight:700;color:var(--sub);margin-bottom:6px">手動追加(連動外) <span style="font-weight:400">('+manualQ.length+'本)</span></div>';
+      manualQ.forEach(item=>{ h+=qItemCard(item); });
+      h+='</div>';
+    }
     h+='</div>';
   }
   return h;
+}
+async function addBulkManual(){
+  const raw=document.getElementById("manualUrls").value;
+  const catId=document.getElementById("manualCat").value;
+  const {items,broken}=extractUrls(raw);
+  if(!items.length&&!broken.length){ toast("YouTubeのURLが見つかりませんでした"); return; }
+  const existing=new Set(queue.map(q=>q.url));
+  const fresh=items.filter(it=>!existing.has(it.url)).map((it,i)=>(
+    {id:"m"+Date.now()+"-"+i,url:it.url,title:it.title,catId:catId||null,done:false,manual:true}
+  ));
+  queue=[...queue,...fresh]; await persistQueue();
+  let msg=fresh.length+"件を手動枠に追加しました(連続コピー枠には入りません)";
+  if(items.length-fresh.length>0) msg+="(重複"+(items.length-fresh.length)+"件はスキップ)";
+  if(broken.length>0) msg+="。⚠️途中で切れた不完全なURLを"+broken.length+"件検出し除外しました。元のURLを確認してください";
+  toast(msg);
 }
 async function addBulk(){
   const raw=document.getElementById("rawUrls").value;
@@ -557,7 +678,7 @@ async function copyNext(){
   if(copyNextBusy)return;
   copyNextBusy=true;
   try{
-    const pending=queue.filter(q=>!q.done&&!q.copied);
+    const pending=queue.filter(q=>!q.done&&!q.copied&&!q.manual);
     const cur=pending[0]; if(!cur)return;
     const ok=await copyText(geminiTemplate(cur.url),"コピーしました("+(cur.title||cur.url).slice(0,24)+"…)。Geminiに貼ってください");
     if(!ok)return; // コピー失敗時は次へ進まない(飛ばし防止)
