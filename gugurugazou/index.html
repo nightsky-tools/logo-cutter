@@ -6,6 +6,9 @@
 <title>画像プロンプト分配 V3</title>
 <!-- V2 (2026-08-04): ChatGPT用「1枚指定行の自動付加」トグルを新設(束データ・保存キー・Gist同期の形式は無変更)。 -->
 <!-- V3 (2026-08-04): Gemini画像生成の廃止決定に伴いトグルを廃止し、1枚+正方形指定の強化版1行を全コピーに常時付加。分割・ラベル判定・進行・同期・保存キーはV1のまま。 -->
+<!-- V3.1 (2026-08-15): ①区切りを「行頭にある😀系2個以上の並び」に限定(文中のスマイル1個で誤分割し、様式行だけの断片ができる事故の防止)
+     ②区切り以外の絵文字も全削除(旧版は😀〜😆の7種しか消さず、😊✨🌙等が残ってChatGPTへ渡っていた不具合の修正)
+     ③主題なし(様式行のみ)の項目に⚠バッジ表示+コピー時に確認ダイアログ。束データ・保存キー・同期形式は無変更(差し替えるだけで保存済みデータもそのまま使える)。 -->
 <style>
 :root{ --night:#0d1026; --panel:#151a38; --line:#2a3160; --gold:#e8c66a; --txt:#e8eaf6; --dim:#8890b5; --green:#7ee0a3; --red:#e08585; }
 *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
@@ -58,7 +61,7 @@ textarea:focus{ outline:none; border-color:var(--gold); }
 <body>
 <div class="wrap">
   <h1>画像プロンプト分配 <span style="font-size:.7em;color:var(--dim);letter-spacing:.1em;">V3</span><small>PROMPT SPLITTER</small></h1>
-  <p class="note">Claudeが出した画像プロンプト(1つのかたまりに複数入り)を下に貼るだけ。<b>😀の目印で自動的に分割</b>し、絵文字を消して1個ずつ保存します。あとは緑のボタンを<b>押すたびに1個コピーして次へ</b>進みます。</p>
+  <p class="note">Claudeが出した画像プロンプト(1つのかたまりに複数入り)を下に貼るだけ。<b>行頭の😀の目印(2個以上の並び)で自動的に分割</b>し、絵文字をすべて消して1個ずつ保存します。あとは緑のボタンを<b>押すたびに1個コピーして次へ</b>進みます。</p>
 
   <textarea id="inBox" placeholder="ここに貼り付け(😀😀😀😀 が区切り)"></textarea>
   <div class="row">
@@ -385,17 +388,30 @@ function pickLabel(part){
   return { label: "", text: part };
 }
 const HAS_MARK = /[\u{1F600}-\u{1F606}]/u;
+// v3.1: 区切り=「行頭にある😀系スマイル(😀〜😆=U+1F600〜1F606)2個以上の並び」だけ。
+// 旧版は文中のスマイル1個でも分割したため、④出力の本文に1個紛れるだけで
+// 「様式行だけの断片」が独立項目になり、無地の抽象画が生成される事故が起きた。
+// 環境によって😀が😃等に変わるケース、異体字セレクタ・ゼロ幅文字の混入には従来どおり耐える
+const MARK = /(?:^|\n)[ \t]*(?:[\u{1F600}-\u{1F606}][\uFE0F\uFE0E\u200B-\u200D\u2060]*){2,}[ \t]*/gu;
+// v3.1: 区切り以外の絵文字も全削除。旧版の削除対象は区切りの😀〜😆だけで、
+// 😊(U+1F60A)や✨🌙⭐等は素通りしていた(「絵文字を消して」の説明と実装の食い違い)
+const EMOJI = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}\u200D\uFE0F\uFE0E\u20E3]/gu;
+const EDGE = /^[\uFE0F\uFE0E\u200B-\u200D\u2060\s]+|[\uFE0F\uFE0E\u200B-\u200D\u2060\s]+$/gu;
 function splitPrompts(raw){
   let t = String(raw || "");
   t = t.replace(/```[a-zA-Z]*\n?/g, "");
-  // 目印は😀系スマイル(😀😁😂😃😄😅😆 = U+1F600〜U+1F606)。
-  // 環境によって😀が😃等に変わって届くケースや、異体字セレクタ・ゼロ幅文字の混入にも耐える
-  const MARK = /(?:[\u{1F600}-\u{1F606}][\uFE0F\uFE0E\u200B-\u200D\u2060]*)+/gu;
-  const EDGE = /^[\uFE0F\uFE0E\u200B-\u200D\u2060\s]+|[\uFE0F\uFE0E\u200B-\u200D\u2060\s]+$/gu;
   return t.split(MARK)
-    .map(s => s.replace(MARK, "").replace(EDGE, "").trim())
+    .map(s => s.replace(EMOJI, "").replace(EDGE, "").trim())
     .filter(s => s.length > 0)
     .map(pickLabel);
+}
+// v3.1: 「主題なし(様式行だけ)」の検知。規定の様式行(watercolor art style…)を除いた
+// 残りが60字未満なら主題が欠けているとみなす。そのまま送ると無地の抽象画になるため、
+// カードに⚠を出し、コピー時にも確認する
+const STYLE_LINE = /watercolor\s+art\s+style/i;
+function hasSubject(t){
+  const rest = String(t).split("\n").filter(ln => !STYLE_LINE.test(ln)).join(" ").replace(/\s+/g, " ").trim();
+  return rest.length >= 60;
 }
 function curIdx(){
   if(!state.bundle) return 0;
@@ -511,6 +527,11 @@ async function seqCopy(){
     save(); render();
     return;
   }
+  if(!hasSubject(state.bundle.items[idx].text)){
+    const go = await confirmBox(`${idx + 1}個目は様式行だけで主題が見当たりません。このまま送ると無地の抽象画になりがちです。コピーしますか?`, { okLabel: "コピーする", danger: true });
+    if(!go){ toast("コピーをやめました"); return; }
+    if(!state.bundle || state.bundle.id !== bid){ toast("同期で内容が変わったため中止しました", true); render(); return; }
+  }
   const ok = await copyText(outText(state.bundle.items[idx].text));
   if(!ok){ toast("コピーできませんでした。もう一度押してください", true); return; }
   if(!state.bundle || state.bundle.id !== bid){ toast("コピーはできましたが、同期で内容が変わったため進捗は更新しませんでした", true); render(); return; }
@@ -531,6 +552,11 @@ el("backBtn").onclick = ()=>{
 async function copyOne(i){
   if(!state.bundle || !state.bundle.items[i]) return;
   const bid = state.bundle.id;
+  if(!hasSubject(state.bundle.items[i].text)){
+    const go = await confirmBox(`${i + 1}個目は様式行だけで主題が見当たりません。このまま送ると無地の抽象画になりがちです。コピーしますか?`, { okLabel: "コピーする", danger: true });
+    if(!go){ toast("コピーをやめました"); return; }
+    if(!state.bundle || !state.bundle.items[i] || state.bundle.id !== bid){ toast("同期で内容が変わったため中止しました", true); render(); return; }
+  }
   const ok = await copyText(outText(state.bundle.items[i].text));
   if(!ok){ toast("コピーできませんでした", true); return; }
   if(!state.bundle || state.bundle.id !== bid){ toast("コピーはできましたが、同期で内容が変わったため進捗は更新しませんでした", true); render(); return; }
@@ -563,7 +589,7 @@ function render(){
     div.className = "card" + (i === idx ? " now" : (copied[i].v ? " done-item" : ""));
     const preview = p.text.length > 120 ? p.text.slice(0, 120) + "…" : p.text;
     div.innerHTML = `
-      <div class="head"><span class="num">${i + 1} / ${items.length}${p.label ? " ・ " + esc(p.label) : ""}</span>${copied[i].v ? `<span class="badge">✔ コピー済み</span>` : (i === idx ? `<span class="badge">▶ 次はこれ</span>` : "")}</div>
+      <div class="head"><span class="num">${i + 1} / ${items.length}${p.label ? " ・ " + esc(p.label) : ""}</span>${hasSubject(p.text) ? "" : `<span class="badge" style="color:#ffb3c1">⚠ 主題なし?</span>`}${copied[i].v ? `<span class="badge">✔ コピー済み</span>` : (i === idx ? `<span class="badge">▶ 次はこれ</span>` : "")}</div>
       <div class="body">${esc(preview)}</div>
       <button class="btn cbtn">この${i + 1}個目だけコピー</button>`;
     div.querySelector(".cbtn").onclick = ()=> copyOne(i);
@@ -1018,7 +1044,7 @@ if(cfg && cfg.token){
 if(typeof window !== "undefined"){
   window.__psTest = { uid, esc, num, str, sanitizePayload, migrateV1, mergePayloads, fingerprint,
     reviveBundle, extractJson, sameItems, measureDiff, b64, unb64, deriveKey, encryptPayload, decryptText,
-    splitPrompts, pickLabel,
+    splitPrompts, pickLabel, hasSubject,
     _ui: { state, curIdx, payloadOf, applyRemote, flushPendingRemote, undoToLastHist, ingest, seqCopy } };
 }
 </script>
