@@ -345,6 +345,13 @@
       <button type="button" class="copybtn" id="copyInst">📋 指示文をコピー</button>
       <div class="note">Claudeのプロジェクト画面 →「指示」に貼り付けて保存してください(最初の1回だけでOK)。</div>
     </details>
+    <details class="rules">
+      <summary>💾 設定と差分記録のバックアップ/復元(データ消え対策)</summary>
+      <div class="note">プロジェクト名・申し送りメモ・除外ルール・全プロジェクトの差分記録を1つのファイルに書き出します。ブラウザ保存が消える環境でも、このファイルから丸ごと復元できます。出力のたびに控えを取っておくと安全です。</div>
+      <button type="button" class="copybtn" id="backupBtn">💾 バックアップを書き出す</button>
+      <button type="button" class="copybtn" id="restoreBtn">📥 バックアップから復元する</button>
+      <input type="file" id="restoreInput" accept=".json,.txt,application/json">
+    </details>
   </div>
 
   <div class="summary" id="summary">
@@ -366,6 +373,7 @@
     <h2>あとはこれだけ!(入れ替えチェックリスト)</h2>
     <ol id="checklist"></ol>
     <div class="hint">📱 iPhoneの場合、保存先は「ファイル」アプリ →「ダウンロード」です。</div>
+    <div class="hint">💾 メモと差分記録はこの端末のブラウザ内保存です。「設定と差分記録のバックアップ」から控えを書き出しておくと、消えても復元できます。</div>
   </div>
 
   <footer>完全オフライン動作。差分記録はこの端末のブラウザ内にのみ保存されます。</footer>
@@ -385,14 +393,23 @@
       return {
         persistent: true,
         get: k => localStorage.getItem(k),
-        set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }
+        set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+        keys: () => {
+          const a = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.indexOf("cup_") === 0) a.push(k);
+          }
+          return a;
+        }
       };
     } catch (e) {
       const m = new Map();
       return {
         persistent: false,
         get: k => (m.has(k) ? m.get(k) : null),
-        set: (k, v) => { m.set(k, v); }
+        set: (k, v) => { m.set(k, v); },
+        keys: () => [...m.keys()].filter(k => k.indexOf("cup_") === 0)
       };
     }
   })();
@@ -429,7 +446,17 @@
   $("proj").value = store.get("cup_proj") || "";
   $("proj").addEventListener("input", () => {
     store.set("cup_proj", $("proj").value);
-    loadPrev(); loadMemo(); refreshStatuses();
+    loadPrev();
+    // 【修正】以前はここで loadMemo() が走り、プロジェクト名を1文字打つたびに
+    // メモ欄が「新しいキーの保存内容(=空)」で上書きされ、書いたメモが消えていた。
+    // → 新しい名前に保存済みメモがあればそれを表示、なければ今の内容を新しい名前へ引き継ぐ。
+    const saved = store.get("cup_memo_" + projKey());
+    if (saved) {
+      $("memo").value = saved;
+    } else if ($("memo").value.trim()) {
+      store.set("cup_memo_" + projKey(), $("memo").value);
+    }
+    refreshStatuses();
   });
   function projKey() { return ($("proj").value.trim() || "default").replace(/\s+/g, "_"); }
   function loadPrev() {
@@ -472,6 +499,53 @@
       btn.textContent = "📋 指示文をコピー";
       btn.classList.remove("copied");
     }, 2500);
+  });
+
+  /* ===== バックアップ書き出し/復元(ブラウザ保存が消える環境への保険) ===== */
+  $("backupBtn").addEventListener("click", () => {
+    clearError();
+    try {
+      const data = {};
+      for (const k of store.keys()) {
+        const v = store.get(k);
+        if (v !== null) data[k] = v;
+      }
+      const payload = {
+        app: "更新おまとめ係",
+        version: 1,
+        savedAt: new Date().toLocaleString("ja-JP"),
+        data
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      download(blob, "更新おまとめ係_バックアップ_" + today() + ".json");
+      pickNote("バックアップを書き出しました(" + Object.keys(data).length + " 件)。「ファイル」アプリ等に保管してください。");
+    } catch (e) { showError("バックアップに失敗しました: " + (e && e.message ? e.message : e)); }
+  });
+  $("restoreBtn").addEventListener("click", () => $("restoreInput").click());
+  $("restoreInput").addEventListener("change", async () => {
+    const f = $("restoreInput").files[0];
+    $("restoreInput").value = "";
+    if (!f) return;
+    clearError();
+    try {
+      const u8 = await readBytes(f);
+      const text = decodeText(u8);
+      if (text === null) throw new Error("テキストとして読めないファイルです");
+      const obj = JSON.parse(text);
+      const data = obj && typeof obj === "object" && obj.data ? obj.data : obj;
+      let n = 0;
+      for (const k in data) {
+        if (k.indexOf("cup_") === 0 && typeof data[k] === "string") { store.set(k, data[k]); n++; }
+      }
+      if (!n) throw new Error("このファイルに復元できる設定が見つかりません");
+      // 画面に反映
+      $("rules").value = store.get("cup_rules") || DEFAULT_RULES;
+      $("proj").value = store.get("cup_proj") || "";
+      loadPrev();
+      loadMemo();
+      refreshStatuses();
+      pickNote("バックアップから復元しました(" + n + " 件)。" + (store.persistent ? "" : "※この表示環境では保存が効かないため、閉じるとまた消えます。"));
+    } catch (e) { showError("復元に失敗しました: " + (e && e.message ? e.message : e)); }
   });
 
   /* ===== ユーティリティ ===== */
