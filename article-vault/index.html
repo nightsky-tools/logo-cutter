@@ -309,7 +309,7 @@
 
 <div class="wrap">
   <header>
-    <h1>記事保管庫<small>MONTHLY ARCHIVE・末尾掃除v3</small></h1>
+    <h1>記事保管庫<small>MONTHLY ARCHIVE・末尾掃除v3a</small></h1>
     <div class="month-nav">
       <button class="mn-btn" id="mPrev" aria-label="前の月">◀</button>
       <button class="month-tag" id="monthTag" title="タップで年月を選択"><b id="monthLabel"></b></button>
@@ -623,7 +623,7 @@ function compileParts(src){
      else warnings.push('第'+i+'章に【今すぐできるアクション】なし');
    }
    {const b7=nyBlock(text,'【第7章】',['【第8章】']);
-    if(b7){const w=(b7.body.match(/【第[1-4１-４]週/g)||[]).length;
+    if(b7){const w=(b7.body.match(/【第[1-4１-４]週|第[1-4１-４]週「/g)||[]).length;
       if(w!==4)warnings.push('第7章の週見出しが'+w+'本(正:4)');}}
    {const b9=nyBlock(text,'【第9章】',['画像特典']);
     if(b9){
@@ -1055,7 +1055,7 @@ async function load(){
   if(!state.months) state.months = {};
   if(!state.extras) state.extras = [];
   if(!state.tombs) state.tombs = {};
-  // 末尾掃除v3: 格納済みデータを起動時に自動で掃除して保存(手作業のコピー→ペースト不要)
+  // 末尾掃除v3a: 格納済みデータを起動時に自動で掃除して保存(手作業のコピー→ペースト不要)
   const startupCleaned = cleanPayloadJunk(state);
   if(startupCleaned) save(true);
   if(memoryOnly) document.getElementById("storageWarn").style.display = "block";
@@ -1303,7 +1303,7 @@ function cleanPayloadJunk(p){
 async function storeArticle(key, id, text, auto){
   const s = SIGNS.find(x=>x.id===id);
   state.lastAutoFp = cfgFp(text); // どの経路の格納でも記録し、タブ復帰時の自動取り込みが同じ内容に再反応しないようにする
-  // 末尾掃除v3: 指紋(lastAutoFp)は掃除前の生コピーで記録した上で、格納する本文だけ掃除する
+  // 末尾掃除v3a: 指紋(lastAutoFp)は掃除前の生コピーで記録した上で、格納する本文だけ掃除する
   // (掃除後の指紋にすると、画面復帰のたびに同じコピーへ再反応するため)
   const _rawLen = text.length;
   text = stripTailJunk(text);
@@ -1822,7 +1822,7 @@ function openEditor(){
 }
 async function saveEditor(){
   let body = document.getElementById("eText").value;
-  if(current.kind === "sign") body = stripTailJunk(body); // 末尾掃除v3(星座スロットのみ。その他のテキストは触らない)
+  if(current.kind === "sign") body = stripTailJunk(body); // 末尾掃除v3a(星座スロットのみ。その他のテキストは触らない)
   const stamp = nowStamp();
   if(current.kind==="sign"){
     const signs = curSigns();
@@ -2256,7 +2256,7 @@ async function syncNow(showToast){
     const local = payloadOf(state);
     const remote = sanitizePayload(migrate(cloud || {})); // 取り込みは必ずサニタイズ+マージ経由(置き換え取り込みは禁止)
     const merged = mergePayloads(local, remote);
-    // 末尾掃除v3: マージ結果も掃除してから比較する(相手端末から来た末尾ゴミも自動で消え、保存・クラウド送信まで進む)
+    // 末尾掃除v3a: マージ結果も掃除してから比較する(相手端末から来た末尾ゴミも自動で消え、保存・クラウド送信まで進む)
     const syncCleaned = cleanPayloadJunk(merged);
     const fpL = fingerprint(local), fpR = fingerprint(remote), fpM = fingerprint(merged);
     let changedLocal = false, pushed = false;
