@@ -577,7 +577,6 @@ function qItemCard(item){
           '</div></div>';
 }
 function renderQueue(){
-  const done=queue.filter(q=>q.done).length;
   let h='<div class="card"><div class="st">STEP 0: 収集命令書(Claude in Chrome用)</div>'+
     '<div class="hint">PCのChromeでClaude in Chrome(Proプラン以上・ベータ)を開き、この命令書を貼ると、YouTube検索→仕分け→URL一覧化まで実行します。命令書は2種類: (新着)はアップロード日順で新しい動画を、(既存)は関連度順でジャンルの定番動画を発掘します。どちらもそのまま貼れば既定4語(Claude 活用 / note Claude / スレッズ Claude / 楽天ルーム スレッズ)で検索します。1語だけ調べたい時は、貼った後に【検索語】の後ろに語を書き足してください。出力された表は下にそのまま貼ればOKです。</div>'+
     '<div class="flexwrap" style="margin-top:0"><button class="btn ghost" onclick="copyText(COLLECT_TEMPLATE,\'収集命令書(新着)をコピーしました。Claude in Chromeに貼ってください\')">収集命令書(新着)をコピー</button><button class="btn ghost" onclick="copyText(COLLECT_TEMPLATE_EXISTING,\'収集命令書(既存)をコピーしました。Claude in Chromeに貼ってください\')">収集命令書(既存)をコピー</button></div>'+existingGenreButtons()+'</div>'+
@@ -587,11 +586,21 @@ function renderQueue(){
     '<select id="bulkCat"><option value="">カテゴリ未定のまま追加(後から個別に設定可)</option>'+catOptions("")+'</select>'+
     '<button class="btn" onclick="addBulk()">URLを抽出してリストに追加</button></div></div>';
   h+='<div class="card"><div class="st">手動追加(連動なし)</div>'+
-    '<div class="hint">自分で調べたURLはこちらへ。連続コピー枠には入らず、下のリストの「手動追加(連動外)」に別枠で入ります。カテゴリの自動作成・自動振り分けもしません(必要なら下で選ぶだけ)。1本ずつ「命令書コピー」でGeminiに渡してください。</div>'+
+    '<div class="hint">自分で調べたURLはこちらへ。連続コピー枠には入らず、追加するとすぐ下の「手動追加(連動外)」枠に入ります。カテゴリの自動作成・自動振り分けもしません(必要なら下で選ぶだけ)。貼って追加したら、そのまま下の「命令書コピー」を押してGeminiに渡してください。</div>'+
     '<div class="grid"><textarea id="manualUrls" rows="3" placeholder="例:\nhttps://youtu.be/xxxx\nhttps://m.youtube.com/watch?v=yyyy"></textarea>'+
     '<select id="manualCat"><option value="">カテゴリ未定のまま追加(任意)</option>'+catOptions("")+'</select>'+
     '<button class="btn ghost" onclick="addBulkManual()">手動URLをリストに追加</button></div></div>';
-  if(queue.length){
+  const manualQ=queue.filter(q=>q.manual);
+  if(manualQ.length){
+    const mdone=manualQ.filter(q=>q.done).length;
+    h+='<div class="card"><div class="row" style="margin-bottom:10px"><div class="st" style="margin:0">手動追加(連動外)</div>'+
+      '<span style="font-size:12.5px;font-weight:700;color:var(--accent)">'+mdone+' / '+manualQ.length+' 完了</span></div>'+
+      '<div class="hint">追加した手動URLはここに入ります。「命令書コピー」→ Geminiに貼って実行 → 結果を「取り込み」タブへ → 済にチェック</div>';
+    manualQ.forEach(item=>{ h+=qItemCard(item); });
+    h+='</div>';
+  }
+  const autoQ=queue.filter(q=>!q.manual);
+  if(autoQ.length){
     const pending=queue.filter(q=>!q.done&&!q.copied&&!q.manual);
     const cur=pending[0];
     h+='<div class="card"><div class="row" style="margin-bottom:8px"><div class="st" style="margin:0">STEP 2: 連続コピー枠(自動収集分)</div>'+
@@ -609,7 +618,7 @@ function renderQueue(){
     }
     h+='</div>';
     h+='<div class="card"><div class="row" style="margin-bottom:10px"><div class="st" style="margin:0">STEP 3: 処理リスト</div>'+
-      '<span style="font-size:12.5px;font-weight:700;color:var(--accent)">'+done+' / '+queue.length+' 完了</span></div>'+
+      '<span style="font-size:12.5px;font-weight:700;color:var(--accent)">'+autoQ.filter(q=>q.done).length+' / '+autoQ.length+' 完了</span></div>'+
       '<div class="hint">使い方: 「命令書コピー」→ Geminiに貼って実行 → 結果を「取り込み」タブへ → 済にチェック</div>';
     const groups=[]; const byCat={};
     queue.filter(q=>!q.manual).forEach(q=>{ const key=q.catId||"__none__"; if(!byCat[key]){byCat[key]=[];groups.push(key);} byCat[key].push(q); });
@@ -620,12 +629,6 @@ function renderQueue(){
       byCat[key].forEach(item=>{ h+=qItemCard(item); });
       h+='</div>';
     });
-    const manualQ=queue.filter(q=>q.manual);
-    if(manualQ.length){
-      h+='<div style="margin-top:4px"><div style="font-size:13px;font-weight:700;color:var(--sub);margin-bottom:6px">手動追加(連動外) <span style="font-weight:400">('+manualQ.length+'本)</span></div>';
-      manualQ.forEach(item=>{ h+=qItemCard(item); });
-      h+='</div>';
-    }
     h+='</div>';
   }
   return h;
