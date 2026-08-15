@@ -3,162 +3,201 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Gistトークン発行アシスタント</title>
+<title>Gistトークン一括配布ハブ</title>
 <style>
   :root{
-    --bg:#0a101c;
-    --card:#101a2c;
-    --line:rgba(148,170,220,.16);
-    --line-strong:rgba(148,170,220,.32);
-    --text:#cdd8ec;
-    --dim:#8296b8;
-    --accent:#9ec4ff;
-    --accent-bg:rgba(110,168,255,.13);
-    --accent-line:rgba(110,168,255,.45);
-    --ok:#57d69a;
-    --warn:#e8b04b;
-    --err:#ff8585;
+    --bg:#0a101c; --card:#101a2c;
+    --line:rgba(148,170,220,.16); --line-strong:rgba(148,170,220,.32);
+    --text:#cdd8ec; --dim:#8296b8;
+    --accent:#9ec4ff; --accent-bg:rgba(110,168,255,.13); --accent-line:rgba(110,168,255,.45);
+    --ok:#57d69a; --warn:#e8b04b; --err:#ff8585;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{-webkit-text-size-adjust:100%}
-  body{
-    background:var(--bg);
-    color:var(--text);
+  body{background:var(--bg);color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
     font-size:16px;line-height:1.75;
     padding:28px 18px calc(40px + env(safe-area-inset-bottom));
-    display:flex;justify-content:center;
-  }
+    display:flex;justify-content:center}
   main{width:100%;max-width:560px}
-
   header{margin-bottom:26px}
-  .chip{
-    display:inline-block;font-family:var(--mono);font-size:12.5px;
-    color:var(--accent);background:var(--accent-bg);
-    border:1px solid var(--accent-line);border-radius:999px;
-    padding:3px 12px;margin-bottom:12px;letter-spacing:.04em;
-  }
+  .chip{display:inline-block;font-family:var(--mono);font-size:12.5px;color:var(--accent);
+    background:var(--accent-bg);border:1px solid var(--accent-line);border-radius:999px;
+    padding:3px 12px;margin-bottom:12px;letter-spacing:.04em}
   h1{font-size:23px;font-weight:700;letter-spacing:.02em;line-height:1.4}
   .sub{color:var(--dim);font-size:13.5px;margin-top:6px}
-
-  .step{
-    background:var(--card);border:1px solid var(--line);
-    border-radius:16px;padding:18px 18px 20px;margin-bottom:16px;
-    transition:border-color .35s ease;
-  }
-  .step-label{
-    display:flex;align-items:baseline;gap:10px;
-    color:var(--dim);font-size:12px;letter-spacing:.28em;margin-bottom:12px;
-  }
-  .step-label b{
-    font-family:var(--mono);font-size:13px;color:var(--accent);
-    letter-spacing:0;font-weight:600;
-  }
-
-  .btn{
-    display:block;width:100%;min-height:52px;
-    background:var(--accent-bg);border:1px solid var(--accent-line);
-    border-radius:14px;color:var(--accent);
-    font-size:16px;font-weight:600;font-family:inherit;
-    text-align:center;text-decoration:none;
-    padding:13px 16px;cursor:pointer;
-    -webkit-tap-highlight-color:transparent;
-  }
+  .step{background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:18px 18px 20px;margin-bottom:16px;transition:border-color .35s ease}
+  .step-label{display:flex;align-items:baseline;gap:10px;color:var(--dim);
+    font-size:12px;letter-spacing:.28em;margin-bottom:12px}
+  .step-label b{font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:0;font-weight:600}
+  .btn{display:block;width:100%;min-height:52px;background:var(--accent-bg);
+    border:1px solid var(--accent-line);border-radius:14px;color:var(--accent);
+    font-size:16px;font-weight:600;font-family:inherit;text-align:center;text-decoration:none;
+    padding:13px 16px;cursor:pointer;-webkit-tap-highlight-color:transparent}
   .btn:active{background:rgba(110,168,255,.24)}
-  .btn:focus-visible,.linkish:focus-visible,#token:focus-visible{
-    outline:2px solid var(--accent);outline-offset:2px;
-  }
+  .btn[disabled]{opacity:.45;cursor:not-allowed}
+  .btn:focus-visible,.linkish:focus-visible,#token:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .note{color:var(--dim);font-size:13px;margin-top:10px}
-  .linkish{
-    background:none;border:none;color:var(--dim);font-family:inherit;
-    font-size:13px;text-decoration:underline;cursor:pointer;padding:2px 0;
-  }
-
+  .linkish{background:none;border:none;color:var(--dim);font-family:inherit;
+    font-size:13px;text-decoration:underline;cursor:pointer;padding:2px 0}
   .warn-inline{color:var(--warn);font-size:13.5px;margin-top:10px}
-
-  #token{
-    width:100%;min-height:52px;
-    background:#0b1322;border:1px solid var(--line-strong);
-    border-radius:14px;color:var(--text);
-    font-family:var(--mono);font-size:14px;
-    padding:14px;
-  }
+  #token{width:100%;min-height:52px;background:#0b1322;border:1px solid var(--line-strong);
+    border-radius:14px;color:var(--text);font-family:var(--mono);font-size:14px;padding:14px}
   #token::placeholder{color:#5a6c8c;font-family:inherit}
-
-  #status{
-    display:none;margin-top:12px;
-    border-left:3px solid var(--dim);border-radius:4px;
-    background:rgba(148,170,220,.06);
-    padding:10px 12px;font-size:13.5px;line-height:1.65;
-  }
+  #urlOut{display:block;width:100%;margin-top:10px;background:#0b1322;
+    border:1px solid var(--line-strong);border-radius:10px;color:var(--dim);
+    font-family:var(--mono);font-size:12px;padding:10px}
+  #urlOut[hidden]{display:none}
+  #status{display:none;margin-top:12px;border-left:3px solid var(--dim);border-radius:4px;
+    background:rgba(148,170,220,.06);padding:10px 12px;font-size:13.5px;line-height:1.65}
   #status.show{display:block}
   #status.ok{border-left-color:var(--ok);color:var(--ok)}
   #status.warn{border-left-color:var(--warn);color:var(--warn)}
   #status.err{border-left-color:var(--err);color:var(--err)}
   #status.checking{border-left-color:var(--accent);color:var(--dim)}
-
   #copyBtn{display:none;margin-top:12px}
   #copyBtn.show{display:block}
   .step.ok-glow{border-color:rgba(87,214,154,.55)}
-
   @keyframes pop{0%{transform:scale(.96)}60%{transform:scale(1.01)}100%{transform:scale(1)}}
   #status.ok.show{animation:pop .3s ease}
-  @media (prefers-reduced-motion:reduce){
-    #status.ok.show{animation:none}
-    .step{transition:none}
-  }
-
+  @media (prefers-reduced-motion:reduce){#status.ok.show{animation:none}.step{transition:none}}
+  /* 配布パネル */
+  #originBanner{display:none;border-left:3px solid var(--warn);border-radius:4px;
+    background:rgba(232,176,75,.08);color:var(--warn);
+    padding:10px 12px;font-size:13px;line-height:1.65;margin-bottom:12px}
+  #originBanner.show{display:block}
+  .chkrow{display:flex;align-items:flex-start;gap:10px;margin:8px 0;color:var(--text);font-size:14px}
+  .chkrow input{width:20px;height:20px;margin-top:4px;accent-color:#6ea8ff}
+  .chkrow span small{display:block;color:var(--dim);font-size:12px;line-height:1.5}
+  #distList{list-style:none;margin-top:12px;display:none}
+  #distList.show{display:block}
+  #distList li{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;
+    padding:7px 2px;border-bottom:1px dashed var(--line);line-height:1.55}
+  #distList li:last-child{border-bottom:none}
+  #distList .ico{flex:0 0 auto;width:1.5em;text-align:center}
+  #distList .ok{color:var(--ok)} #distList .skip{color:var(--dim)}
+  #distList .warn{color:var(--warn)} #distList .err{color:var(--err)}
+  #distSummary{display:none;margin-top:12px;font-size:13.5px;color:var(--text)}
+  #distSummary.show{display:block}
+  #undoBtn{margin-top:12px;display:none}
+  #undoBtn.show{display:block}
+  .manual-list{margin-top:6px}
+  .manual-list a{color:var(--accent)}
   footer{color:var(--dim);font-size:12px;line-height:1.8;margin-top:26px}
 </style>
 </head>
 <body>
 <main>
   <header>
-    <span class="chip">scopes = gist</span>
-    <h1>Gistトークン発行アシスタント</h1>
-    <p class="sub">クラウド同期用のGitHubトークンを、最短で作って確認します</p>
+    <span class="chip">scopes = gist → 全アプリ配布</span>
+    <h1>Gistトークン一括配布ハブ</h1>
+    <p class="sub">トークンを1回貼れば、このサイトの同期アプリ全部に反映します</p>
   </header>
 
-  <!-- Step 1 -->
   <section class="step">
     <p class="step-label"><b>1</b>作成ページを開く</p>
     <a class="btn" id="openLink" target="_blank" rel="noopener"
-       href="https://github.com/settings/tokens/new?scopes=gist&amp;description=clipboard-sync&amp;default_expires_at=none">
+       href="https://github.com/settings/tokens/new?scopes=gist&amp;description=nightsky-tools-sync&amp;default_expires_at=none">
        GitHubでトークン作成ページを開く</a>
-    <p class="note">gist権限・名前・無期限が入力済みの状態で開きます。無期限が反映されていない場合は Expiration で「No expiration」を選んでください。</p>
+    <p class="note">gist権限・名前・無期限が入力済みの状態で開きます。無期限が反映されていない場合は Expiration で「No expiration」を選んでください。前のトークンがまだ有効なら、このステップは飛ばして手順3へどうぞ。</p>
     <button class="linkish" id="copyUrl" type="button">ボタンで開けない場合はURLをコピー</button>
+    <input id="urlOut" type="text" readonly hidden aria-label="トークン作成ページのURL">
   </section>
 
-  <!-- Step 2 -->
   <section class="step">
     <p class="step-label"><b>2</b>発行してコピー</p>
     <p>開いたページの一番下にある緑の <b>Generate token</b> を押し、表示された <span style="font-family:var(--mono)">ghp_…</span> を長押しでコピーします。</p>
     <p class="warn-inline">⚠ その画面を閉じるとトークンは二度と表示されません。必ず先にコピーしてください。</p>
   </section>
 
-  <!-- Step 3 -->
   <section class="step" id="step3">
     <p class="step-label"><b>3</b>ここに貼ってチェック</p>
     <input id="token" type="text" inputmode="text" placeholder="ghp_ で始まるトークンを貼り付け"
            autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
     <div id="status" role="status" aria-live="polite"></div>
     <button class="btn" id="copyBtn" type="button">トークンをコピー</button>
-    <p class="note">チェックOKならコピーして、同期アプリの「同期の設定」に貼り付ければ完了です。</p>
+  </section>
+
+  <section class="step" id="step4">
+    <p class="step-label"><b>4</b>全アプリへ一括配布</p>
+    <div id="originBanner"></div>
+    <label class="chkrow"><input type="checkbox" id="autoDist" checked>
+      <span>チェック✓が出たら自動で配布する</span></label>
+    <label class="chkrow"><input type="checkbox" id="createMissing">
+      <span>同期をまだ設定していないアプリにも配布する
+        <small>その場合、各アプリの設定画面のトークン欄が事前入力された状態になります(Gist IDと合言葉は各アプリで初回設定が必要)</small></span></label>
+    <button class="btn" id="distBtn" type="button">今すぐ全アプリに配布</button>
+    <div id="distSummary" role="status" aria-live="polite"></div>
+    <ul id="distList"></ul>
+    <button class="btn" id="undoBtn" type="button">直前の状態に戻す</button>
+    <p class="note">配布対象(9アプリ): 命令書保管庫・記事保管庫・マガジン記事保管庫・月だより保管庫・出生図 検算盤・画像プロンプト分配 V3・Keyring・Threads投稿コピー機・Gemini自動生成×ロゴカッター・ZIP重複除去。</p>
+    <p class="note">🔒 <b>確定申告(新・旧)の2つだけは対象外</b>: トークンを合言葉で暗号化して保存する方式のため、外から安全に書き換えられません。お手数ですが
+      <span class="manual-list"><a href="https://nightsky-tools.github.io/logo-cutter/app-0709-1139/" target="_blank" rel="noopener">確定申告(新)</a> / <a href="https://nightsky-tools.github.io/logo-cutter/kakuteishinkoku/" target="_blank" rel="noopener">確定申告(旧)</a></span>
+      の同期設定に、上の「トークンをコピー」から貼り付けてください。</p>
+    <p class="note">反映されるのは<b>この端末のこのブラウザ内</b>です(各アプリは次に開いた時に自分で同期します)。Macにも反映したい場合は、Macでこのページを開いて同じ手順を1回行ってください。</p>
+    <button class="linkish" id="wipeBackup" type="button" hidden>「元に戻す」用バックアップを消去</button>
   </section>
 
   <footer>
-    貼り付けたトークンは、この端末からGitHub (api.github.com) に確認のため直接送るだけです。保存や外部への送信は一切ありません。
+    貼り付けたトークンは、①GitHub (api.github.com) への有効性確認、②このサイト上の各アプリの設定欄への書き込み、の2つにだけ使います。ハブ独自の保存はしません(「元に戻す」用バックアップに直前の設定値が残るのみ。上のボタンで消去できます)。外部への送信は一切ありません。
   </footer>
 </main>
 
 <script>
 (function(){
+  var HUB_HOST = 'nightsky-tools.github.io';
+  var sameOrigin = (location.hostname === HUB_HOST);
+  var BACKUP_KEY = 'nsk_token_hub_backup_v1';
+
+  /* 各アプリの実コードを解析して確定した保存先(2026-08-15時点のリポジトリ準拠) */
+  var TARGETS = [
+    {key:'prompt-vault-sync-v1',          app:'命令書保管庫',                type:'json', shape:{pass:'', gistId:'', lastAt:0}},
+    {key:'article-vault-sync-v1',         app:'記事保管庫',                  type:'json', shape:{gistId:'', pass:'', lastAt:0}},
+    {key:'mag-sync-config-v1',            app:'マガジン記事保管庫',          type:'json', shape:{pass:'', gistId:'', lastAt:0}},
+    {key:'mag-prompt-vault-sync-v1',      app:'月だより保管庫',              type:'json', shape:{pass:'', gistId:'', lastAt:0}},
+    {key:'natal_sync_v1',                 app:'出生図 検算盤',               type:'json', shape:{pass:'', gistId:''}},
+    {key:'prompt-splitter-sync-v2',       app:'画像プロンプト分配 V3',       type:'json', shape:{pass:'', gistId:'', salt:'', lastFp:'', lastAt:0}},
+    {key:'prompt-splitter-sync-v1',       app:'画像プロンプト分配 V3(旧キー)', type:'json', legacyOnly:true},
+    {key:'keyring-sync-v1',               app:'Keyring パスワード管理',      type:'json', shape:{gistId:'', lastAt:0}},
+    {key:'threads-copy-machine-sync-v1',  app:'Threads投稿コピー機',         type:'json', shape:{gistId:'', pass:'', salt:''}},
+    {key:'lc_sync_cfg_v1',                app:'Gemini自動生成×ロゴカッター', type:'json', shape:{pass:'', gistId:'', salt:''}},
+    {key:'zdv_token',                     app:'ZIP重複除去・保管庫',         type:'raw'}
+  ];
+
   var input = document.getElementById('token');
   var status = document.getElementById('status');
   var copyBtn = document.getElementById('copyBtn');
   var step3 = document.getElementById('step3');
-  var timer = null;
+  var distBtn = document.getElementById('distBtn');
+  var undoBtn = document.getElementById('undoBtn');
+  var distList = document.getElementById('distList');
+  var distSummary = document.getElementById('distSummary');
+  var autoDist = document.getElementById('autoDist');
+  var createMissing = document.getElementById('createMissing');
+  var originBanner = document.getElementById('originBanner');
+  var wipeBackup = document.getElementById('wipeBackup');
+
+  var timer = null, seq = 0, currentCtrl = null;
+  var verifiedToken = null;      // gist権限まで確認済みのトークン
+  var lastCheckedToken = null;   // 形式OKで最後にチェックしたトークン
+  var lastAutoDistributed = null;
+  var armedUnverified = false;
+
+  /* ---- 起動時: オリジン判定と復元ボタン ---- */
+  if (!sameOrigin){
+    originBanner.textContent = 'この画面は https://' + HUB_HOST + ' 上で開いたときだけ配布できます(各アプリの保存領域が同じサイト内にあるため)。現在の場所: ' + (location.hostname || 'ローカル/プレビュー') + ' — トークンのチェックとコピーはここでも使えます。';
+    originBanner.classList.add('show');
+    distBtn.disabled = true;
+    autoDist.checked = false; autoDist.disabled = true;
+    createMissing.disabled = true;
+  }
+  try{
+    if (sameOrigin && localStorage.getItem(BACKUP_KEY)){
+      undoBtn.classList.add('show'); wipeBackup.hidden = false;
+    }
+  }catch(e){}
 
   function setStatus(kind, msg){
     status.className = kind ? (kind + ' show') : '';
@@ -169,40 +208,39 @@
 
   input.addEventListener('input', function(){
     clearTimeout(timer);
+    verifiedToken = null; armedUnverified = false;
+    distBtn.textContent = '今すぐ全アプリに配布';
     timer = setTimeout(check, 450);
   });
 
   async function check(){
+    var my = ++seq;
+    if (currentCtrl){ try{ currentCtrl.abort(); }catch(_){ } currentCtrl = null; }
     var t = input.value.trim();
     if (t !== input.value) input.value = t;
     showCopy(false);
-
-    if (!t){ setStatus('', ''); return; }
-
+    if (!t){ setStatus('', ''); lastCheckedToken = null; return; }
     if (t.indexOf('github_pat_') === 0){
       setStatus('warn', 'これは Fine-grained トークンです。gistには使えないため、手順1のボタンから classic (ghp_) で作り直してください。');
-      return;
+      lastCheckedToken = null; return;
     }
     if (!/^gh[po]_[A-Za-z0-9_]{20,255}$/.test(t)){
       setStatus('err', 'トークンの形式ではないようです。ghp_ で始まる文字列を、余計な文字を含めずそのまま貼り付けてください。');
-      return;
+      lastCheckedToken = null; return;
     }
-
+    lastCheckedToken = t;
     showCopy(true);
     setStatus('checking', 'GitHubに照会中…');
-
     var ctrl = ('AbortController' in window) ? new AbortController() : null;
+    currentCtrl = ctrl;
     var to = ctrl ? setTimeout(function(){ ctrl.abort(); }, 8000) : null;
     try{
       var res = await fetch('https://api.github.com/user', {
-        headers: {
-          'Authorization': 'Bearer ' + t,
-          'Accept': 'application/vnd.github+json'
-        },
+        headers: { 'Authorization': 'Bearer ' + t, 'Accept': 'application/vnd.github+json' },
         signal: ctrl ? ctrl.signal : undefined
       });
       if (to) clearTimeout(to);
-
+      if (my !== seq) return;
       if (res.status === 401){
         setStatus('err', 'このトークンは無効です(失効・削除済み、または貼り付けミス)。手順1から作り直してください。');
         return;
@@ -211,31 +249,168 @@
         setStatus('warn', 'GitHubの応答が ' + res.status + ' でした。少し待ってから、もう一度貼り付けてみてください。');
         return;
       }
-
       var scopesRaw = res.headers.get('x-oauth-scopes') || '';
       var scopes = scopesRaw.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-      var data = await res.json();
+      var data = null;
+      try{ data = await res.json(); }catch(_){ }
+      if (my !== seq) return;
       var who = data && data.login ? ' (@' + data.login + ')' : '';
-
       if (scopes.indexOf('gist') !== -1){
-        setStatus('ok', '✓ 有効・gist権限あり' + who + ' — コピーして「同期の設定」に貼り付けてください。');
+        verifiedToken = t;
+        setStatus('ok', '✓ 有効・gist権限あり' + who);
+        if (sameOrigin && autoDist.checked && lastAutoDistributed !== t){
+          lastAutoDistributed = t;
+          distribute(t, createMissing.checked, true);
+        }
       } else if (scopes.length){
-        setStatus('warn', 'トークン自体は有効ですが、gist権限がありません(現在: ' + scopes.join(', ') + ')。手順1から作り直してください。');
+        setStatus('warn', 'トークン自体は有効ですが、gist権限がありません(現在: ' + scopes.join(', ') + ')。手順1から作り直してください。配布は行いません。');
       } else {
-        setStatus('warn', 'トークンは有効ですが、権限の内訳を確認できませんでした。コピーしてアプリで試してみてください。');
+        setStatus('warn', 'トークンは有効ですが、権限の内訳を確認できませんでした。下の配布ボタンから手動で配布できます。');
       }
     }catch(e){
       if (to) clearTimeout(to);
-      setStatus('warn', 'この画面からは通信が制限されていて自動チェックできませんでした。形式は正しいので、コピーしてアプリに貼って試してください。');
+      if (my !== seq) return;
+      if (e && e.name === 'AbortError'){
+        setStatus('warn', '8秒待っても応答がなかったため中断しました。電波状況を確認してもう一度貼り付けるか、下の配布ボタンから手動で配布してください。');
+      } else {
+        setStatus('warn', 'この画面からは通信が制限されていて自動チェックできませんでした。形式は正しいので、下の配布ボタンから手動で配布できます。');
+      }
     }
   }
 
+  /* ---- 一括配布 ---- */
+  function distribute(token, create, isAuto){
+    if (!sameOrigin || !token) return;
+    var rows = [], writes = [];
+    var backup = { ts: Date.now(), values: {} };
+
+    /* 1周目: 現状読み取り+計画(この時点では何も書かない) */
+    for (var i = 0; i < TARGETS.length; i++){
+      var tg = TARGETS[i], raw = null, readable = true;
+      try{ raw = localStorage.getItem(tg.key); }catch(e){ readable = false; }
+      if (!readable){
+        rows.push({cls:'err', ico:'✕', app:tg.app, msg:'ストレージを読み取れませんでした(未変更)'});
+        continue;
+      }
+      backup.values[tg.key] = raw;
+      if (tg.type === 'raw'){
+        if (raw === null && !create){
+          rows.push({cls:'skip', ico:'—', app:tg.app, msg:'同期が未設定のためスキップ(下のチェックをONにすると配布)'});
+        } else {
+          writes.push({key:tg.key, val:token});
+          rows.push({cls:'ok', ico:'✓', app:tg.app, msg: raw === null ? 'トークンを新規セット' : 'トークンを更新'});
+        }
+        continue;
+      }
+      if (raw === null){
+        if (create && !tg.legacyOnly){
+          var obj = {token: token};
+          for (var k in tg.shape) obj[k] = tg.shape[k];
+          writes.push({key:tg.key, val: JSON.stringify(obj)});
+          rows.push({cls:'ok', ico:'＋', app:tg.app, msg:'新規作成(設定画面のトークン欄が事前入力されます)'});
+        } else if (!tg.legacyOnly){
+          rows.push({cls:'skip', ico:'—', app:tg.app, msg:'同期が未設定のためスキップ(下のチェックをONにすると配布)'});
+        }
+        /* legacyOnlyの旧キーは、存在しない場合は一覧にも出さない */
+        continue;
+      }
+      var cfg = null;
+      try{
+        cfg = JSON.parse(raw);
+        if (cfg === null || typeof cfg !== 'object' || Array.isArray(cfg)) throw 0;
+      }catch(_){
+        rows.push({cls:'warn', ico:'⚠', app:tg.app, msg:'既存の設定を解釈できないため、安全のため触りませんでした(アプリ内で貼り替えてください)'});
+        continue;
+      }
+      cfg.token = token;
+      writes.push({key:tg.key, val: JSON.stringify(cfg)});
+      rows.push({cls:'ok', ico:'✓', app:tg.app, msg:'既存設定のトークンだけを更新(Gist ID・合言葉はそのまま)'});
+    }
+
+    /* 2周目: バックアップ保存→書き込み */
+    var backupSaved = false;
+    try{ localStorage.setItem(BACKUP_KEY, JSON.stringify(backup)); backupSaved = true; }catch(e){}
+    var wrote = 0, failed = 0;
+    for (var j = 0; j < writes.length; j++){
+      try{ localStorage.setItem(writes[j].key, writes[j].val); wrote++; }
+      catch(e){
+        failed++;
+        rows.push({cls:'err', ico:'✕', app:'(書き込み失敗)', msg:writes[j].key + ' への保存に失敗しました(容量やプライベートモードの可能性)'});
+      }
+    }
+
+    /* 結果表示 */
+    distList.innerHTML = '';
+    for (var r = 0; r < rows.length; r++){
+      var li = document.createElement('li');
+      var ico = document.createElement('span'); ico.className = 'ico ' + rows[r].cls; ico.textContent = rows[r].ico;
+      var tx = document.createElement('span'); tx.className = rows[r].cls;
+      tx.textContent = rows[r].app + ' — ' + rows[r].msg;
+      li.appendChild(ico); li.appendChild(tx);
+      distList.appendChild(li);
+    }
+    distList.classList.add('show');
+    distSummary.textContent = (isAuto ? '✓の確認後に自動配布しました。' : '配布しました。') +
+      ' 更新 ' + wrote + '件' + (failed ? ' / 失敗 ' + failed + '件' : '') +
+      '。各アプリは次に開いた時に自分で同期します。確定申告(新・旧)だけは下記のとおり手動で。';
+    distSummary.classList.add('show');
+    if (backupSaved){ undoBtn.classList.add('show'); wipeBackup.hidden = false; }
+    armedUnverified = false;
+    distBtn.textContent = '今すぐ全アプリに配布';
+  }
+
+  distBtn.addEventListener('click', function(){
+    if (!sameOrigin) return;
+    var t = verifiedToken || lastCheckedToken;
+    if (!t){
+      distSummary.textContent = '先に手順3でトークンを貼ってください(形式チェックが通れば配布できます)。';
+      distSummary.classList.add('show');
+      return;
+    }
+    if (!verifiedToken && !armedUnverified){
+      armedUnverified = true;
+      distBtn.textContent = '未検証のまま配布する(もう一度押すと実行)';
+      distSummary.textContent = 'このトークンはまだGitHubで有効確認できていません。無効なトークンを配ると全アプリが同期エラーになります。それでも配布するならもう一度押してください。';
+      distSummary.classList.add('show');
+      return;
+    }
+    lastAutoDistributed = t;
+    distribute(t, createMissing.checked, false);
+  });
+
+  /* ---- 元に戻す ---- */
+  undoBtn.addEventListener('click', function(){
+    var raw = null;
+    try{ raw = localStorage.getItem(BACKUP_KEY); }catch(e){}
+    if (!raw){ distSummary.textContent = '戻せるバックアップがありません。'; distSummary.classList.add('show'); return; }
+    var bk = null;
+    try{ bk = JSON.parse(raw); }catch(e){}
+    if (!bk || !bk.values){ distSummary.textContent = 'バックアップを読み取れませんでした。'; distSummary.classList.add('show'); return; }
+    var n = 0;
+    for (var k in bk.values){
+      try{
+        if (bk.values[k] === null) localStorage.removeItem(k);
+        else localStorage.setItem(k, bk.values[k]);
+        n++;
+      }catch(e){}
+    }
+    distList.classList.remove('show');
+    distSummary.textContent = '直前の状態に戻しました(' + n + 'キー)。バックアップは残っています。';
+    distSummary.classList.add('show');
+  });
+
+  wipeBackup.addEventListener('click', function(){
+    try{ localStorage.removeItem(BACKUP_KEY); }catch(e){}
+    undoBtn.classList.remove('show');
+    wipeBackup.hidden = true;
+    distSummary.textContent = 'バックアップを消去しました。';
+    distSummary.classList.add('show');
+  });
+
+  /* ---- コピー系 ---- */
   function copyText(text, btn, doneLabel){
     var original = btn.textContent;
-    function done(msg){
-      btn.textContent = msg;
-      setTimeout(function(){ btn.textContent = original; }, 1800);
-    }
+    function done(msg){ btn.textContent = msg; setTimeout(function(){ btn.textContent = original; }, 1800); }
     if (navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(text).then(function(){ done(doneLabel); })
       .catch(function(){ legacy(); });
@@ -245,25 +420,26 @@
         input.focus(); input.select();
         var ok = document.execCommand && document.execCommand('copy');
         done(ok ? doneLabel : '長押しで選択してコピーしてください');
-      }catch(err){
-        done('長押しで選択してコピーしてください');
-      }
+      }catch(err){ done('長押しで選択してコピーしてください'); }
     }
   }
-
   copyBtn.addEventListener('click', function(){
     copyText(input.value.trim(), copyBtn, 'コピーしました ✓');
   });
-
   document.getElementById('copyUrl').addEventListener('click', function(){
     var btn = this;
     var url = document.getElementById('openLink').href;
-    var original = btn.textContent;
+    var out = document.getElementById('urlOut');
+    var original = 'ボタンで開けない場合はURLをコピー';
     function done(msg){ btn.textContent = msg; setTimeout(function(){ btn.textContent = original; }, 1800); }
+    function showManual(){
+      out.value = url; out.hidden = false; out.focus(); out.select();
+      done('下のURLを長押しで選択してコピーしてください');
+    }
     if (navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(url).then(function(){ done('URLをコピーしました ✓'); })
-      .catch(function(){ done(url); });
-    } else { done(url); }
+      .catch(showManual);
+    } else { showManual(); }
   });
 })();
 </script>
