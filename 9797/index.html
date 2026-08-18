@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.18 | 変更(v1.17から): 閲覧者属性を追加(「03 バズ分析」のボタンでGAS v1.5の&demo=1を呼び、年齢/性別/国/都市の4分布を取得・日付つきで垢ごとに保存・AI書き出しにも同梱。公式仕様=フォロワー100人以上必須・API4回/実行。応答が想定形式外なら捏造せず実物先頭を表示)+AI精密分析書き出しにフォロワー推移を追加+バックアップに属性を含める+内蔵GASテンプレをv1.5へ | v1.17の変更(v1.16から): ①絞り込みボタンを星座固定→垢ごとの登録ワード制に変更(追加/削除/12星座一括追加ボタン。タップでそのワードを含む投稿だけ抽出。表記ゆれ対応は星座一括分のみ) ②GASコード貼り付け取り込みを追加(貼られたコードのCONFIGから各垢のID・トークンを抽出して保存。実在する記述だけ反映し、雛形行はスキップ。同名タブが無ければ新規作成) ③フォロワー推移を追加(GAS v1.4の応答followersを取り込みのたび日付つきで記録・同日は上書き。記録開始日より過去は取得不可) ④内蔵GASテンプレをv1.4へ更新 ⑤バックアップにワード・フォロワー記録を含める | v1.16の変更: 自動更新チェックを追加(起動3秒後に設置元の版番号を1回確認し、新版なら一度だけ自動で読み直す。ループ防止・オフライン時は何もしない。データ不変) | v1.15の変更: 「完成GASコードをコピー」ボタンを追加(内蔵threads-gas v1.3全文に、保存済みの全垢のID・トークンをCONFIGとして埋め込んでコピー。GAS側は全消し→貼る→新バージョンでデプロイだけになる。未保存の垢は雛形のまま残す) | v1.14の変更: いいね/返信数/リポスト/引用の4指標に対応(GAS v1.3が必要。取り込み・画面の投稿履歴・一括コピー2種に反映。旧データは指標なしのまま表示し0と捏造しない) | v1.13の変更: 一括コピー2種(AI精密分析用/全件古い順)に投稿履歴の各回日時・各回表示数・投稿URLを全て含める(コピー文面のみ・データ不変) | v1.12の変更: ランキングに並び順ボタン(表示数順/古い順/新しい順)を追加。日付は初回投稿日時(tsp)基準、日時不明は末尾。表示のみでデータ不変 | v1.11の変更: ランキングに絞り込み検索を追加(12星座ボタン=漢字/ひらがな/カタカナ表記に一致、＋自由キーワード欄。掴みと本文の両方を対象。件数は「◯件/全◯件」表示、タブ切替で解除)。表示だけの絞り込みで、取り込み・保存ロジックは不変。要threads-gas.gs v1.2 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
+<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.19 | 変更(v1.18から): 「貼り付けた雛形に垢情報を入れて完成コードをコピー」を追加(貼られた任意の版のGASコードのCONFIG部分だけを、保存済みの垢情報で置換して完成コードを作る。情報がある垢=実物記入、無い垢=雛形のまま、貼られたコード側の実物設定でアプリ未保存のものはそのまま維持=黙って消さない。CONFIG以外は1文字も変えない) | v1.18の変更(v1.17から): 閲覧者属性を追加(「03 バズ分析」のボタンでGAS v1.5の&demo=1を呼び、年齢/性別/国/都市の4分布を取得・日付つきで垢ごとに保存・AI書き出しにも同梱。公式仕様=フォロワー100人以上必須・API4回/実行。応答が想定形式外なら捏造せず実物先頭を表示)+AI精密分析書き出しにフォロワー推移を追加+バックアップに属性を含める+内蔵GASテンプレをv1.5へ | v1.17の変更(v1.16から): ①絞り込みボタンを星座固定→垢ごとの登録ワード制に変更(追加/削除/12星座一括追加ボタン。タップでそのワードを含む投稿だけ抽出。表記ゆれ対応は星座一括分のみ) ②GASコード貼り付け取り込みを追加(貼られたコードのCONFIGから各垢のID・トークンを抽出して保存。実在する記述だけ反映し、雛形行はスキップ。同名タブが無ければ新規作成) ③フォロワー推移を追加(GAS v1.4の応答followersを取り込みのたび日付つきで記録・同日は上書き。記録開始日より過去は取得不可) ④内蔵GASテンプレをv1.4へ更新 ⑤バックアップにワード・フォロワー記録を含める | v1.16の変更: 自動更新チェックを追加(起動3秒後に設置元の版番号を1回確認し、新版なら一度だけ自動で読み直す。ループ防止・オフライン時は何もしない。データ不変) | v1.15の変更: 「完成GASコードをコピー」ボタンを追加(内蔵threads-gas v1.3全文に、保存済みの全垢のID・トークンをCONFIGとして埋め込んでコピー。GAS側は全消し→貼る→新バージョンでデプロイだけになる。未保存の垢は雛形のまま残す) | v1.14の変更: いいね/返信数/リポスト/引用の4指標に対応(GAS v1.3が必要。取り込み・画面の投稿履歴・一括コピー2種に反映。旧データは指標なしのまま表示し0と捏造しない) | v1.13の変更: 一括コピー2種(AI精密分析用/全件古い順)に投稿履歴の各回日時・各回表示数・投稿URLを全て含める(コピー文面のみ・データ不変) | v1.12の変更: ランキングに並び順ボタン(表示数順/古い順/新しい順)を追加。日付は初回投稿日時(tsp)基準、日時不明は末尾。表示のみでデータ不変 | v1.11の変更: ランキングに絞り込み検索を追加(12星座ボタン=漢字/ひらがな/カタカナ表記に一致、＋自由キーワード欄。掴みと本文の両方を対象。件数は「◯件/全◯件」表示、タブ切替で解除)。表示だけの絞り込みで、取り込み・保存ロジックは不変。要threads-gas.gs v1.2 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -139,7 +139,7 @@ details.io[open] summary::before{content:"▾ "}
 <div class="wrap">
 <header>
   <div class="brand">NIGHTSKY-TOOLS</div>
-  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.18</span></h1>
+  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.19</span></h1>
   <div class="lead">アカウントごとに当たり投稿を表示数順で保管・分析。名前はこの端末にだけ保存されます</div>
 </header>
 
@@ -178,6 +178,7 @@ details.io[open] summary::before{content:"▾ "}
     <span class="lbl">逆方向: GASのコード(デプロイの中身)を貼ると、CONFIGに書かれている垢のID・トークンを取り込みます</span>
     <textarea id="gasPaste" style="min-height:60px;font-size:12px" placeholder="script.google.comのコードを全文コピーして貼り付け(CONFIG部分だけでも可)"></textarea>
     <div class="row"><button class="btn-line" onclick="importGasConfig()">貼り付けたコードから垢情報を取り込む</button></div>
+    <div class="row"><button class="btn-line" onclick="fillGasTemplate(this)">貼り付けた雛形に垢情報を入れて完成コードをコピー(新版GAS用)</button></div>
     <span class="lbl">最終手段: 取得JSONを貼り付け(必ず動く)</span>
     <textarea id="lkJson" style="min-height:60px;font-size:12px" placeholder='{"posts":[{"text":"...","views":12345,"body":"2投稿目(任意)"}]} または配列'></textarea>
     <div class="row"><button class="btn-line" onclick="importFetchedJson()">貼り付けJSONを取り込む</button></div>
@@ -326,7 +327,7 @@ details.io[open] summary::before{content:"▾ "}
   </div>
 </div>
 
-<footer>REBUZZ v1.18 / READ-ONLY・NOINDEX</footer>
+<footer>REBUZZ v1.19 / READ-ONLY・NOINDEX</footer>
 </div>
 <div id="toasts"></div>
 
@@ -1139,6 +1140,49 @@ window.importGasConfig = function(){
   toast("GASコードから垢情報を取り込みました");
 };
 
+/* v1.19: 貼られた任意版のGASコードのCONFIG部分だけを保存済み垢情報で置換して完成コードを作る。
+   CONFIG以外は1文字も変えない。貼られたコード側の実物設定でアプリ未保存のものは維持(黙って消さない) */
+window.fillGasTemplate = function(btn){
+  var ta = document.getElementById("gasPaste");
+  var code = (ta && ta.value ? ta.value : "");
+  if(!code.trim()){ setStatus("新しい版のGASコードを上の欄に貼り付けてから押してください","err"); return; }
+  var m = code.match(/CONFIG\s*=\s*\{[\s\S]*?\};/);
+  if(!m){ setStatus("貼られたコードにCONFIG(var CONFIG = { … };)が見つかりません。GASコードの全文を貼ってください","err"); return; }
+  // 貼られたCONFIG内の実物設定(アプリ未保存の垢)を先に拾って維持する
+  var pasted = parseGasConfig(code);
+  var keepLines = [], keepNames = [];
+  (pasted.entries||[]).forEach(function(en){
+    if(en.placeholder) return;
+    var known = DB.accounts.some(function(a){
+      if(a.name!==en.name) return false;
+      var lk = LINKS[a.id]||{};
+      return !!((lk.uid||"").trim() && (lk.tok||"").trim());
+    });
+    if(!known){
+      keepLines.push('  "'+en.name.replace(/"/g,'\\"')+'": { userId: "'+en.uid+'", token: "'+en.tok+'" }');
+      keepNames.push(en.name);
+    }
+  });
+  var done=[], miss=[];
+  var lines = DB.accounts.map(function(a){
+    var lk = LINKS[a.id] || {};
+    var u = (lk.uid||"").trim(), t = (lk.tok||"").trim();
+    if(u && t){ done.push(a.name); return '  "'+a.name+'": { userId: "'+u+'", token: "'+t+'" }'; }
+    miss.push(a.name); return '  "'+a.name+'": { userId: "ここにThreadsユーザーID", token: "ここにアクセストークン" }';
+  });
+  if(!done.length && !keepLines.length){ setStatus("どの垢にもID・トークンが保存されていません。先に「貼り付けたコードから垢情報を取り込む」か、各垢の連携欄で保存してから","err"); return; }
+  var cfg = "CONFIG = {\n" + lines.concat(keepLines).join(",\n") + "\n};";
+  // 置換は関数渡し($記号をトークン内に含んでも壊れない)。m[0]は「CONFIG = { … };」(varは含まず元のまま残る)
+  var out = code.replace(m[0], function(){ return cfg; });
+  doCopy(out, btn, "コピー済→GASに全貼り");
+  var msg = "完成コードをコピー: 設定入り「"+done.join("・")+"」";
+  if(keepNames.length) msg += " ／貼られたコードの実物設定を維持「"+keepNames.join("・")+"」";
+  if(miss.length) msg += " ／雛形のまま「"+miss.join("・")+"」";
+  msg += "。GASを全消し→貼る→保存→デプロイを管理→新バージョン";
+  setStatus(msg,"ok");
+  toast("貼り付けた雛形に垢情報を入れました");
+};
+
 /* ===== Threads API連携(読み取り専用) ===== */
 function setStatus(msg, cls){
   var el=document.getElementById("lkStatus");
@@ -1718,7 +1762,7 @@ catch(e){ toast("この環境では保存が使えないため、閉じるとデ
 renderAll();
 
 /* ===== 自動更新チェック(v1.16): 起動3秒後に設置元の版を1回確認 ===== */
-var APP_VER = "1.18";
+var APP_VER = "1.19";
 setTimeout(function(){
   try{
     if(location.protocol.indexOf("http")!==0) return; // ローカル表示では何もしない
