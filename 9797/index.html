@@ -1,4 +1,4 @@
-<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.15 | 変更(v1.14から): 「完成GASコードをコピー」ボタンを追加(内蔵threads-gas v1.3全文に、保存済みの全垢のID・トークンをCONFIGとして埋め込んでコピー。GAS側は全消し→貼る→新バージョンでデプロイだけになる。未保存の垢は雛形のまま残す) | v1.14の変更: いいね/返信数/リポスト/引用の4指標に対応(GAS v1.3が必要。取り込み・画面の投稿履歴・一括コピー2種に反映。旧データは指標なしのまま表示し0と捏造しない) | v1.13の変更: 一括コピー2種(AI精密分析用/全件古い順)に投稿履歴の各回日時・各回表示数・投稿URLを全て含める(コピー文面のみ・データ不変) | v1.12の変更: ランキングに並び順ボタン(表示数順/古い順/新しい順)を追加。日付は初回投稿日時(tsp)基準、日時不明は末尾。表示のみでデータ不変 | v1.11の変更: ランキングに絞り込み検索を追加(12星座ボタン=漢字/ひらがな/カタカナ表記に一致、＋自由キーワード欄。掴みと本文の両方を対象。件数は「◯件/全◯件」表示、タブ切替で解除)。表示だけの絞り込みで、取り込み・保存ロジックは不変。要threads-gas.gs v1.2 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
+<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.16 | 変更(v1.15から): 自動更新チェックを追加(起動3秒後に設置元の版番号を1回確認し、新版なら一度だけ自動で読み直す。ループ防止・オフライン時は何もしない。データ不変) | v1.15の変更: 「完成GASコードをコピー」ボタンを追加(内蔵threads-gas v1.3全文に、保存済みの全垢のID・トークンをCONFIGとして埋め込んでコピー。GAS側は全消し→貼る→新バージョンでデプロイだけになる。未保存の垢は雛形のまま残す) | v1.14の変更: いいね/返信数/リポスト/引用の4指標に対応(GAS v1.3が必要。取り込み・画面の投稿履歴・一括コピー2種に反映。旧データは指標なしのまま表示し0と捏造しない) | v1.13の変更: 一括コピー2種(AI精密分析用/全件古い順)に投稿履歴の各回日時・各回表示数・投稿URLを全て含める(コピー文面のみ・データ不変) | v1.12の変更: ランキングに並び順ボタン(表示数順/古い順/新しい順)を追加。日付は初回投稿日時(tsp)基準、日時不明は末尾。表示のみでデータ不変 | v1.11の変更: ランキングに絞り込み検索を追加(12星座ボタン=漢字/ひらがな/カタカナ表記に一致、＋自由キーワード欄。掴みと本文の両方を対象。件数は「◯件/全◯件」表示、タブ切替で解除)。表示だけの絞り込みで、取り込み・保存ロジックは不変。要threads-gas.gs v1.2 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -139,7 +139,7 @@ details.io[open] summary::before{content:"▾ "}
 <div class="wrap">
 <header>
   <div class="brand">NIGHTSKY-TOOLS</div>
-  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.15</span></h1>
+  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.16</span></h1>
   <div class="lead">アカウントごとに当たり投稿を表示数順で保管・分析。名前はこの端末にだけ保存されます</div>
 </header>
 
@@ -304,7 +304,7 @@ details.io[open] summary::before{content:"▾ "}
   </div>
 </div>
 
-<footer>REBUZZ v1.15 / READ-ONLY・NOINDEX</footer>
+<footer>REBUZZ v1.16 / READ-ONLY・NOINDEX</footer>
 </div>
 <div id="toasts"></div>
 
@@ -1420,6 +1420,29 @@ window.importJSON = function(){
 try{ localStorage.setItem("__rb_probe","1"); localStorage.removeItem("__rb_probe"); }
 catch(e){ toast("この環境では保存が使えないため、閉じるとデータが消えます(設置先では保存されます)"); }
 renderAll();
+
+/* ===== 自動更新チェック(v1.16): 起動3秒後に設置元の版を1回確認 ===== */
+var APP_VER = "1.16";
+setTimeout(function(){
+  try{
+    if(location.protocol.indexOf("http")!==0) return; // ローカル表示では何もしない
+    fetch(location.pathname + "?upchk=" + Date.now(), { cache: "no-store" })
+      .then(function(r){ return r.ok ? r.text() : ""; })
+      .then(function(t){
+        var m = t && t.match(/REBUZZ v([0-9.]+)/);
+        if(!m) return;
+        var remote = m[1];
+        if(remote === APP_VER) return;
+        var guard = "";
+        try{ guard = localStorage.getItem("rebuzz_upd_done") || ""; }catch(e){}
+        if(guard === remote) return; // この版への自動更新は1回だけ(ループ防止)
+        try{ localStorage.setItem("rebuzz_upd_done", remote); }catch(e){}
+        toast("新しい版 v"+remote+" に更新します…");
+        setTimeout(function(){ location.href = location.pathname + "?v=" + encodeURIComponent(remote); }, 900);
+      })
+      .catch(function(){});
+  }catch(e){}
+}, 3000);
 })();
 </script>
 </body>
