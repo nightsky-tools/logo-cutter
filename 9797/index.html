@@ -1,4 +1,4 @@
-<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.11 | 変更(v1.10から): ランキングに絞り込み検索を追加(12星座ボタン=漢字/ひらがな/カタカナ表記に一致、＋自由キーワード欄。掴みと本文の両方を対象。件数は「◯件/全◯件」表示、タブ切替で解除)。表示だけの絞り込みで、取り込み・保存ロジックは不変。要threads-gas.gs v1.2 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
+<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.14 | 変更(v1.13から): いいね/返信数/リポスト/引用の4指標に対応(GAS v1.3が必要。取り込み・画面の投稿履歴・一括コピー2種に反映。旧データは指標なしのまま表示し0と捏造しない) | v1.13の変更: 一括コピー2種(AI精密分析用/全件古い順)に投稿履歴の各回日時・各回表示数・投稿URLを全て含める(コピー文面のみ・データ不変) | v1.12の変更: ランキングに並び順ボタン(表示数順/古い順/新しい順)を追加。日付は初回投稿日時(tsp)基準、日時不明は末尾。表示のみでデータ不変 | v1.11の変更: ランキングに絞り込み検索を追加(12星座ボタン=漢字/ひらがな/カタカナ表記に一致、＋自由キーワード欄。掴みと本文の両方を対象。件数は「◯件/全◯件」表示、タブ切替で解除)。表示だけの絞り込みで、取り込み・保存ロジックは不変。要threads-gas.gs v1.2 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -250,7 +250,12 @@ details.io[open] summary::before{content:"▾ "}
 </div>
 
 <div class="card">
-  <h2><span class="num">02</span>ランキング(表示数順・押すと開く) <span id="countLbl" style="color:var(--acc)"></span></h2>
+  <h2><span class="num">02</span>ランキング(押すと開く) <span id="countLbl" style="color:var(--acc)"></span></h2>
+  <div class="chips" id="sortBtns">
+    <button class="chip on" id="sort-views" onclick="setSort('views')">表示数順</button>
+    <button class="chip" id="sort-old" onclick="setSort('old')">古い順</button>
+    <button class="chip" id="sort-new" onclick="setSort('new')">新しい順</button>
+  </div>
   <div class="chips" id="signChips"></div>
   <div class="mini">
     <input type="text" id="filterQ" placeholder="キーワードで絞り込み(掴み+本文を検索)" oninput="setFilterQ(this.value)">
@@ -435,7 +440,16 @@ function recalcHist(p){
     return ta-tb;
   });
   var mx=0, first="";
-  p.hist.forEach(function(o){ if(o){ var vv=Number(o.v)||0; if(vv>mx) mx=vv; if(!first && o.d) first=String(o.d); } });
+  p.hist.forEach(function(o){
+    if(o){
+      var vv=Number(o.v)||0; if(vv>mx) mx=vv;
+      if(!first && o.d) first=String(o.d);
+      bumpMet(p,"lk",metVal(o.lk));
+      bumpMet(p,"rc",metVal(o.rc));
+      bumpMet(p,"rp",metVal(o.rp));
+      bumpMet(p,"qt",metVal(o.qt));
+    }
+  });
   if(mx>(Number(p.v)||0)) p.v=mx;
   if(first) p.tsp=first;
 }
@@ -586,6 +600,36 @@ window.clearFilter = function(redraw){
   if(redraw!==false){ openId=null; renderChips(); render(); }
 };
 
+/* ===== 並び順(v1.12): 表示のみ・データ不変 ===== */
+var sortMode = "views"; // views=表示数順 / old=古い順(日付昇順) / new=新しい順(日付降順)
+function postTime(p){
+  var t = (p && p.tsp) ? Date.parse(p.tsp) : NaN;
+  return isNaN(t) ? null : t;
+}
+function sortList(arr){
+  if(sortMode==="views"){
+    return arr.sort(function(a,b){ return (Number(b.v)||0)-(Number(a.v)||0); });
+  }
+  // 日付順: 日時不明(手動登録・スキャナ取込など)は末尾へ
+  return arr.sort(function(a,b){
+    var ta=postTime(a), tb=postTime(b);
+    if(ta===null && tb===null) return 0;
+    if(ta===null) return 1;
+    if(tb===null) return -1;
+    return sortMode==="old" ? ta-tb : tb-ta;
+  });
+}
+window.setSort = function(m){
+  if(m!=="views" && m!=="old" && m!=="new") return;
+  sortMode = m;
+  ["views","old","new"].forEach(function(k){
+    var b=document.getElementById("sort-"+k);
+    if(b) b.className = "chip" + (k===m ? " on" : "");
+  });
+  openId = null;
+  render();
+};
+
 /* ===== 描画 ===== */
 function wizName(){ var a=accOf(acc); return a ? a.name : ""; }
 function wizUrls(){
@@ -637,7 +681,7 @@ function renderAll(){
 }
 function render(){
   var all = (DB.posts[acc]||[]);
-  var list = all.slice().sort(function(a,b){ return (Number(b.v)||0)-(Number(a.v)||0); });
+  var list = sortList(all.slice());
   if(filterActive()) list = list.filter(passFilter);
   document.getElementById("countLbl").textContent =
     filterActive() ? (list.length+"件 / 全"+all.length+"件(絞り込み中)")
@@ -670,10 +714,10 @@ function render(){
       var histHtml;
       if(Array.isArray(p.hist) && p.hist.length){
         histHtml = "<div style='font-size:11px;color:var(--sub);margin:-4px 0 10px'>投稿履歴("+p.hist.length+"回): "
-          + p.hist.map(function(o,qi){ return "["+(qi+1)+"] "+esc(fmtD(o&&o.d))+" 表示数"+fmtViews(o&&o.v); }).join(" ／ ")
+          + p.hist.map(function(o,qi){ return "["+(qi+1)+"] "+esc(fmtD(o&&o.d))+" 表示数"+fmtViews(o&&o.v)+esc(fmtMets(o)); }).join(" ／ ")
           + "</div>";
       } else {
-        histHtml = "<div style='font-size:11px;color:var(--sub);margin:-4px 0 10px'>投稿日時: "+esc(fmtD(p.tsp))+"</div>";
+        histHtml = "<div style='font-size:11px;color:var(--sub);margin:-4px 0 10px'>投稿日時: "+esc(fmtD(p.tsp))+esc(fmtMets(p))+"</div>";
       }
       bodyHtml =
         "<div class='rank-body'>"
@@ -892,8 +936,17 @@ window.exportForAI = function(btn){
   var posts=(DB.posts[acc]||[]).slice().sort(function(a,b){ return (Number(b.v)||0)-(Number(a.v)||0); });
   if(!posts.length){ toast("この垢にはまだ投稿がありません"); return; }
   var lines=posts.map(function(p,i){
-    return "【投稿"+(i+1)+"】表示数:"+(Number(p.v)||0)
-      +(p.tsp?" 投稿日時:"+p.tsp:"")
+    var meta="【投稿"+(i+1)+"】表示数(最高):"+(Number(p.v)||0)+fmtMets(p)
+      +(p.tsp?" 初回投稿日時:"+p.tsp:"");
+    if(Array.isArray(p.hist) && p.hist.length){
+      meta+="\n投稿履歴("+p.hist.length+"回): "+p.hist.map(function(o,qi){
+        var vv=o?(Number(o.v)||0):0;
+        return "["+(qi+1)+"]"+(o&&o.d?o.d:"日時不明")+"(表示数"+(vv?vv:"未計測")+fmtMets(o)+")"+(o&&o.pl?" "+o.pl:"");
+      }).join(" ");
+    } else if(p.pl){
+      meta+="\n投稿URL: "+p.pl;
+    }
+    return meta
       +"\n1投稿目:\n"+(p.h||"(なし)")
       +"\n2投稿目:"+(p.b && p.b.trim() ? "\n"+p.b : "(未登録)");
   }).join("\n\n");
@@ -925,6 +978,18 @@ window.clearLink = function(){
   wizRender();
   toast("このアカウントの連携設定を消しました");
 };
+/* v1.14: 4指標(いいねlk/返信rc/リポストrp/引用qt)の共通処理 */
+function metVal(x){ if(x==null) return null; var n=Number(x); return isNaN(n)?null:n; }
+function bumpMet(obj,key,val){ if(val==null) return false; var cur=metVal(obj[key]); if(cur==null||val>cur){ obj[key]=val; return true; } return false; }
+function fmtMets(o){
+  if(!o) return "";
+  var parts=[];
+  if(metVal(o.lk)!=null) parts.push("いいね"+metVal(o.lk));
+  if(metVal(o.rc)!=null) parts.push("返信"+metVal(o.rc));
+  if(metVal(o.rp)!=null) parts.push("リポスト"+metVal(o.rp));
+  if(metVal(o.qt)!=null) parts.push("引用"+metVal(o.qt));
+  return parts.length ? " "+parts.join(" ") : "";
+}
 function normHook(s){ return String(s).replace(/[、。\s]/g,""); }
 /* x.body(自分の返信=2投稿目)が来たらブロック2として保存/補完する。
    v1.9: 同じ文は1項目にまとめ、投稿履歴 hist=[{d:日時, v:その回の表示数, pl:投稿URL}] を回数分持たせる。
@@ -940,6 +1005,7 @@ function mergeFetched(list){
     var tsp = (typeof x.timestamp==="string" && x.timestamp) ? x.timestamp : "";
     var body = (typeof x.body==="string" && x.body.trim()) ? x.body.trim() : "";
     var pl = (typeof x.permalink==="string" && x.permalink) ? x.permalink : "";
+    var mets = { lk:metVal(x.likes), rc:metVal(x.replies_c), rp:metVal(x.reposts), qt:metVal(x.quotes) };
     var n = normHook(text);
     var hit = (DB.posts[acc]||[]).filter(function(p){
       return normHook(p.h)===n
@@ -958,14 +1024,27 @@ function mergeFetched(list){
         if(oc){
           if(views>(Number(oc.v)||0)){ oc.v=views; ch=true; }
           if(tsp && !oc.d){ oc.d=tsp; ch=true; }
+          if(bumpMet(oc,"lk",mets.lk)) ch=true;
+          if(bumpMet(oc,"rc",mets.rc)) ch=true;
+          if(bumpMet(oc,"rp",mets.rp)) ch=true;
+          if(bumpMet(oc,"qt",mets.qt)) ch=true;
         } else {
-          hit.hist.push({ d:tsp, v:views, pl:pl });
+          var noc={ d:tsp, v:views, pl:pl };
+          if(mets.lk!=null) noc.lk=mets.lk;
+          if(mets.rc!=null) noc.rc=mets.rc;
+          if(mets.rp!=null) noc.rp=mets.rp;
+          if(mets.qt!=null) noc.qt=mets.qt;
+          hit.hist.push(noc);
           ch=true;
         }
         recalcHist(hit);
       } else {
         if(views>(Number(hit.v)||0)){ hit.v=views; ch=true; }
         if(tsp && !hit.tsp){ hit.tsp=tsp; ch=true; }
+        if(bumpMet(hit,"lk",mets.lk)) ch=true;
+        if(bumpMet(hit,"rc",mets.rc)) ch=true;
+        if(bumpMet(hit,"rp",mets.rp)) ch=true;
+        if(bumpMet(hit,"qt",mets.qt)) ch=true;
       }
       if(body && !(hit.b && hit.b.trim())){ hit.b=body; ch=true; }
       if(ch) updated++; else skipped++;
@@ -979,7 +1058,18 @@ function mergeFetched(list){
       np = { id:uid(), h:sp[0], b:sp[1], v:views, ts:Date.now() };
     }
     if(tsp) np.tsp=tsp;
-    if(pl) np.hist=[{ d:tsp, v:views, pl:pl }];
+    if(mets.lk!=null) np.lk=mets.lk;
+    if(mets.rc!=null) np.rc=mets.rc;
+    if(mets.rp!=null) np.rp=mets.rp;
+    if(mets.qt!=null) np.qt=mets.qt;
+    if(pl){
+      var nh={ d:tsp, v:views, pl:pl };
+      if(mets.lk!=null) nh.lk=mets.lk;
+      if(mets.rc!=null) nh.rc=mets.rc;
+      if(mets.rp!=null) nh.rp=mets.rp;
+      if(mets.qt!=null) nh.qt=mets.qt;
+      np.hist=[nh];
+    }
     DB.posts[acc].push(np);
     added++;
   });
@@ -1163,11 +1253,11 @@ window.copyAllChrono = function(btn){
     if(Array.isArray(p.hist) && p.hist.length){
       head="投稿履歴("+p.hist.length+"回): "+p.hist.map(function(o,qi){
         var vv2=o?(Number(o.v)||0):0;
-        return "["+(qi+1)+"]"+fmtD(o&&o.d)+"(表示数"+(vv2?vv2:"未計測")+")";
+        return "["+(qi+1)+"]"+fmtD(o&&o.d)+"(表示数"+(vv2?vv2:"未計測")+fmtMets(o)+")"+(o&&o.pl?" "+o.pl:"");
       }).join(" ");
     } else {
       var vv=Number(p.v)||0;
-      head="投稿日時:"+fmtD(p.tsp)+" / 表示数:"+(vv?vv:"未計測");
+      head="投稿日時:"+fmtD(p.tsp)+" / 表示数:"+(vv?vv:"未計測")+fmtMets(p)+(p.pl?" / URL:"+p.pl:"");
     }
     return "【"+(i+1)+"】"+head
       +"\n1投稿目:\n"+(p.h||"(なし)")
