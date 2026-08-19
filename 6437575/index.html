@@ -77,16 +77,18 @@ pre{background:#141930;border:1px solid #3A415C;border-radius:10px;padding:14px;
 
 <script>
 /* ===== パーサー ===== */
-const PLANET_KEYS=["太陽","月","水星","金星","火星","木星","土星"];
+const PLANET_KEYS=["太陽","月","水星","金星","火星","木星","土星","天王星","海王星","冥王星"];
+const OUTER_PLANET_KEYS=["天王星","海王星","冥王星"];
 const ANGLE_KEYS=["上昇宮（ASC）","天頂（MC）"];
+const SIGN_RE=/([ぁ-ん]+座|牡羊座|牡牛座|双子座|蟹座|獅子座|乙女座|天秤座|蠍座|射手座|山羊座|水瓶座|魚座)/;
 
 function parseBlock(text){
   const lines=text.split(/\r?\n/);
   const data={meta:{},planets:{},angles:{},raw:text};
 
   for(const line of lines){
-    // 全角コロン→半角・行頭末尾スペース除去・連続スペース正規化
-    const l=line.trim().replace(/：/g,":").replace(/\s{2,}/g," ");
+    // 全角コロン→半角・全角数字→半角・行頭末尾スペース除去・連続スペース正規化
+    const l=line.trim().replace(/：/g,":").replace(/[０-９]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0)).replace(/\s{2,}/g," ");
     if(!l)continue;
 
     // メタ情報
@@ -116,12 +118,12 @@ function parsePlanetLine(line,key){
   const rest=line.replace(new RegExp("^"+key+"\\s*[：:]\\s*"),"").trim();
   const retro=rest.includes("（逆行）")||rest.includes("(逆行)");
   // 星座と度数
-  const signMatch=rest.match(/([ぁ-ん座]+座)/);
+  const signMatch=rest.match(SIGN_RE);
   const degMatch=rest.match(/(\d+)度(\d+)分/);
   // ハウス
   const houseMatch=rest.match(/第(\d+)ハウス/);
   // 時刻なし版の範囲
-  const rangeMatch=rest.match(/（([^〜]+)〜([^）]+)）/)||rest.match(/\(([^~]+)~([^\)]+)\)/);
+  const rangeMatch=rest.match(/（([^〜～）]+)[〜～]([^）]+)）/)||rest.match(/\(([^~)]+)~([^)]+)\)/);
   return{
     sign: signMatch?signMatch[1]:"",
     deg: degMatch?`${degMatch[1]}度${degMatch[2]}分`:"",
@@ -134,7 +136,7 @@ function parsePlanetLine(line,key){
 
 function parseAngleLine(line,key){
   const rest=line.replace(new RegExp("^"+key+"\\s*[：:]\\s*"),"").trim();
-  const signMatch=rest.match(/([ぁ-ん座]+座)/);
+  const signMatch=rest.match(SIGN_RE);
   const degMatch=rest.match(/(\d+)度(\d+)分/);
   return{
     sign: signMatch?signMatch[1]:"",
@@ -144,30 +146,40 @@ function parseAngleLine(line,key){
 }
 
 /* ===== 比較 ===== */
+// スペース（半角・全角）を除去して比較用に正規化
+function normSpace(s){return (s||"").replace(/[\s　]+/g,"");}
+// 「05度03分」→「5度3分」のようにゼロ埋め差を吸収（数値として比較）
+function normDeg(s){return (s||"").replace(/(\d+)度(\d+)分/g,(m,d,mi)=>parseInt(d,10)+"度"+parseInt(mi,10)+"分");}
+
 function compareBlocks(a,b){
   const rows=[];
   let allOk=true;
 
   // メタ
-  const nameSame=(a.meta.name||"")===( b.meta.name||"");
+  const nameSame=normSpace(a.meta.name)===normSpace(b.meta.name);
   const dateSame=(a.meta.date||"")===( b.meta.date||"");
+  const timeSame=(a.meta.time||"")===( b.meta.time||"");
   rows.push({label:"お名前",va:a.meta.name||"（なし）",vb:b.meta.name||"（なし）",ok:nameSame,type:"meta"});
   rows.push({label:"生年月日",va:a.meta.date||"（なし）",vb:b.meta.date||"（なし）",ok:dateSame,type:"meta"});
-  if(!nameSame||!dateSame)allOk=false;
+  rows.push({label:"出生時刻",va:a.meta.time||"（なし）",vb:b.meta.time||"（なし）",ok:timeSame,type:"meta"});
+  if(!nameSame||!dateSame||!timeSame)allOk=false;
 
   // 天体
   for(const key of PLANET_KEYS){
     const pa=a.planets[key],pb=b.planets[key];
     if(!pa&&!pb)continue;
+    // 天王星・海王星・冥王星は片側にしかない場合はスキップ（両側にある場合のみ照合）
+    if((!pa||!pb)&&OUTER_PLANET_KEYS.includes(key))continue;
     if(!pa){rows.push({label:key,va:"（なし）",vb:fmtPlanet(pb),ok:false,type:"planet"});allOk=false;continue;}
     if(!pb){rows.push({label:key,va:fmtPlanet(pa),vb:"（なし）",ok:false,type:"planet"});allOk=false;continue;}
     const signOk=pa.sign===pb.sign;
-    const degOk=pa.deg===pb.deg;
+    const degOk=normDeg(pa.deg)===normDeg(pb.deg);
     const retroOk=pa.retro===pb.retro;
     const houseOk=(!pa.house&&!pb.house)||(pa.house===pb.house);
-    const ok=signOk&&degOk&&retroOk&&houseOk;
+    const rangeOk=(!pa.range||!pb.range)||(normDeg(pa.range)===normDeg(pb.range));
+    const ok=signOk&&degOk&&retroOk&&houseOk&&rangeOk;
     if(!ok)allOk=false;
-    rows.push({label:key,va:fmtPlanet(pa),vb:fmtPlanet(pb),ok,signOk,degOk,retroOk,houseOk,type:"planet"});
+    rows.push({label:key,va:fmtPlanet(pa),vb:fmtPlanet(pb),ok,signOk,degOk,retroOk,houseOk,rangeOk,type:"planet"});
   }
 
   // 角度
@@ -176,7 +188,7 @@ function compareBlocks(a,b){
     if(!aa&&!ab)continue;
     if(!aa){rows.push({label:key,va:"（なし）",vb:fmtAngle(ab),ok:false,type:"angle"});allOk=false;continue;}
     if(!ab){rows.push({label:key,va:fmtAngle(aa),vb:"（なし）",ok:false,type:"angle"});allOk=false;continue;}
-    const ok=aa.sign===ab.sign&&aa.deg===ab.deg;
+    const ok=aa.sign===ab.sign&&normDeg(aa.deg)===normDeg(ab.deg);
     if(!ok)allOk=false;
     rows.push({label:key,va:fmtAngle(aa),vb:fmtAngle(ab),ok,type:"angle"});
   }
@@ -237,6 +249,19 @@ $("compareBtn").addEventListener("click",()=>{
   const b=parseBlock(tb);
   const{rows,allOk}=compareBlocks(a,b);
 
+  // 読み取り不能チェック: 天体・角度が1項目も照合できない、または名前・日付が両側とも取れない場合
+  const itemCount=rows.filter(r=>r.type==="planet"||r.type==="angle").length;
+  const metaEmptyA=!a.meta.name&&!a.meta.date;
+  const metaEmptyB=!b.meta.name&&!b.meta.date;
+  if(itemCount===0||(metaEmptyA&&metaEmptyB)){
+    $("summaryArea").innerHTML=`<div class="summary-ng"><span style="font-size:20px">⚠</span><br><strong style="color:#E08A7A;font-size:15px">読み取れませんでした</strong><br><span style="font-size:12px;color:#8D93AC">貼り付けた内容の書式を確認してください。</span></div>`;
+    $("tableArea").innerHTML="";
+    $("diffNote").innerHTML="";
+    $("resultCard").style.display="";
+    $("blockCard").style.display="none";
+    return;
+  }
+
   // サマリー
   const summaryEl=$("summaryArea");
   if(allOk){
@@ -275,9 +300,11 @@ function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").repl
 
 $("copyBtn").addEventListener("click",async()=>{
   const text=$("memoOut").textContent;
-  try{await navigator.clipboard.writeText(text);}
-  catch(e){const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);}
-  $("copyBtn").textContent="コピーしました";$("copyBtn").classList.add("done");
+  let copied=false;
+  try{await navigator.clipboard.writeText(text);copied=true;}
+  catch(e){const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();copied=document.execCommand("copy");document.body.removeChild(t);}
+  if(copied){$("copyBtn").textContent="コピーしました";$("copyBtn").classList.add("done");}
+  else{$("copyBtn").textContent="コピーできませんでした";}
   setTimeout(()=>{$("copyBtn").textContent="コピー";$("copyBtn").classList.remove("done");},1600);
 });
 </script>
