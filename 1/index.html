@@ -100,6 +100,9 @@
 <script>
 /* =========================================================
    マガジン記事保管庫 v1.0(2026-07-21 初版)
+   【v1.2a 2026-08-20】字数表示を「全文◯字」に明確化(メタ・画像プロンプト・
+     固定文言M込みの全文文字数であり、規定の「本文のみ」実測(スキャナB-3)とは
+     別物であることを表示で明示。8/13の字数虚偽申告事故の再発防止の一環)
    ・対象: 星野ソラの月だより記事(新月/満月/カレンダー/水星逆行)
    ・保存: localStorage "mag-article-vault-v1"(月次のarticle-vault-v1とは別キー。
      同じサイトに置いても月次の記事保管庫・チェッカーとは干渉しない)
@@ -250,7 +253,7 @@ function render(){
     c.className = "card";
     c.innerHTML = `<div class="t"></div><div class="m"></div><div class="row"><button class="op">開く</button></div>`;
     c.querySelector(".t").textContent = a.title;
-    c.querySelector(".m").textContent = `${a.kind} ・ ${fmtDate(a)} ・ ${a.chars.toLocaleString()}字 ・ 格納 ${new Date(a.savedAt).toLocaleDateString("ja-JP")}`;
+    c.querySelector(".m").textContent = `${a.kind} ・ ${fmtDate(a)} ・ 全文${a.chars.toLocaleString()}字 ・ 格納 ${new Date(a.savedAt).toLocaleDateString("ja-JP")}`;
     c.querySelector(".op").onclick = () => openViewer(a.id);
     list.appendChild(c);
   });
@@ -267,7 +270,7 @@ function openViewer(id){
   $("compare").style.display = "none";
   $("viewer").style.display = "block";
   $("vTitle").textContent = a.title;
-  $("vMeta").textContent = `${a.kind} ・ ${fmtDate(a)} ・ ${a.chars.toLocaleString()}字`;
+  $("vMeta").textContent = `${a.kind} ・ ${fmtDate(a)} ・ 全文${a.chars.toLocaleString()}字(メタ・プロンプト・固定文言M込み。規定の字数はスキャナ実測が正)`;
   $("vBody").textContent = a.body;
 }
 
