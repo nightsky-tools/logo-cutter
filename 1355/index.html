@@ -2246,13 +2246,20 @@ async function seqPeekText(){
   const idx = seqIdx(items);
   if(idx >= items.length) return { err: "この号は全工程コピー済みです。タブで緑バーを押して「次の号へ」等を選んでください" };
   const it = items[idx];
-  const av = await loadArticleVault();
-  const signs = av && av.months[sp.month] && av.months[sp.month].signs;
-  if(!signs || !signs[it.signId] || !signs[it.signId].body){
-    return { err: "記事が見つかりません。「変更」で設定し直してください" };
+  let r;
+  if(sp.month === "MAG"){
+    // 2026-08-20修正: ブリッジがMAG未対応で記事保管庫を参照し必ず「記事が見つかりません」になっていた。seqCopyのMAG分岐と同じ組み立てに揃える
+    await chainAutoFill(it.doc); // 押した瞬間に束・クリップボード・同梱データから下書きへ自動吸い込み
+    r = composeDoc(it.doc, { art: null, artTitleOnly: false, sky: null }, "", "", sp.month, null);
+  } else {
+    const av = await loadArticleVault();
+    const signs = av && av.months[sp.month] && av.months[sp.month].signs;
+    if(!signs || !signs[it.signId] || !signs[it.signId].body){
+      return { err: "記事が見つかりません。「変更」で設定し直してください" };
+    }
+    await chainAutoFill(it.doc); // 2026-07-26追加: 押した瞬間に束・クリップボード・同梱データから下書きへ自動吸い込み
+    r = composeDoc(it.doc, seqCfgOf(it.doc), signs[it.signId].body, it.signNm, sp.month, av);
   }
-  await chainAutoFill(it.doc); // 2026-07-26追加: 押した瞬間に束・クリップボード・同梱データから下書きへ自動吸い込み
-  const r = composeDoc(it.doc, seqCfgOf(it.doc), signs[it.signId].body, it.signNm, sp.month, av);
   bridgePendingPeek = true;
   if(r.skyWarn) setTimeout(()=> toast(r.skyWarn, true), 1200);
   if(r.draftNote) setTimeout(()=> toast(r.draftNote), r.skyWarn ? 3600 : 1200);
@@ -2267,6 +2274,7 @@ async function seqAckNext(){
   const idx = seqIdx(items);
   if(idx >= items.length) return;
   const it = items[idx];
+  delete fillDrafts[it.doc.id]; scheduleSaveDrafts(); // 2026-08-20追加: seqCopyと同じく受け渡し成功で下書きを消す(翌サイクルに前回イベントの下書きが残留し同じ文を配り続けるのを防ぐ)
   if(countOnce("c:" + it.doc.id)) it.doc.copies = (it.doc.copies || 0) + 1;
   state.seqPos.idx = idx + 1;
   state.seqPos.label = items[idx + 1] ? items[idx + 1].label : null;
