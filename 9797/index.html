@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.20 | 変更(v1.19から): 貼り付け系2ボタンを空のまま押した時の案内を修正(誤って「上の欄」と表示していたのを、実際の貼り付け枠の位置説明に修正+該当枠へ自動スクロール・カーソル移動で枠が金色に光る。ロジック不変) | v1.19の変更(v1.18から): 「貼り付けた雛形に垢情報を入れて完成コードをコピー」を追加(貼られた任意の版のGASコードのCONFIG部分だけを、保存済みの垢情報で置換して完成コードを作る。情報がある垢=実物記入、無い垢=雛形のまま、貼られたコード側の実物設定でアプリ未保存のものはそのまま維持=黙って消さない。CONFIG以外は1文字も変えない) | v1.18の変更(v1.17から): 閲覧者属性を追加(「03 バズ分析」のボタンでGAS v1.5の&demo=1を呼び、年齢/性別/国/都市の4分布を取得・日付つきで垢ごとに保存・AI書き出しにも同梱。公式仕様=フォロワー100人以上必須・API4回/実行。応答が想定形式外なら捏造せず実物先頭を表示)+AI精密分析書き出しにフォロワー推移を追加+バックアップに属性を含める+内蔵GASテンプレをv1.5へ | v1.17の変更(v1.16から): ①絞り込みボタンを星座固定→垢ごとの登録ワード制に変更(追加/削除/12星座一括追加ボタン。タップでそのワードを含む投稿だけ抽出。表記ゆれ対応は星座一括分のみ) ②GASコード貼り付け取り込みを追加(貼られたコードのCONFIGから各垢のID・トークンを抽出して保存。実在する記述だけ反映し、雛形行はスキップ。同名タブが無ければ新規作成) ③フォロワー推移を追加(GAS v1.4の応答followersを取り込みのたび日付つきで記録・同日は上書き。記録開始日より過去は取得不可) ④内蔵GASテンプレをv1.4へ更新 ⑤バックアップにワード・フォロワー記録を含める | v1.16の変更: 自動更新チェックを追加(起動3秒後に設置元の版番号を1回確認し、新版なら一度だけ自動で読み直す。ループ防止・オフライン時は何もしない。データ不変) | v1.15の変更: 「完成GASコードをコピー」ボタンを追加(内蔵threads-gas v1.3全文に、保存済みの全垢のID・トークンをCONFIGとして埋め込んでコピー。GAS側は全消し→貼る→新バージョンでデプロイだけになる。未保存の垢は雛形のまま残す) | v1.14の変更: いいね/返信数/リポスト/引用の4指標に対応(GAS v1.3が必要。取り込み・画面の投稿履歴・一括コピー2種に反映。旧データは指標なしのまま表示し0と捏造しない) | v1.13の変更: 一括コピー2種(AI精密分析用/全件古い順)に投稿履歴の各回日時・各回表示数・投稿URLを全て含める(コピー文面のみ・データ不変) | v1.12の変更: ランキングに並び順ボタン(表示数順/古い順/新しい順)を追加。日付は初回投稿日時(tsp)基準、日時不明は末尾。表示のみでデータ不変 | v1.11の変更: ランキングに絞り込み検索を追加(12星座ボタン=漢字/ひらがな/カタカナ表記に一致、＋自由キーワード欄。掴みと本文の両方を対象。件数は「◯件/全◯件」表示、タブ切替で解除)。表示だけの絞り込みで、取り込み・保存ロジックは不変。要threads-gas.gs v1.2 | 推奨設置: https://nightsky-tools.github.io/logo-cutter/rebuzz/ ▼▼▼ -->
+<!-- ▼▼▼ 工房ツール ここから | フォルダ: rebuzz | 題名: 再投稿庫 v1.21 | 変更(v1.20から): 「04 よそ様バズ帳」を追加=①似たジャンルの他垢のバズ投稿を手貼りで収集(いいね数は画面で見えた実数を手入力。未記入は未記入のまま扱い0と捏造しない。貼り付け文中のthreads.comリンクは自動でURL欄へ)→いいね順ランキング ②「新作バズ案用に書き出し」=この垢の実投稿上位(表示数つき)+バズ帳の実データを捏造禁止・丸写し禁止の命令書つきで一括コピー(AIチャットに貼ると新作案が出る) ③下書き帳=気に入った案を保管しワンタッチ順番コピー(投稿後は既存のGAS取り込みで実表示数が02に自動合流) ④公式キーワード検索ボタン=GAS v1.6の&search=を呼ぶ。公式仕様: 他人の投稿検索はMeta審査(Advanced Access)承認後のみ・承認前は自分の投稿のみ返る・他人のいいね数/表示数はAPIでは取得不可(検索結果に指標は付かない)・上限2,200回/24h。既存スキャナ取り込みは04→05へ番号繰り下げ。バックアップ書き出しにバズ帳・下書き帳を含める。内蔵GASテンプレをv1.6へ(通常/全履歴/属性モードは不変の後方互換) | v1.20の変更(v1.19から): 貼り付け系2ボタンを空のまま押した時の案内を修正(誤って「上の欄」と表示していたのを、実際の貼り付け枠の位置説明に修正+該当枠へ自動スクロール・カーソル移動で枠が金色に光る。ロジック不変) | v1.19の変更(v1.18から): 「貼り付けた雛形に垢情報を入れて完成コードをコピー」を追加(貼られた任意の版のGASコードのCONFIG部分だけを、保存済みの垢情報で置換して完成コードを作る。情報がある垢=実物記入、無い垢=雛形のまま、貼られたコード側の実物設定でアプリ未保存のものはそのまま維持=黙って消さない。CONFIG以外は1文字も変えない) | v1.18の変更(v1.17から): 閲覧者属性を追加(「03 バズ分析」のボタンでGAS v1.5の&demo=1を呼び、年齢/性別/国/都市の4分布を取得・日付つきで垢ごとに保存・AI書き出しにも同梱。公式仕様=フォロワー100人以上必須・API4回/実行。応答が想定形式外なら捏造せず実物先頭を表示)+AI精密分析書き出しにフォロワー推移を追加+バックアップに属性を含める+内蔵GASテンプレをv1.5へ | v1.17の変更(v1.16から): ①絞り込みボタンを星座固定→垢ごとの登録ワード制に変更(追加/削除/12星座一括追加ボタン。タップでそのワードを含む投稿だけ抽出。表記ゆれ対応は星座一括分のみ) ②GASコード貼り付け取り込みを追加(貼られたコードのCONFIGから各垢のID・トークンを抽出して保存。実在する記述だけ反映し、雛形行はスキップ。同名タブが無ければ新規作成) ③フォロワー推移を追加(GAS v1.4の応答followersを取り込みのたび日付つきで記録・同日は上書き。記録開始日より過去は取得不可) ④内蔵GASテンプレをv1.4へ更新 ⑤バックアップにワード・フォロワー記録を含める | v1.16の変更: 自動更新チェックを追加(起動3秒後に設置元の版番号を1回確認し、新版なら一度だけ自動で読み直す。ループ防止・オフライン時は何もしない。データ不変) | v1.15の変更: 「完成GASコードをコピー」ボタンを追加(内蔵threads-gas v1.3全文に、保存済みの全垢のID・トークンをCONFIGとして埋め込んでコピー。GAS側は全消し→貼る→新バージョンでデプロイだけになる。未保存の垢は雛形のまま残す) | v1.14の変更: いいね/返信数/リポスト/引用の4指標に対応(GAS v1.3が必要。取り込み・画面の投稿履歴・一括コピー2種に反映。旧データは指標なしのまま表示し0と捏造しない) | v1.13の変更: 一括コピー2種(AI精密分析用/全件古い順)に投稿履歴の各回日時・各回表示数・投稿URLを全て含める(コピー文面のみ・データ不変) | v1.12の変更: ランキングに並び順ボタン(表示数順/古い順/新しい順)を追加。日付は初回投稿日時(tsp)基準、日時不明は末尾。表示のみでデータ不変 | v1.11の変更: ランキングに絞り込み検索を追加(12星座ボタン=漢字/ひらがな/カタカナ表記に一致、＋自由キーワード欄。掴みと本文の両方を対象。件数は「◯件/全◯件」表示、タブ切替で解除)。表示だけの絞り込みで、取り込み・保存ロジックは不変。要threads-gas.gs v1.2 | 実設置先: https://nightsky-tools.github.io/logo-cutter/9797/ (2026-08-20実測。旧記載のrebuzz/は未作成=404) ▼▼▼ -->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -139,7 +139,7 @@ details.io[open] summary::before{content:"▾ "}
 <div class="wrap">
 <header>
   <div class="brand">NIGHTSKY-TOOLS</div>
-  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.20</span></h1>
+  <h1>再投稿庫 <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sub)">v1.21</span></h1>
   <div class="lead">アカウントごとに当たり投稿を表示数順で保管・分析。名前はこの端末にだけ保存されます</div>
 </header>
 
@@ -174,7 +174,7 @@ details.io[open] summary::before{content:"▾ "}
       <button class="btn-line" id="fetchBtn" onclick="fetchDirect()">APIから直接取り込む(直近30件)</button>
     </div>
     <span class="lbl">GAS貼り替え用: 上のID・トークンを各垢で保存しておくと、CONFIG入りの完成コードを作れます</span>
-    <div class="row"><button class="btn-line" onclick="genGasCode(this)">完成GASコードをコピー(全垢のID・トークン入り・v1.5)</button></div>
+    <div class="row"><button class="btn-line" onclick="genGasCode(this)">完成GASコードをコピー(全垢のID・トークン入り・v1.6)</button></div>
     <span class="lbl">逆方向: GASのコード(デプロイの中身)を貼ると、CONFIGに書かれている垢のID・トークンを取り込みます</span>
     <textarea id="gasPaste" style="min-height:60px;font-size:12px" placeholder="script.google.comのコードを全文コピーして貼り付け(CONFIG部分だけでも可)"></textarea>
     <div class="row"><button class="btn-line" onclick="importGasConfig()">貼り付けたコードから垢情報を取り込む</button></div>
@@ -187,7 +187,7 @@ details.io[open] summary::before{content:"▾ "}
       ・<b>ぶら下げ投稿の自動ペア</b>: アプリに threads_read_replies 権限を追加し、トークン発行時の同意画面で「Read replies」をオンにすると、1投稿目への<b>自分の返信を2投稿目(ブロック2)として自動で組みます</b>。権限が無い間はペアだけスキップされ、他は今まで通り動きます。<br>
       ・トークンはパスワード同等。<b>この端末のブラウザ内にしか保存されず</b>、バックアップ書き出しにも含めません。<br>
       ・表示数の取得に失敗した場合は、失敗理由がこの下のステータスに表示されます(黙って0にはしません)。<br>
-      ・<b>閲覧者属性</b>: 「03 バズ分析」のボタンで年齢/性別/国/都市の分布を取得します(GAS v1.5が必要・API4回・<b>公式仕様でフォロワー100人以上の垢のみ</b>。100人未満やエラー時は理由をそのまま表示し、数字は作りません)。<br>
+      ・<b>閲覧者属性</b>: 「03 バズ分析」のボタンで年齢/性別/国/都市の分布を取得します(GAS v1.5以降が必要・API4回・<b>公式仕様でフォロワー100人以上の垢のみ</b>。100人未満やエラー時は理由をそのまま表示し、数字は作りません)。<br>
       ・<b>フォロワー数の自動記録</b>: GAS側がv1.4以降だと、取り込みのたびにその日のフォロワー数を「03 バズ分析」の推移欄に記録します(同じ日は上書き。<b>記録は実行日からのみ</b>で過去には遡れません)。GAS v1.3以前でも投稿の取り込みは今まで通り動き、フォロワーだけ記録されません。<br>
       ・<b>「全履歴を取り込む」</b>は最初の投稿まで遡って全件取得します(<b>GAS側がv1.2以降であることが必要</b>)。件数が多いと数分かかり、通信が続く間は画面を閉じないでください(Chrome推奨)。API呼び出しが多くなるため<b>基本は初回の1回だけ</b>。普段の更新は上の「GAS経由で取り込む」(直近50件)で足ります。途中で止まった場合は、もう一度押すと続きから再開します。<br>
       ・同じ文を複数回投稿している場合は1つの項目にまとまり、「投稿履歴」として全回数分の日時と各回の表示数が付きます(順位は最高表示数)。
@@ -216,7 +216,7 @@ details.io[open] summary::before{content:"▾ "}
       <div class="wiz-step"><span class="wn">A3</span><b>アプリ作成(1個だけ)</b>: 「アプリを作成」→アプリ名は中立に(例: threads-tool)→ユースケースで<b>「Threads APIにアクセス」</b>を選択→ビジネスポートフォリオは「リンクしない」→要件は素通り→作成。
         <br><a class="btn-line" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">マイアプリを開く</a>
         <a class="wiz-url" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">https://developers.facebook.com/apps/</a></div>
-      <div class="wiz-step"><span class="wn">A4</span><b>権限を読み取り専用に</b>: ユースケース→カスタマイズ→アクセス許可で、threads_basic(最初から有効)に加えて<b>threads_manage_insights「追加」</b>(表示数用)と<b>threads_read_replies「追加」</b>(2投稿目ペア用)。<b>threads_content_publish(投稿)や削除・検索系は追加しない</b>。
+      <div class="wiz-step"><span class="wn">A4</span><b>権限を読み取り専用に</b>: ユースケース→カスタマイズ→アクセス許可で、threads_basic(最初から有効)に加えて<b>threads_manage_insights「追加」</b>(表示数用)と<b>threads_read_replies「追加」</b>(2投稿目ペア用)。<b>threads_content_publish(投稿)や削除系は追加しない</b>。検索のthreads_keyword_searchは「04 よそ様バズ帳」の公式検索を使う場合のみ追加(他人の投稿への対応はMeta審査承認後)。
         <br><a class="btn-line" id="wizBtnPerms" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">権限ページを開く</a>
         <a class="wiz-url" id="wizUrlPerms" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener"></a></div>
       <div class="wiz-step"><span class="wn">A5</span><b>GAS中継を設置(1個・全垢共通)</b>: 新しいプロジェクト→最初のコードを全部消す→付属のthreads-gas.gsを全部貼る→CONFIGに垢情報を記入→⌘S→デプロイ→新しいデプロイ→種類「ウェブアプリ」→実行「自分」/アクセス「<b>全員</b>」→デプロイ→警告が出たら「詳細(Advanced)」→「(プロジェクト名)に移動」→「Continue/許可」→出た<b>/execのURL</b>をコピーして上の「GAS中継URL」欄に貼り「連携設定を保存」。<b>このURLは誰にも教えない</b>。
@@ -293,15 +293,56 @@ details.io[open] summary::before{content:"▾ "}
     <div id="folList" style="font-size:12px;color:var(--sub);line-height:1.9;margin-top:6px;font-family:'IBM Plex Mono',monospace"></div>
   </div>
   <div style="margin-top:12px">
-    <span class="lbl">閲覧者属性(年齢/性別/国/都市。公式仕様: フォロワー100人以上の垢のみ・GAS v1.5が必要)</span>
+    <span class="lbl">閲覧者属性(年齢/性別/国/都市。公式仕様: フォロワー100人以上の垢のみ・GAS v1.5以降が必要)</span>
     <div class="row"><button class="btn-line" id="demoBtn" onclick="fetchDemo()">閲覧者属性を取得(この垢・API4回)</button></div>
     <div id="demoOut" style="font-size:12px;color:var(--sub);line-height:1.9;margin-top:6px"></div>
   </div>
   <div class="note">簡易分析は<b>この帳面に登録済みの実データだけ</b>を集計します(表示数0=未計測は除外)。件数が少ないうちは偶然の差が出やすいので、目安として見てください。AI書き出しは「捏造禁止・データに無いことは言わない」を明記した分析命令書と実データをセットでコピーします。AIチャットに貼れば、この垢専用の分析が受けられます。</div>
 </div>
 
+<div class="card">
+  <h2><span class="num">04</span>よそ様バズ帳(似た垢の当たり投稿を研究) <span id="rivalCount" style="color:var(--acc)"></span></h2>
+  <textarea id="rvText" style="min-height:90px" placeholder="よそ様のバズ投稿の全文を貼り付け&#10;(Threadsアプリで本文を長押し→コピー。投稿のリンクごと貼ると自動でURLとして分けます)"></textarea>
+  <div class="mini">
+    <input type="text" id="rvName" placeholder="投稿者名(例 @hoshiyomi)" maxlength="40">
+    <input type="text" id="rvLikes" placeholder="いいね数(画面の実数)" inputmode="numeric" style="font-family:'IBM Plex Mono',monospace">
+  </div>
+  <div class="row"><button class="btn-acc" onclick="addRival()">バズ帳に登録</button></div>
+  <div class="status" id="rvStatus"></div>
+  <div id="rivalList" style="margin-top:10px"></div>
+
+  <span class="lbl">AIで新作バズ案を作る(この垢の実投稿上位+バズ帳の実データを、捏造禁止の命令書つきでコピー→AIチャットに貼る)</span>
+  <div class="row"><button class="btn-main" onclick="exportGenAI(this)">新作バズ案用に書き出し(命令書つき)</button></div>
+
+  <span class="lbl">下書き帳(AIの案から気に入ったものを1件ずつ貼って保管。----の行で1投稿目/2投稿目を区切る)</span>
+  <textarea id="draftText" style="min-height:80px" placeholder="投稿案を貼り付け"></textarea>
+  <div class="row"><button class="btn-acc" onclick="addDraft()">下書き帳に保管</button></div>
+  <div id="draftList" style="margin-top:10px"></div>
+
+  <details class="io" style="margin-top:12px">
+    <summary>公式キーワード検索(Meta審査の承認後に他人の投稿へ対応)</summary>
+    <div class="mini">
+      <input type="text" id="searchKw" placeholder="検索ワード(例 牡羊座)" maxlength="60">
+      <button class="btn-acc" id="searchBtn" onclick="searchRival()">検索</button>
+    </div>
+    <div class="status" id="searchStatus"></div>
+    <div id="searchOut" style="margin-top:8px"></div>
+    <div class="note">
+      ・公式の決まり: 他人の投稿の検索は<b>Meta審査(Advanced Access)の承認後のみ</b>。承認前に押すと<b>自分の投稿だけ</b>が返ります(故障ではなく公式仕様)。<br>
+      ・使うには: 開発者画面でアプリに<b>threads_keyword_search</b>権限を追加→トークン再発行→GASを<b>v1.6</b>に貼り替え(上の「完成GASコードをコピー」)→デプロイを管理→新バージョン。<br>
+      ・公式上限は1垢2,200回/24時間。検索結果に<b>いいね数は付きません</b>(他人の投稿の指標は公式APIでは取得できないため。この欄は空のまま=捏造しません)。
+    </div>
+  </details>
+  <div class="note">
+    ・<b>正直な話</b>: 他垢の投稿を完全自動で集める公式の道は、現状Meta審査を通す以外にありません。審査なしの自動収集(スクレイピング)は規約違反で<b>垢停止のリスク</b>があるため、このアプリには載せません。<br>
+    ・いいね数はThreadsの画面で見えた<b>実数</b>を入れてください。未記入は「未記入」のまま並び、<b>0とは記録しません</b>。<br>
+    ・よそ様の文面の<b>丸写し投稿は禁止</b>(盗用は垢の信用を壊します)。AI書き出しの命令書にも「構成の参考のみ・コピー禁止」を明記済み。<br>
+    ・下書き帳の案を実際に投稿したら、いつもの「GAS経由で取り込む」で実表示数つきで02ランキングに自動合流します(効果測定はそこで)。
+  </div>
+</div>
+
 <div class="card" id="impCard">
-  <h2><span class="num">04</span>既存スキャナから取り込み(同じブラウザ限定)</h2>
+  <h2><span class="num">05</span>既存スキャナから取り込み(同じブラウザ限定)</h2>
   <div class="row"><button class="btn-line" id="impBtn" onclick="importLegacy()"></button></div>
   <div class="note" id="impNote"></div>
 </div>
@@ -327,7 +368,7 @@ details.io[open] summary::before{content:"▾ "}
   </div>
 </div>
 
-<footer>REBUZZ v1.20 / READ-ONLY・NOINDEX</footer>
+<footer>REBUZZ v1.21 / READ-ONLY・NOINDEX</footer>
 </div>
 <div id="toasts"></div>
 
@@ -405,6 +446,9 @@ Object.keys(DB.posts).forEach(function(aid){
 if(typeof DB.words!=="object" || DB.words===null || Array.isArray(DB.words)) DB.words = {};
 if(typeof DB.followers!=="object" || DB.followers===null || Array.isArray(DB.followers)) DB.followers = {};
 if(typeof DB.demo!=="object" || DB.demo===null || Array.isArray(DB.demo)) DB.demo = {};
+/* v1.21: よそ様バズ帳と下書き帳の入れ物(無ければ空で作る) */
+if(typeof DB.rival!=="object" || DB.rival===null || Array.isArray(DB.rival)) DB.rival = {};
+if(typeof DB.drafts!=="object" || DB.drafts===null || Array.isArray(DB.drafts)) DB.drafts = {};
 function persist(){ save("rebuzz_db_v2", DB); }
 persist();
 
@@ -567,6 +611,8 @@ window.delAcc = function(id, btn){
   delete DB.words[id];
   delete DB.followers[id];
   delete DB.demo[id];
+  delete DB.rival[id];
+  delete DB.drafts[id];
   delete LINKS[id]; persistLinks();
   if(acc===id){ acc=DB.accounts[0].id; save("rebuzz_last_acc", acc); }
   persist(); toast("アカウントを削除しました"); renderAll();
@@ -756,6 +802,10 @@ function renderAll(){
   renderChips();
   renderFollowers();
   renderDemo();
+  rvOpenId=null; dfOpenId=null;
+  renderRival();
+  renderDrafts();
+  clearSearchUI();
   render();
 }
 function render(){
@@ -1051,7 +1101,7 @@ window.exportForAI = function(btn){
 };
 
 /* ===== 完成GASコード生成(v1.15→v1.17: 内蔵v1.4)+GASコード貼り付け取り込み(v1.17) ===== */
-var GAS_T = "/* ▼▼▼ 工房ツール | フォルダ: rebuzz | 付属: threads-gas.gs v1.5 | Threads読み取り中継(複数アカウント対応) ▼▼▼\n   v1.4からの変更: 閲覧者属性モードを追加(URLに &demo=1 を付けた場合のみ発動)。\n   /{userId}/threads_insights?metric=follower_demographics を breakdown=age / gender / country / city の\n   4回呼び、応答 demographics に { age:[{label,value}], gender:[…], country:[…], city:[…] } を入れて返す。\n   公式仕様(developers.facebook.com/docs/threads/insights): breakdownは1呼び出し1種のみ・\n   フォロワー100人以上が必須・since/until非対応・権限は threads_basic + threads_manage_insights のまま。\n   応答形式が想定(total_value.breakdowns[].results[])と異なる場合は捏造せず、\n   demoErrors に「想定外」+実応答の先頭部分を入れて返す(庫側がそのまま表示する)。\n   通常モード・全履歴モードの処理は1バイトも変更なし(後方互換)。\n   v1.3からの変更: 応答に followers / followersError の2項目を追加。\n   doGet 1実行につき1回だけ /{userId}/threads_insights?metric=followers_count を呼び、\n   現在のフォロワー数を followers に入れて返す(庫v1.17が日付つきで記録する)。\n   取得に失敗した場合は followers=null のまま返し、理由を followersError に入れる(0と捏造しない)。\n   posts側の内容・呼び出し回数(投稿あたり)は不変。旧庫(v1.10〜v1.16)でもそのまま動く後方互換。\n   v1.2からの変更: insightsの取得指標を views のみ→ views,likes,replies,reposts,quotes の5指標に拡張。\n   応答postsの各項目に likes / replies_c / reposts / quotes を追加(views・text・timestamp・permalink・bodyは不変)。\n   API呼び出し回数は不変(同じ1回のinsights呼び出しで5指標まとめて取得)。旧庫(v1.10〜v1.13)でもそのまま動く後方互換。\n   v1.1からの変更: 「全履歴モード」を追加(URLに &all=1 を付けた場合のみ発動)。\n   ページ送り(after)で一番最初の投稿まで順に取得し、時間がかかる場合は約3分で自主中断して\n   「続きカーソル(nextAfter)」を返す(再投稿庫v1.7の「全履歴を取り込む」ボタンが自動で続きを取得する)。\n   通常呼び出し(all無し)は従来どおり直近LIMIT件を1回だけ取得(不変)。\n   1投稿あたりの処理(views取得・自分の返信=2投稿目の取得)は不変。\n   応答に done / nextAfter / count の3項目を追加(既存の posts / error は不変)。\n   全履歴モード時のみ投稿間の待ちを120ms→250msに延長(通常モードは120msのまま)。\n\n【これは何】\n再投稿庫の「GAS経由で取り込む」「全履歴を取り込む」用の中継スクリプト。\nブラウザから graph.threads.net への直接通信が遮断される場合でも、\nGoogle側のサーバーが代わりに取得するため確実に動きます。読み取り専用です(投稿はしません)。\n\n【設置手順(新規)】\n1. script.google.com → 新しいプロジェクト → このコードを全部貼り付け\n2. 下の CONFIG に、アカウント名(再投稿庫のタブ名と完全一致)・ThreadsユーザーID・アクセストークンを記入\n   ※基本権限は threads_basic と threads_manage_insights(投稿権限は付けない)\n   ※ぶら下げ投稿の本文もペアで取りたい場合のみ threads_read_replies を追加してトークンを再発行\n3. デプロイ → 新しいデプロイ → 種類: ウェブアプリ\n   - 次のユーザーとして実行: 自分\n   - アクセスできるユーザー: 全員\n4. 発行された「ウェブアプリURL(.../exec)」を再投稿庫の「GAS中継URL」に貼る\n\n【v1.1からの貼り替え手順(既に運用中の場合はこちら)】\n1. 既存プロジェクトを開き、今のCONFIG内の実物の行(ユーザーIDとトークン)をメモ等に控える\n2. コードを全部消して、このv1.2を全部貼る\n3. 下のCONFIGのプレースホルダ行を、控えた実物の行に置き換える\n4. 保存(⌘S)→ デプロイ → デプロイを管理 → 鉛筆マーク → バージョン「新バージョン」→ デプロイ\n   ※この再デプロイを忘れると反映されません(URLは変わりません)\n\n【重要な注意(正直な話)】\n・このURLを知っている人は誰でもあなたの投稿一覧と表示数を取得できてしまいます。\n  URLは絶対に公開・共有しないでください(トークン自体は返しません。続きカーソルにもトークンは含まれません)。\n・タブ名を改名したら、CONFIGのキーも同じ名前に直してください(完全一致が必要)。\n・全履歴モードは投稿数×2回前後のAPI呼び出しになります(1投稿=表示数+返信の各1回)。\n  基本は垢ごとに初回の1回だけ使ってください。呼び出しすぎはブロックの一因になりえます(基準は非公開で保証不可)。\n・Threads APIの仕様変更で動かなくなる可能性は常にあります。エラー文をそのまま持ってきてくれれば直します。\n*/\n\nvar CONFIG = {\n  // ※v1.1から貼り替える場合は、この2行を今使っている実物の行(ユーザーID・トークン入り)に置き換えること\n  \"アカウントA\": { userId: \"ここにThreadsユーザーID\", token: \"ここにアクセストークン\" },\n  \"アカウントB\": { userId: \"ここにThreadsユーザーID\", token: \"ここにアクセストークン\" }\n  // アカウントを増やしたらここに追記。キーは再投稿庫のタブ名と完全一致させること\n  // ,\"3つ目の垢名\": { userId: \"...\", token: \"...\" }\n};\n\nvar LIMIT = 50;                  // 通常モード: 取得する直近投稿数(最大100)\nvar ALL_PAGE = 25;               // 全履歴モード: 1ページあたりの取得件数\nvar ALL_TIME_BUDGET_MS = 180000; // 全履歴モード: 1実行の自主時間予算(3分。GAS側の約6分制限より手前で中断し、続きカーソルを返す)\nvar ALL_PAGE_GUARD = 200;        // 全履歴モード: 1実行あたりのページ数の安全弁\n\nfunction doGet(e){\n  var started = Date.now();\n  var out = { posts: [], error: null, done: true, nextAfter: null, count: 0, followers: null, followersError: null };\n  try {\n    var accName = (e && e.parameter && e.parameter.acc) ? String(e.parameter.acc) : \"\";\n    var allMode = !!(e && e.parameter && String(e.parameter.all) === \"1\");\n    var after = (e && e.parameter && e.parameter.after) ? String(e.parameter.after) : \"\";\n    var c = CONFIG[accName];\n    if (!c || !c.userId || !c.token || c.userId.indexOf(\"ここに\") === 0) {\n      out.error = \"CONFIGに「\" + accName + \"」の設定がありません(タブ名と完全一致していますか?)\";\n      return json_(out);\n    }\n    var base = \"https://graph.threads.net/v1.0/\";\n\n    // v1.5: 閲覧者属性モード(&demo=1)。ここで完結し、通常/全履歴処理へは進まない\n    if (e && e.parameter && String(e.parameter.demo) === \"1\") {\n      out.demographics = {};\n      out.demoErrors = {};\n      var BDS = [\"age\", \"gender\", \"country\", \"city\"];\n      for (var bi = 0; bi < BDS.length; bi++) {\n        var bd = BDS[bi];\n        try {\n          var rd = UrlFetchApp.fetch(base + encodeURIComponent(c.userId)\n            + \"/threads_insights?metric=follower_demographics&breakdown=\" + bd\n            + \"&access_token=\" + encodeURIComponent(c.token), { muteHttpExceptions: true });\n          var bodyTxt = rd.getContentText();\n          if (rd.getResponseCode() !== 200) {\n            out.demoErrors[bd] = \"HTTP \" + rd.getResponseCode() + \" \" + bodyTxt.slice(0, 300);\n          } else {\n            var dd = JSON.parse(bodyTxt);\n            var rows = null;\n            var d0 = (dd.data && dd.data[0]) ? dd.data[0] : null;\n            if (d0 && d0.total_value && d0.total_value.breakdowns && d0.total_value.breakdowns.length) {\n              var results = d0.total_value.breakdowns[0].results || [];\n              rows = [];\n              for (var ri = 0; ri < results.length; ri++) {\n                var rr = results[ri];\n                if (!rr) continue;\n                var lab = (rr.dimension_values && rr.dimension_values.length) ? rr.dimension_values.join(\"/\") : \"(不明)\";\n                rows.push({ label: String(lab), value: Number(rr.value) || 0 });\n              }\n            }\n            if (rows && rows.length) {\n              out.demographics[bd] = rows;\n            } else {\n              // 想定形式で読めない場合は捏造せず、実応答の先頭を返して人間に見せる\n              out.demoErrors[bd] = \"応答形式が想定外(実物先頭): \" + bodyTxt.slice(0, 400);\n            }\n          }\n        } catch (err) { out.demoErrors[bd] = \"取得エラー: \" + String(err); }\n        Utilities.sleep(250);\n      }\n      return json_(out);\n    }\n    var wait = allMode ? 250 : 120;\n\n    // 自分のusername(返信の見分け用)。失敗してもペア無しで続行\n    var myName = \"\";\n    try {\n      var rm = UrlFetchApp.fetch(base + \"me?fields=username&access_token=\" + encodeURIComponent(c.token), { muteHttpExceptions: true });\n      if (rm.getResponseCode() === 200) {\n        var dm = JSON.parse(rm.getContentText());\n        if (dm && typeof dm.username === \"string\") myName = dm.username;\n      }\n    } catch (err) {}\n\n    // v1.4: フォロワー数(この1実行で1回だけ。失敗時は followers=null のまま=捏造しない)\n    try {\n      var rf = UrlFetchApp.fetch(base + encodeURIComponent(c.userId) + \"/threads_insights?metric=followers_count&access_token=\" + encodeURIComponent(c.token), { muteHttpExceptions: true });\n      if (rf.getResponseCode() === 200) {\n        var df = JSON.parse(rf.getContentText());\n        var fArr = df.data || [];\n        for (var fi = 0; fi < fArr.length; fi++) {\n          var fm = fArr[fi];\n          if (!fm || fm.name !== \"followers_count\") continue;\n          if (fm.total_value && fm.total_value.value != null) out.followers = Number(fm.total_value.value) || 0;\n          else if (fm.values && fm.values.length) out.followers = Number(fm.values[fm.values.length - 1].value) || 0;\n        }\n        if (out.followers === null) out.followersError = \"応答にfollowers_countが含まれていませんでした\";\n      } else {\n        out.followersError = \"フォロワー数取得失敗 HTTP \" + rf.getResponseCode() + \" \" + rf.getContentText().slice(0, 200);\n      }\n    } catch (err) { out.followersError = \"フォロワー数取得エラー: \" + String(err); }\n\n    var repliesBlocked = false;\n    var pages = 0;\n    while (true) {\n      pages++;\n      if (pages > ALL_PAGE_GUARD) {\n        out.done = false;\n        out.nextAfter = after || null;\n        if (!out.error) out.error = \"ページ数の安全弁(\" + ALL_PAGE_GUARD + \")に到達したため中断\";\n        break;\n      }\n      var listUrl = base + encodeURIComponent(c.userId)\n        + \"/threads?fields=id,text,timestamp,permalink&limit=\" + (allMode ? ALL_PAGE : LIMIT)\n        + (after ? \"&after=\" + encodeURIComponent(after) : \"\")\n        + \"&access_token=\" + encodeURIComponent(c.token);\n      var res = UrlFetchApp.fetch(listUrl, { muteHttpExceptions: true });\n      if (res.getResponseCode() !== 200) {\n        out.error = \"一覧取得失敗 HTTP \" + res.getResponseCode() + \" \" + res.getContentText().slice(0, 300);\n        out.done = false;\n        out.nextAfter = (allMode && after) ? after : null;\n        break;\n      }\n      var pj = JSON.parse(res.getContentText());\n      var items = pj.data || [];\n      for (var i = 0; i < items.length; i++) {\n        var it = items[i];\n        if (!it || typeof it.text !== \"string\" || !it.text.trim()) continue;\n        var views = 0;\n        var mets = { likes: null, replies: null, reposts: null, quotes: null };\n        try {\n          var insUrl = base + encodeURIComponent(it.id)\n            + \"/insights?metric=views,likes,replies,reposts,quotes&access_token=\" + encodeURIComponent(c.token);\n          var r2 = UrlFetchApp.fetch(insUrl, { muteHttpExceptions: true });\n          if (r2.getResponseCode() === 200) {\n            var d2 = JSON.parse(r2.getContentText());\n            var arr = d2.data || [];\n            for (var j = 0; j < arr.length; j++) {\n              var m = arr[j];\n              if (!m || !m.name) continue;\n              var mv = null;\n              if (m.total_value && m.total_value.value != null) {\n                mv = Number(m.total_value.value) || 0;\n              } else if (m.values && m.values.length) {\n                mv = Number(m.values[m.values.length - 1].value) || 0;\n              }\n              if (mv === null) continue;\n              if (m.name === \"views\") views = mv;\n              else if (mets.hasOwnProperty(m.name)) mets[m.name] = mv;\n            }\n          } else if (!out.error) {\n            out.error = \"表示数取得失敗(例): \" + r2.getContentText().slice(0, 200);\n          }\n        } catch (err) { if (!out.error) out.error = \"表示数取得エラー: \" + String(err); }\n\n        // 自分の返信(=2投稿目)。権限が無ければ1回失敗した時点で以後スキップ\n        var body = \"\";\n        if (!repliesBlocked && myName) {\n          try {\n            var r3 = UrlFetchApp.fetch(base + encodeURIComponent(it.id) + \"/replies?fields=text,username&access_token=\" + encodeURIComponent(c.token), { muteHttpExceptions: true });\n            if (r3.getResponseCode() === 200) {\n              var d3 = JSON.parse(r3.getContentText());\n              var arr3 = d3.data || [];\n              for (var k = 0; k < arr3.length; k++) {\n                var rp = arr3[k];\n                if (rp && rp.username === myName && typeof rp.text === \"string\" && rp.text.trim()) { body = rp.text.trim(); break; }\n              }\n            } else {\n              repliesBlocked = true;\n            }\n          } catch (err) { repliesBlocked = true; }\n        }\n\n        out.posts.push({ text: it.text, views: views, likes: mets.likes, replies_c: mets.replies, reposts: mets.reposts, quotes: mets.quotes, timestamp: it.timestamp || \"\", permalink: it.permalink || \"\", body: body });\n        Utilities.sleep(wait);\n      }\n\n      // 通常モードは従来どおり1ページで終了\n      if (!allMode) { out.done = true; out.nextAfter = null; break; }\n\n      var hasNext = !!(pj.paging && pj.paging.next);\n      var cur = (pj.paging && pj.paging.cursors && pj.paging.cursors.after) ? String(pj.paging.cursors.after) : \"\";\n      if (!hasNext) { out.done = true; out.nextAfter = null; break; } // 一番最初の投稿まで到達\n      if (!cur) {\n        out.done = false;\n        out.nextAfter = null;\n        if (!out.error) out.error = \"続きカーソルが取得できず中断(もう一度実行すると先頭から再確認。取り込み済み分は庫側で重複スキップ)\";\n        break;\n      }\n      after = cur;\n      if (Date.now() - started > ALL_TIME_BUDGET_MS) {\n        out.done = false;\n        out.nextAfter = after; // 庫側がこのカーソルで自動的に続きを取得する\n        break;\n      }\n    }\n    out.count = out.posts.length;\n  } catch (err) {\n    out.error = String(err);\n    out.done = false;\n  }\n  return json_(out);\n}\n\nfunction json_(obj){\n  return ContentService.createTextOutput(JSON.stringify(obj))\n    .setMimeType(ContentService.MimeType.JSON);\n}\n\n/* ▲▲▲ threads-gas.gs v1.5 ここまで ▲▲▲ */\n";
+var GAS_T = "/* ▼▼▼ 工房ツール | フォルダ: rebuzz | 付属: threads-gas.gs v1.6 | Threads読み取り中継(複数アカウント対応) ▼▼▼\n   v1.5からの変更: 公式キーワード検索モードを追加(URLに &search=語 を付けた場合のみ発動)。\n   /keyword_search を search_type=TOP で1回だけ呼び、応答 searchResults に実物(text/username/permalink/timestamp)を入れて返す。\n   公式仕様(developers.facebook.com/docs/threads/keyword-search): トークンに threads_keyword_search 権限が必要・\n   アプリがMeta審査(Advanced Access)を通るまでは自分の投稿しか返らない・上限は1ユーザー2,200回/24時間。\n   他人の投稿のいいね数・表示数は公式APIでは取得できないため返さない(捏造しない)。\n   失敗時は searchError にAPIの実応答を入れて返す(庫側がそのまま表示)。通常/全履歴/属性モードは1バイトも変更なし(後方互換)。\n   v1.4からの変更: 閲覧者属性モードを追加(URLに &demo=1 を付けた場合のみ発動)。\n   /{userId}/threads_insights?metric=follower_demographics を breakdown=age / gender / country / city の\n   4回呼び、応答 demographics に { age:[{label,value}], gender:[…], country:[…], city:[…] } を入れて返す。\n   公式仕様(developers.facebook.com/docs/threads/insights): breakdownは1呼び出し1種のみ・\n   フォロワー100人以上が必須・since/until非対応・権限は threads_basic + threads_manage_insights のまま。\n   応答形式が想定(total_value.breakdowns[].results[])と異なる場合は捏造せず、\n   demoErrors に「想定外」+実応答の先頭部分を入れて返す(庫側がそのまま表示する)。\n   通常モード・全履歴モードの処理は1バイトも変更なし(後方互換)。\n   v1.3からの変更: 応答に followers / followersError の2項目を追加。\n   doGet 1実行につき1回だけ /{userId}/threads_insights?metric=followers_count を呼び、\n   現在のフォロワー数を followers に入れて返す(庫v1.17が日付つきで記録する)。\n   取得に失敗した場合は followers=null のまま返し、理由を followersError に入れる(0と捏造しない)。\n   posts側の内容・呼び出し回数(投稿あたり)は不変。旧庫(v1.10〜v1.16)でもそのまま動く後方互換。\n   v1.2からの変更: insightsの取得指標を views のみ→ views,likes,replies,reposts,quotes の5指標に拡張。\n   応答postsの各項目に likes / replies_c / reposts / quotes を追加(views・text・timestamp・permalink・bodyは不変)。\n   API呼び出し回数は不変(同じ1回のinsights呼び出しで5指標まとめて取得)。旧庫(v1.10〜v1.13)でもそのまま動く後方互換。\n   v1.1からの変更: 「全履歴モード」を追加(URLに &all=1 を付けた場合のみ発動)。\n   ページ送り(after)で一番最初の投稿まで順に取得し、時間がかかる場合は約3分で自主中断して\n   「続きカーソル(nextAfter)」を返す(再投稿庫v1.7の「全履歴を取り込む」ボタンが自動で続きを取得する)。\n   通常呼び出し(all無し)は従来どおり直近LIMIT件を1回だけ取得(不変)。\n   1投稿あたりの処理(views取得・自分の返信=2投稿目の取得)は不変。\n   応答に done / nextAfter / count の3項目を追加(既存の posts / error は不変)。\n   全履歴モード時のみ投稿間の待ちを120ms→250msに延長(通常モードは120msのまま)。\n\n【これは何】\n再投稿庫の「GAS経由で取り込む」「全履歴を取り込む」用の中継スクリプト。\nブラウザから graph.threads.net への直接通信が遮断される場合でも、\nGoogle側のサーバーが代わりに取得するため確実に動きます。読み取り専用です(投稿はしません)。\n\n【設置手順(新規)】\n1. script.google.com → 新しいプロジェクト → このコードを全部貼り付け\n2. 下の CONFIG に、アカウント名(再投稿庫のタブ名と完全一致)・ThreadsユーザーID・アクセストークンを記入\n   ※基本権限は threads_basic と threads_manage_insights(投稿権限は付けない)\n   ※ぶら下げ投稿の本文もペアで取りたい場合のみ threads_read_replies を追加してトークンを再発行\n3. デプロイ → 新しいデプロイ → 種類: ウェブアプリ\n   - 次のユーザーとして実行: 自分\n   - アクセスできるユーザー: 全員\n4. 発行された「ウェブアプリURL(.../exec)」を再投稿庫の「GAS中継URL」に貼る\n\n【v1.1からの貼り替え手順(既に運用中の場合はこちら)】\n1. 既存プロジェクトを開き、今のCONFIG内の実物の行(ユーザーIDとトークン)をメモ等に控える\n2. コードを全部消して、このv1.2を全部貼る\n3. 下のCONFIGのプレースホルダ行を、控えた実物の行に置き換える\n4. 保存(⌘S)→ デプロイ → デプロイを管理 → 鉛筆マーク → バージョン「新バージョン」→ デプロイ\n   ※この再デプロイを忘れると反映されません(URLは変わりません)\n\n【重要な注意(正直な話)】\n・このURLを知っている人は誰でもあなたの投稿一覧と表示数を取得できてしまいます。\n  URLは絶対に公開・共有しないでください(トークン自体は返しません。続きカーソルにもトークンは含まれません)。\n・タブ名を改名したら、CONFIGのキーも同じ名前に直してください(完全一致が必要)。\n・全履歴モードは投稿数×2回前後のAPI呼び出しになります(1投稿=表示数+返信の各1回)。\n  基本は垢ごとに初回の1回だけ使ってください。呼び出しすぎはブロックの一因になりえます(基準は非公開で保証不可)。\n・Threads APIの仕様変更で動かなくなる可能性は常にあります。エラー文をそのまま持ってきてくれれば直します。\n*/\n\nvar CONFIG = {\n  // ※v1.1から貼り替える場合は、この2行を今使っている実物の行(ユーザーID・トークン入り)に置き換えること\n  \"アカウントA\": { userId: \"ここにThreadsユーザーID\", token: \"ここにアクセストークン\" },\n  \"アカウントB\": { userId: \"ここにThreadsユーザーID\", token: \"ここにアクセストークン\" }\n  // アカウントを増やしたらここに追記。キーは再投稿庫のタブ名と完全一致させること\n  // ,\"3つ目の垢名\": { userId: \"...\", token: \"...\" }\n};\n\nvar LIMIT = 50;                  // 通常モード: 取得する直近投稿数(最大100)\nvar ALL_PAGE = 25;               // 全履歴モード: 1ページあたりの取得件数\nvar ALL_TIME_BUDGET_MS = 180000; // 全履歴モード: 1実行の自主時間予算(3分。GAS側の約6分制限より手前で中断し、続きカーソルを返す)\nvar ALL_PAGE_GUARD = 200;        // 全履歴モード: 1実行あたりのページ数の安全弁\n\nfunction doGet(e){\n  var started = Date.now();\n  var out = { posts: [], error: null, done: true, nextAfter: null, count: 0, followers: null, followersError: null };\n  try {\n    var accName = (e && e.parameter && e.parameter.acc) ? String(e.parameter.acc) : \"\";\n    var allMode = !!(e && e.parameter && String(e.parameter.all) === \"1\");\n    var after = (e && e.parameter && e.parameter.after) ? String(e.parameter.after) : \"\";\n    var c = CONFIG[accName];\n    if (!c || !c.userId || !c.token || c.userId.indexOf(\"ここに\") === 0) {\n      out.error = \"CONFIGに「\" + accName + \"」の設定がありません(タブ名と完全一致していますか?)\";\n      return json_(out);\n    }\n    var base = \"https://graph.threads.net/v1.0/\";\n\n    // v1.6: 公式キーワード検索モード(&search=語)。ここで完結し、他のモードへは進まない\n    if (e && e.parameter && e.parameter.search) {\n      out.searchResults = null;\n      out.searchError = null;\n      try {\n        var kw = String(e.parameter.search);\n        var rs = UrlFetchApp.fetch(base + \"keyword_search?q=\" + encodeURIComponent(kw)\n          + \"&search_type=TOP&fields=id,text,media_type,permalink,timestamp,username&limit=25\"\n          + \"&access_token=\" + encodeURIComponent(c.token), { muteHttpExceptions: true });\n        var stx = rs.getContentText();\n        if (rs.getResponseCode() !== 200) {\n          out.searchError = \"HTTP \" + rs.getResponseCode() + \" \" + stx.slice(0, 400);\n        } else {\n          var sd = JSON.parse(stx);\n          var sarr = sd.data || [];\n          var rows2 = [];\n          for (var si = 0; si < sarr.length; si++) {\n            var sp = sarr[si];\n            if (!sp || typeof sp.text !== \"string\" || !sp.text.trim()) continue;\n            rows2.push({ text: sp.text, username: String(sp.username || \"\"), permalink: String(sp.permalink || \"\"), timestamp: String(sp.timestamp || \"\") });\n          }\n          out.searchResults = rows2;\n        }\n      } catch (err) { out.searchError = \"検索エラー: \" + String(err); }\n      return json_(out);\n    }\n\n    // v1.5: 閲覧者属性モード(&demo=1)。ここで完結し、通常/全履歴処理へは進まない\n    if (e && e.parameter && String(e.parameter.demo) === \"1\") {\n      out.demographics = {};\n      out.demoErrors = {};\n      var BDS = [\"age\", \"gender\", \"country\", \"city\"];\n      for (var bi = 0; bi < BDS.length; bi++) {\n        var bd = BDS[bi];\n        try {\n          var rd = UrlFetchApp.fetch(base + encodeURIComponent(c.userId)\n            + \"/threads_insights?metric=follower_demographics&breakdown=\" + bd\n            + \"&access_token=\" + encodeURIComponent(c.token), { muteHttpExceptions: true });\n          var bodyTxt = rd.getContentText();\n          if (rd.getResponseCode() !== 200) {\n            out.demoErrors[bd] = \"HTTP \" + rd.getResponseCode() + \" \" + bodyTxt.slice(0, 300);\n          } else {\n            var dd = JSON.parse(bodyTxt);\n            var rows = null;\n            var d0 = (dd.data && dd.data[0]) ? dd.data[0] : null;\n            if (d0 && d0.total_value && d0.total_value.breakdowns && d0.total_value.breakdowns.length) {\n              var results = d0.total_value.breakdowns[0].results || [];\n              rows = [];\n              for (var ri = 0; ri < results.length; ri++) {\n                var rr = results[ri];\n                if (!rr) continue;\n                var lab = (rr.dimension_values && rr.dimension_values.length) ? rr.dimension_values.join(\"/\") : \"(不明)\";\n                rows.push({ label: String(lab), value: Number(rr.value) || 0 });\n              }\n            }\n            if (rows && rows.length) {\n              out.demographics[bd] = rows;\n            } else {\n              // 想定形式で読めない場合は捏造せず、実応答の先頭を返して人間に見せる\n              out.demoErrors[bd] = \"応答形式が想定外(実物先頭): \" + bodyTxt.slice(0, 400);\n            }\n          }\n        } catch (err) { out.demoErrors[bd] = \"取得エラー: \" + String(err); }\n        Utilities.sleep(250);\n      }\n      return json_(out);\n    }\n    var wait = allMode ? 250 : 120;\n\n    // 自分のusername(返信の見分け用)。失敗してもペア無しで続行\n    var myName = \"\";\n    try {\n      var rm = UrlFetchApp.fetch(base + \"me?fields=username&access_token=\" + encodeURIComponent(c.token), { muteHttpExceptions: true });\n      if (rm.getResponseCode() === 200) {\n        var dm = JSON.parse(rm.getContentText());\n        if (dm && typeof dm.username === \"string\") myName = dm.username;\n      }\n    } catch (err) {}\n\n    // v1.4: フォロワー数(この1実行で1回だけ。失敗時は followers=null のまま=捏造しない)\n    try {\n      var rf = UrlFetchApp.fetch(base + encodeURIComponent(c.userId) + \"/threads_insights?metric=followers_count&access_token=\" + encodeURIComponent(c.token), { muteHttpExceptions: true });\n      if (rf.getResponseCode() === 200) {\n        var df = JSON.parse(rf.getContentText());\n        var fArr = df.data || [];\n        for (var fi = 0; fi < fArr.length; fi++) {\n          var fm = fArr[fi];\n          if (!fm || fm.name !== \"followers_count\") continue;\n          if (fm.total_value && fm.total_value.value != null) out.followers = Number(fm.total_value.value) || 0;\n          else if (fm.values && fm.values.length) out.followers = Number(fm.values[fm.values.length - 1].value) || 0;\n        }\n        if (out.followers === null) out.followersError = \"応答にfollowers_countが含まれていませんでした\";\n      } else {\n        out.followersError = \"フォロワー数取得失敗 HTTP \" + rf.getResponseCode() + \" \" + rf.getContentText().slice(0, 200);\n      }\n    } catch (err) { out.followersError = \"フォロワー数取得エラー: \" + String(err); }\n\n    var repliesBlocked = false;\n    var pages = 0;\n    while (true) {\n      pages++;\n      if (pages > ALL_PAGE_GUARD) {\n        out.done = false;\n        out.nextAfter = after || null;\n        if (!out.error) out.error = \"ページ数の安全弁(\" + ALL_PAGE_GUARD + \")に到達したため中断\";\n        break;\n      }\n      var listUrl = base + encodeURIComponent(c.userId)\n        + \"/threads?fields=id,text,timestamp,permalink&limit=\" + (allMode ? ALL_PAGE : LIMIT)\n        + (after ? \"&after=\" + encodeURIComponent(after) : \"\")\n        + \"&access_token=\" + encodeURIComponent(c.token);\n      var res = UrlFetchApp.fetch(listUrl, { muteHttpExceptions: true });\n      if (res.getResponseCode() !== 200) {\n        out.error = \"一覧取得失敗 HTTP \" + res.getResponseCode() + \" \" + res.getContentText().slice(0, 300);\n        out.done = false;\n        out.nextAfter = (allMode && after) ? after : null;\n        break;\n      }\n      var pj = JSON.parse(res.getContentText());\n      var items = pj.data || [];\n      for (var i = 0; i < items.length; i++) {\n        var it = items[i];\n        if (!it || typeof it.text !== \"string\" || !it.text.trim()) continue;\n        var views = 0;\n        var mets = { likes: null, replies: null, reposts: null, quotes: null };\n        try {\n          var insUrl = base + encodeURIComponent(it.id)\n            + \"/insights?metric=views,likes,replies,reposts,quotes&access_token=\" + encodeURIComponent(c.token);\n          var r2 = UrlFetchApp.fetch(insUrl, { muteHttpExceptions: true });\n          if (r2.getResponseCode() === 200) {\n            var d2 = JSON.parse(r2.getContentText());\n            var arr = d2.data || [];\n            for (var j = 0; j < arr.length; j++) {\n              var m = arr[j];\n              if (!m || !m.name) continue;\n              var mv = null;\n              if (m.total_value && m.total_value.value != null) {\n                mv = Number(m.total_value.value) || 0;\n              } else if (m.values && m.values.length) {\n                mv = Number(m.values[m.values.length - 1].value) || 0;\n              }\n              if (mv === null) continue;\n              if (m.name === \"views\") views = mv;\n              else if (mets.hasOwnProperty(m.name)) mets[m.name] = mv;\n            }\n          } else if (!out.error) {\n            out.error = \"表示数取得失敗(例): \" + r2.getContentText().slice(0, 200);\n          }\n        } catch (err) { if (!out.error) out.error = \"表示数取得エラー: \" + String(err); }\n\n        // 自分の返信(=2投稿目)。権限が無ければ1回失敗した時点で以後スキップ\n        var body = \"\";\n        if (!repliesBlocked && myName) {\n          try {\n            var r3 = UrlFetchApp.fetch(base + encodeURIComponent(it.id) + \"/replies?fields=text,username&access_token=\" + encodeURIComponent(c.token), { muteHttpExceptions: true });\n            if (r3.getResponseCode() === 200) {\n              var d3 = JSON.parse(r3.getContentText());\n              var arr3 = d3.data || [];\n              for (var k = 0; k < arr3.length; k++) {\n                var rp = arr3[k];\n                if (rp && rp.username === myName && typeof rp.text === \"string\" && rp.text.trim()) { body = rp.text.trim(); break; }\n              }\n            } else {\n              repliesBlocked = true;\n            }\n          } catch (err) { repliesBlocked = true; }\n        }\n\n        out.posts.push({ text: it.text, views: views, likes: mets.likes, replies_c: mets.replies, reposts: mets.reposts, quotes: mets.quotes, timestamp: it.timestamp || \"\", permalink: it.permalink || \"\", body: body });\n        Utilities.sleep(wait);\n      }\n\n      // 通常モードは従来どおり1ページで終了\n      if (!allMode) { out.done = true; out.nextAfter = null; break; }\n\n      var hasNext = !!(pj.paging && pj.paging.next);\n      var cur = (pj.paging && pj.paging.cursors && pj.paging.cursors.after) ? String(pj.paging.cursors.after) : \"\";\n      if (!hasNext) { out.done = true; out.nextAfter = null; break; } // 一番最初の投稿まで到達\n      if (!cur) {\n        out.done = false;\n        out.nextAfter = null;\n        if (!out.error) out.error = \"続きカーソルが取得できず中断(もう一度実行すると先頭から再確認。取り込み済み分は庫側で重複スキップ)\";\n        break;\n      }\n      after = cur;\n      if (Date.now() - started > ALL_TIME_BUDGET_MS) {\n        out.done = false;\n        out.nextAfter = after; // 庫側がこのカーソルで自動的に続きを取得する\n        break;\n      }\n    }\n    out.count = out.posts.length;\n  } catch (err) {\n    out.error = String(err);\n    out.done = false;\n  }\n  return json_(out);\n}\n\nfunction json_(obj){\n  return ContentService.createTextOutput(JSON.stringify(obj))\n    .setMimeType(ContentService.MimeType.JSON);\n}\n\n/* ▲▲▲ threads-gas.gs v1.6 ここまで ▲▲▲ */\n";
 window.genGasCode = function(btn){
   var done=[], miss=[];
   var lines = DB.accounts.map(function(a){
@@ -1067,7 +1117,7 @@ window.genGasCode = function(btn){
   var cfg = "var CONFIG = {\n" + lines.join(",\n") + "\n};";
   var out = GAS_T.slice(0,i) + cfg + GAS_T.slice(j+3);
   doCopy(out, btn, "コピー済→GASに全貼り");
-  toast("完成コード(v1.5)をコピー: 設定入り「"+done.join("・")+"」"+(miss.length?" / 雛形のまま「"+miss.join("・")+"」":"")+"。GASを全消し→貼る→保存→デプロイを管理→新バージョン");
+  toast("完成コード(v1.6)をコピー: 設定入り「"+done.join("・")+"」"+(miss.length?" / 雛形のまま「"+miss.join("・")+"」":"")+"。GASを全消し→貼る→保存→デプロイを管理→新バージョン");
 };
 
 /* v1.17: GASコード貼り付け→CONFIG解析→垢情報を保存(書かれている内容だけを反映。作らない) */
@@ -1312,7 +1362,7 @@ window.fetchDemo = async function(){
     var data=await res.json();
     if(data && data.error){ throw new Error(String(data.error)); }
     if(!data || typeof data.demographics==="undefined"){
-      setStatus("GAS側がv1.4以前のため属性を取得できません。庫の「完成GASコードをコピー」でv1.5を貼り→デプロイを管理→新バージョンで再デプロイしてから、もう一度どうぞ。","err");
+      setStatus("GAS側がv1.4以前のため属性を取得できません。庫の「完成GASコードをコピー」でv1.6を貼り→デプロイを管理→新バージョンで再デプロイしてから、もう一度どうぞ。","err");
       return;
     }
     var dg = data.demographics||{}, de = data.demoErrors||{};
@@ -1592,6 +1642,342 @@ window.fetchGasAll = async function(){
   }finally{ fetching=false; if(btn) btn.disabled=false; }
 };
 
+/* ===== v1.21: よそ様バズ帳(他垢の実投稿を手貼りで収集・いいね順。数値は入力された実数のみ=未記入をゼロと捏造しない) ===== */
+var rvOpenId=null, dfOpenId=null, rvDelArm={}, dfDelArm={}, dseq={};
+var _searchRes=[], _searchOpen=-1;
+function rivalOf(id){ if(!Array.isArray(DB.rival[id])) DB.rival[id]=[]; return DB.rival[id]; }
+function draftsOf(id){ if(!Array.isArray(DB.drafts[id])) DB.drafts[id]=[]; return DB.drafts[id]; }
+function setRvStatus(msg, cls){
+  var el=document.getElementById("rvStatus");
+  if(!el) return;
+  el.textContent=msg; el.className="status"+(cls?" "+cls:"");
+}
+function setSearchStatus(msg, cls){
+  var el=document.getElementById("searchStatus");
+  if(!el) return;
+  el.textContent=msg; el.className="status"+(cls?" "+cls:"");
+}
+function clearSearchUI(){
+  _searchRes=[]; _searchOpen=-1;
+  var o=document.getElementById("searchOut"); if(o) o.innerHTML="";
+  setSearchStatus("","");
+  setRvStatus("","");
+}
+/* 貼り付け文からthreads.com/threads.netのリンクを抜き出す(最初の1本をURL扱い・本文からは除去) */
+function extractThreadsUrl(raw){
+  var re=/https?:\/\/(?:www\.)?threads\.(?:net|com)\/\S+/g;
+  var m=String(raw).match(re);
+  var url=m&&m.length?m[0]:"";
+  var text=String(raw).replace(re,"").replace(/\n{3,}/g,"\n\n").trim();
+  return { text:text, url:url };
+}
+/* いいね数の読み取り: 「1,234」「1.2万」の実表記に対応。空や読めない場合はnull(=未記入。0と捏造しない) */
+function parseJPNum(s){
+  s=String(s==null?"":s).trim();
+  if(!s) return null;
+  s=s.replace(/,/g,"");
+  if(s.indexOf("万")>=0){
+    var f=parseFloat(s.replace(/[^0-9.]/g,""));
+    return isNaN(f)?null:Math.round(f*10000);
+  }
+  var n=parseInt(s.replace(/[^0-9]/g,""),10);
+  return isNaN(n)?null:n;
+}
+function fmtLikes(lk){
+  if(typeof lk!=="number") return "いいね未記入";
+  if(lk>=10000) return "いいね"+(lk/10000).toFixed(1).replace(/\.0$/,"")+"万";
+  return "いいね"+lk.toLocaleString();
+}
+function rvSorted(){
+  return rivalOf(acc).slice().sort(function(a,b){
+    var an=typeof a.lk==="number", bn=typeof b.lk==="number";
+    if(an&&bn) return b.lk-a.lk;
+    if(an) return -1;
+    if(bn) return 1;
+    return (Number(b.ts)||0)-(Number(a.ts)||0);
+  });
+}
+window.addRival = function(){
+  var ta=document.getElementById("rvText");
+  var raw=(ta&&ta.value?ta.value:"").trim();
+  if(!raw){ setRvStatus("よそ様の投稿の全文を貼り付けてから押してください","err"); return; }
+  var ex=extractThreadsUrl(raw);
+  if(!ex.text){ setRvStatus("URLしか貼られていません。投稿の本文も一緒に貼ってください(本文長押し→コピー)","err"); return; }
+  var an=(document.getElementById("rvName").value||"").trim();
+  var lk=parseJPNum(document.getElementById("rvLikes").value);
+  var arr=rivalOf(acc);
+  var hitR=null;
+  for(var i=0;i<arr.length;i++){
+    var x=arr[i];
+    if(!x) continue;
+    if((ex.url&&x.pl===ex.url)||normHook(x.h)===normHook(ex.text)){ hitR=x; break; }
+  }
+  if(hitR){
+    var ch=false;
+    if(typeof lk==="number"&&(typeof hitR.lk!=="number"||lk>hitR.lk)){ hitR.lk=lk; ch=true; }
+    if(an&&!hitR.an){ hitR.an=an; ch=true; }
+    if(ex.url&&!hitR.pl){ hitR.pl=ex.url; ch=true; }
+    persist(); renderRival();
+    setRvStatus(ch?"同じ投稿が登録済みだったため、記入された分だけ更新しました(重複追加はしません)":"同じ投稿が登録済みです(変化なし)","ok");
+    return;
+  }
+  arr.push({ id:uid(), h:ex.text, an:an, lk:lk, pl:ex.url, d:todayKey(), ts:Date.now() });
+  persist();
+  if(ta) ta.value="";
+  document.getElementById("rvName").value="";
+  document.getElementById("rvLikes").value="";
+  renderRival();
+  setRvStatus("バズ帳に登録しました"+(typeof lk==="number"?"("+fmtLikes(lk)+")":"(いいね未記入のまま登録)"),"ok");
+};
+function renderRival(){
+  var el=document.getElementById("rivalList");
+  if(!el) return;
+  var all=rivalOf(acc);
+  var cl=document.getElementById("rivalCount");
+  if(cl) cl.textContent = all.length? all.length+"件":"";
+  if(!all.length){
+    el.innerHTML="<div class='empty'>まだ登録がありません。Threadsで見かけた似たジャンルのバズ投稿を、上の枠に貼って貯めてください。</div>";
+    return;
+  }
+  var list=rvSorted();
+  el.innerHTML=list.map(function(r,i){
+    var firstLine=(r.h||"").split("\n").filter(function(x){return x.trim();})[0]||"(本文なし)";
+    var open=r.id===rvOpenId;
+    var sub=(r.an?r.an+" ":"")+(r.d?"登録"+r.d:"");
+    var bodyHtml="";
+    if(open){
+      bodyHtml="<div class='rank-body'>"
+        +"<div style='font-size:11px;color:var(--sub);margin:-4px 0 8px'>"+esc((r.an?"投稿者: "+r.an+" ／ ":"")+(r.d?"登録日: "+r.d:""))+(r.pl?" ／ <a href='"+esc(r.pl)+"' target='_blank' rel='noopener' style='color:var(--acc)'>元投稿を開く</a>":"")+"</div>"
+        +"<div class='blk'><div class='bh'><span>全文</span><button onclick=\"copyRival('"+r.id+"',this)\">コピー</button></div><pre>"+esc(r.h||"")+"</pre></div>"
+        +"<div class='mini'><input type='text' id='rvlk-"+r.id+"' value='"+(typeof r.lk==="number"?r.lk:"")+"' placeholder='いいね数(実数)' inputmode='numeric'><button class='btn-line' onclick=\"saveRvLikes('"+r.id+"')\">いいね数を更新</button></div>"
+        +"<div class='row'><button class='btn-acc' onclick=\"toggleRvEdit('"+r.id+"')\">編集(全文)</button><button class='btn-red' id='rvdel-"+r.id+"' onclick=\"delRival('"+r.id+"',this)\">削除</button></div>"
+        +"<div class='editbox' id='rveb-"+r.id+"'><textarea id='rvet-"+r.id+"' style='min-height:140px'></textarea><div class='row'><button class='btn-acc' onclick=\"saveRvEdit('"+r.id+"')\">保存</button></div></div>"
+        +"</div>";
+    }
+    return "<div class='rank-item"+(open?" open":"")+"'>"
+      +"<div class='rank-head' onclick=\"toggleRvOpen('"+r.id+"')\">"
+      +"<div class='rank-no'>"+(i+1)+"</div>"
+      +"<div class='rank-hook'>"+esc(firstLine)+(sub?"<span class='sub'>"+esc(sub)+"</span>":"")+"</div>"
+      +"<div class='views "+(typeof r.lk==="number"&&r.lk>=10000?"mid":"")+"'>"+esc(fmtLikes(r.lk))+"</div>"
+      +"</div>"+bodyHtml+"</div>";
+  }).join("");
+}
+window.toggleRvOpen=function(id){ rvOpenId=(rvOpenId===id?null:id); renderRival(); };
+function findRival(id){ var arr=rivalOf(acc); for(var i=0;i<arr.length;i++){ if(arr[i].id===id) return arr[i]; } return null; }
+window.copyRival=function(id,btn){ var r=findRival(id); if(!r) return; doCopy(r.h||"",btn); };
+window.saveRvLikes=function(id){
+  var r=findRival(id); if(!r) return;
+  var lk=parseJPNum(document.getElementById("rvlk-"+id).value);
+  r.lk=lk; persist(); renderRival();
+  toast(typeof lk==="number"?("いいね数を更新: "+fmtLikes(lk)):"いいね数を未記入に戻しました");
+};
+window.toggleRvEdit=function(id){
+  var r=findRival(id); if(!r) return;
+  var eb=document.getElementById("rveb-"+id);
+  var show=!eb.classList.contains("show");
+  eb.classList.toggle("show",show);
+  if(show) document.getElementById("rvet-"+id).value=r.h||"";
+};
+window.saveRvEdit=function(id){
+  var r=findRival(id); if(!r) return;
+  var ex=extractThreadsUrl(document.getElementById("rvet-"+id).value);
+  if(!ex.text){ toast("本文が空です"); return; }
+  r.h=ex.text;
+  if(ex.url&&!r.pl) r.pl=ex.url;
+  persist(); renderRival(); toast("保存しました");
+};
+window.delRival=function(id,btn){
+  if(!rvDelArm[id]){
+    rvDelArm[id]=true; btn.textContent="もう一度押すと削除";
+    setTimeout(function(){ rvDelArm[id]=false; var b=document.getElementById("rvdel-"+id); if(b) b.textContent="削除"; },2500);
+    return;
+  }
+  DB.rival[acc]=rivalOf(acc).filter(function(x){ return x.id!==id; });
+  persist(); rvOpenId=null; toast("バズ帳から削除しました"); renderRival();
+};
+
+/* ===== v1.21: 新作バズ案のAI書き出し(実データのみ同梱・捏造禁止/丸写し禁止の命令書つき) ===== */
+var AI_GEN_DIRECTIVE =
+"あなたはSNS投稿の作成アシスタントです。以下は\n"
++"【A】私のSNSアカウントの実投稿と実表示数(公式APIで取得した実データ)\n"
++"【B】私が参考用に手作業で集めた、似たジャンルの他アカウントのバズ投稿(いいね数は画面で見えた実数。未記入=記録していないだけ)\n"
++"です。次のルールを厳守してください。\n"
++"【絶対ルール(捏造禁止)】\n"
++"1. 分析はこのデータに書かれている事実だけを根拠にする。データに無いことを事実のように書かない\n"
++"2. 推測には【推測】、一般論には【一般論】と文頭に明記する\n"
++"3. いいね数・表示数が未記入のものを、数字があるかのように扱わない\n"
++"4. 【B】の文面をそのまま・ほぼそのまま使った案は作らない(構成や切り口の参考のみ。丸写しは盗用)\n"
++"5. 【A】【B】の件数が少ない場合(各10件未満)は、信頼度が低いことを冒頭に明記する\n"
++"6. 架空の投稿・架空の数値・架空の比較対象を作らない\n"
++"【作業】\n"
++"① 【A】の上位投稿と【B】に共通する「反応を取っている型」を挙げる(根拠の番号つき。共通が無ければ無いと書く)\n"
++"② 私の垢の文体・口調の特徴を【A】から抽出する(根拠つき)\n"
++"③ ①の型 × ②の文体で、新しい投稿案を10個作る(各案: 1投稿目と2投稿目。参考にした実データの番号を添える)\n"
++"④ 誇大・断定・不安の煽りすぎ・効果の保証表現は避ける\n";
+window.exportGenAI = function(btn){
+  var own=(DB.posts[acc]||[]).filter(function(p){ return (Number(p.v)||0)>0; })
+    .sort(function(a,b){ return (Number(b.v)||0)-(Number(a.v)||0); }).slice(0,30);
+  var rv=rvSorted().slice(0,50);
+  if(!own.length && !rv.length){ toast("実データがまだありません(02の取り込みか、バズ帳への登録を先に)"); return; }
+  var out=AI_GEN_DIRECTIVE;
+  out+="\n===【A】私の垢の実投稿(表示数の高い順・"+own.length+"件)===\n";
+  if(own.length){
+    out+=own.map(function(p,i){
+      return "\n【A"+(i+1)+"】表示数:"+(Number(p.v)||0)+fmtMets(p)+(p.tsp?" 初回投稿:"+p.tsp:"")
+        +"\n1投稿目:\n"+(p.h||"(なし)")
+        +"\n2投稿目:"+(p.b&&p.b.trim()?"\n"+p.b:"(未登録)");
+    }).join("\n");
+  } else {
+    out+="(表示数の入った自垢投稿が0件のため、このアカウント自身のデータはありません)\n";
+  }
+  out+="\n\n===【B】参考: 似たジャンルの他垢のバズ投稿("+rv.length+"件・いいね数は画面で見えた実数)===\n";
+  if(rv.length){
+    out+=rv.map(function(r,i){
+      return "\n【B"+(i+1)+"】"+(typeof r.lk==="number"?"いいね:"+r.lk:"いいね:未記入")
+        +(r.an?" 投稿者:"+r.an:"")+(r.d?" 記録日:"+r.d:"")
+        +"\n全文:\n"+(r.h||"");
+    }).join("\n");
+  } else {
+    out+="(バズ帳が0件のため参考データはありません。①は【A】だけで行ってください)\n";
+  }
+  doCopy(out,btn,"コピー済→AIチャットに貼り付け");
+  toast("命令書+実データ(自垢"+own.length+"件・よそ様"+rv.length+"件)をコピーしました");
+};
+
+/* ===== v1.21: 下書き帳(AI案の保管とワンタッチコピー。投稿は今まで通り人の手で) ===== */
+window.addDraft = function(){
+  var ta=document.getElementById("draftText");
+  var raw=(ta&&ta.value?ta.value:"").trim();
+  if(!raw){ toast("投稿案を貼り付けてから押してください"); return; }
+  var sp=smartSplit(raw);
+  var arr=draftsOf(acc);
+  var dupD=arr.some(function(x){ return x&&normHook((x.h||"")+(x.b||""))===normHook(sp[0]+sp[1]); });
+  if(dupD){ toast("同じ案が下書き帳にあります"); return; }
+  arr.push({ id:uid(), h:sp[0], b:sp[1], d:todayKey(), ts:Date.now() });
+  persist();
+  if(ta) ta.value="";
+  renderDrafts();
+  toast("下書き帳に保管しました");
+};
+function renderDrafts(){
+  var el=document.getElementById("draftList");
+  if(!el) return;
+  var arr=draftsOf(acc).slice().sort(function(a,b){ return (Number(b.ts)||0)-(Number(a.ts)||0); });
+  if(!arr.length){ el.innerHTML="<div class='empty'>下書きはまだありません。AIの案から気に入ったものを貼って貯めてください。</div>"; return; }
+  el.innerHTML=arr.map(function(p,i){
+    var firstLine=(p.h||"").split("\n").filter(function(x){return x.trim();})[0]||"(空)";
+    var open=p.id===dfOpenId;
+    var bodyHtml="";
+    if(open){
+      var b2=(p.b&&p.b.trim())
+        ?"<div class='blk'><div class='bh'><span>ブロック2 2投稿目</span><button onclick=\"copyDraftBlk('"+p.id+"',2,this)\">コピー</button></div><pre>"+esc(p.b)+"</pre></div>"
+        :"<div class='nobody'>2投稿目なし(----の行で区切って貼ると2投稿に分かれます)</div>";
+      bodyHtml="<div class='rank-body'>"
+        +"<button class='btn-main' style='margin-bottom:10px' onclick=\"draftSeqCopy('"+p.id+"',this)\">ワンタッチ順番コピー(①1投稿目→②2投稿目)</button>"
+        +"<div class='blk'><div class='bh'><span>ブロック1 1投稿目</span><button onclick=\"copyDraftBlk('"+p.id+"',1,this)\">コピー</button></div><pre>"+esc(p.h||"")+"</pre></div>"
+        +b2
+        +"<div class='row'><button class='btn-red' id='dfdel-"+p.id+"' onclick=\"delDraft('"+p.id+"',this)\">削除</button></div>"
+        +"</div>";
+    }
+    return "<div class='rank-item"+(open?" open":"")+"'>"
+      +"<div class='rank-head' onclick=\"toggleDfOpen('"+p.id+"')\">"
+      +"<div class='rank-no'>"+(i+1)+"</div>"
+      +"<div class='rank-hook'>"+esc(firstLine)+"<span class='sub'>保管 "+esc(p.d||"")+"</span></div>"
+      +"<div class='views'>下書き</div>"
+      +"</div>"+bodyHtml+"</div>";
+  }).join("");
+}
+window.toggleDfOpen=function(id){ dfOpenId=(dfOpenId===id?null:id); renderDrafts(); };
+function findDraft(id){ var arr=draftsOf(acc); for(var i=0;i<arr.length;i++){ if(arr[i].id===id) return arr[i]; } return null; }
+window.copyDraftBlk=function(id,n,btn){ var p=findDraft(id); if(!p) return; doCopy(n===1?(p.h||""):(p.b||""),btn); };
+window.draftSeqCopy=function(id,btn){
+  var p=findDraft(id); if(!p) return;
+  if(!p.b||!p.b.trim()){ doCopy(p.h||"",btn,"2投稿目なしのため1投稿目のみコピー"); return; }
+  if(!dseq[id]){ doCopy(p.h||"",btn,"①コピー済→Threadsに貼ったらもう一度"); dseq[id]=true; }
+  else { doCopy(p.b||"",btn,"②コピー済→貼れば完了"); dseq[id]=false; }
+};
+window.delDraft=function(id,btn){
+  if(!dfDelArm[id]){
+    dfDelArm[id]=true; btn.textContent="もう一度押すと削除";
+    setTimeout(function(){ dfDelArm[id]=false; var b=document.getElementById("dfdel-"+id); if(b) b.textContent="削除"; },2500);
+    return;
+  }
+  DB.drafts[acc]=draftsOf(acc).filter(function(x){ return x.id!==id; });
+  persist(); dfOpenId=null; toast("下書きを削除しました"); renderDrafts();
+};
+
+/* ===== v1.21: 公式キーワード検索(GAS v1.6の&search=)。承認前は自分の投稿のみ返る=公式仕様をそのまま表示 ===== */
+window.searchRival = async function(){
+  if(fetching) return;
+  var kw=(document.getElementById("searchKw").value||"").trim();
+  if(!kw){ setSearchStatus("検索ワードを入れてください","err"); return; }
+  var g=(document.getElementById("lkGas").value||"").trim();
+  if(!/^https?:\/\//.test(g)){ setSearchStatus("上の連携欄にGAS中継URLを入れて「連携設定を保存」してから押してください","err"); return; }
+  fetching=true;
+  var btn=document.getElementById("searchBtn"); if(btn) btn.disabled=true;
+  try{
+    setSearchStatus("公式APIで検索中…","");
+    var a=accOf(acc);
+    var url=g+(g.indexOf("?")>=0?"&":"?")+"acc="+encodeURIComponent(a?a.name:"")+"&search="+encodeURIComponent(kw);
+    var res=await fetch(url);
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    var data=await res.json();
+    if(data && data.error){ throw new Error(String(data.error)); }
+    if(!data || (typeof data.searchResults==="undefined" && typeof data.searchError==="undefined")){
+      setSearchStatus("GAS側がv1.6より前のため検索できません。「完成GASコードをコピー」でv1.6を貼り→デプロイを管理→新バージョンで再デプロイしてから、もう一度どうぞ。","err");
+      return;
+    }
+    if(data.searchError){
+      setSearchStatus("検索できませんでした(APIの実応答): "+String(data.searchError).slice(0,300)+" ※トークンにthreads_keyword_search権限が無い場合もこのエラーになります","err");
+      return;
+    }
+    _searchRes=Array.isArray(data.searchResults)?data.searchResults:[];
+    _searchOpen=-1;
+    renderSearch();
+    setSearchStatus(_searchRes.length
+      ? "検索結果 "+_searchRes.length+"件(公式TOP順・いいね数はAPI仕様で取得不可)。結果が自分の投稿だけなら、アプリがMeta審査の承認前の状態です(公式仕様)"
+      : "検索結果は0件でした","ok");
+  }catch(e){
+    setSearchStatus("検索失敗: "+(e&&e.message?e.message:"通信エラー"),"err");
+  }finally{ fetching=false; if(btn) btn.disabled=false; }
+};
+function renderSearch(){
+  var el=document.getElementById("searchOut");
+  if(!el) return;
+  if(!_searchRes.length){ el.innerHTML=""; return; }
+  el.innerHTML=_searchRes.map(function(r,i){
+    var firstLine=String(r.text||"").split("\n").filter(function(x){return x.trim();})[0]||"(本文なし)";
+    var open=i===_searchOpen;
+    var sub=(r.username?"@"+r.username+" ":"")+(r.timestamp?String(r.timestamp).slice(0,10):"");
+    var bodyHtml="";
+    if(open){
+      bodyHtml="<div class='rank-body'>"
+        +"<div class='blk'><div class='bh'><span>全文</span></div><pre>"+esc(String(r.text||""))+"</pre></div>"
+        +(r.permalink?"<div style='font-size:11px;margin:-4px 0 8px'><a href='"+esc(r.permalink)+"' target='_blank' rel='noopener' style='color:var(--acc)'>元投稿を開く(いいね数は画面で確認)</a></div>":"")
+        +"<div class='row'><button class='btn-acc' onclick='searchToRival("+i+")'>バズ帳へ登録(いいね数は後で記入)</button></div>"
+        +"</div>";
+    }
+    return "<div class='rank-item"+(open?" open":"")+"'>"
+      +"<div class='rank-head' onclick='toggleSearchOpen("+i+")'>"
+      +"<div class='rank-no'>"+(i+1)+"</div>"
+      +"<div class='rank-hook'>"+esc(firstLine)+(sub?"<span class='sub'>"+esc(sub)+"</span>":"")+"</div>"
+      +"</div>"+bodyHtml+"</div>";
+  }).join("");
+}
+window.toggleSearchOpen=function(i){ _searchOpen=(_searchOpen===i?-1:i); renderSearch(); };
+window.searchToRival=function(i){
+  var r=_searchRes[i]; if(!r) return;
+  var text=String(r.text||"").trim();
+  if(!text){ toast("本文が空のため登録できません"); return; }
+  var arr=rivalOf(acc);
+  var pl=String(r.permalink||"");
+  var dup=arr.some(function(x){ return x&&((pl&&x.pl===pl)||normHook(x.h)===normHook(text)); });
+  if(dup){ toast("同じ投稿がバズ帳に登録済みです"); return; }
+  arr.push({ id:uid(), h:text, an:(r.username?"@"+r.username:""), lk:null, pl:pl, d:todayKey(), ts:Date.now() });
+  persist(); renderRival();
+  toast("バズ帳へ登録しました(いいね数は元投稿を見て記入を)");
+};
+
 /* ===== 全件を古い順に一括コピー(最初の投稿→最新。日時不明分は末尾) ===== */
 function pad2(n){ return (n<10?"0":"")+n; }
 window.copyAllChrono = function(btn){
@@ -1685,7 +2071,7 @@ window.importLegacy = function(){
 
 /* ===== バックアップ(トークン非含有) ===== */
 window.exportJSON = function(btn){
-  var json = JSON.stringify({ app:"rebuzz", v:2, accounts:DB.accounts, posts:DB.posts, words:DB.words, followers:DB.followers, demo:DB.demo });
+  var json = JSON.stringify({ app:"rebuzz", v:2, accounts:DB.accounts, posts:DB.posts, words:DB.words, followers:DB.followers, demo:DB.demo, rival:DB.rival, drafts:DB.drafts });
   var ta=document.getElementById("ioArea");
   ta.value=json; ta.select();
   doCopy(json, btn, "コピー済(メモ等に保管を)");
@@ -1757,6 +2143,27 @@ window.importJSON = function(){
       if(obj.demo && obj.demo[fa.id] && typeof obj.demo[fa.id]==="object" && !DB.demo[target]){
         DB.demo[target] = obj.demo[fa.id];
       }
+      /* v1.21: よそ様バズ帳・下書き帳も同じ垢対応で取り込み(URLまたは文面一致はスキップ) */
+      if(obj.rival && Array.isArray(obj.rival[fa.id])){
+        if(!Array.isArray(DB.rival[target])) DB.rival[target]=[];
+        var tr = DB.rival[target];
+        obj.rival[fa.id].forEach(function(r){
+          if(!r || typeof r.h!=="string" || !r.h.trim()) return;
+          var dupR = tr.some(function(x){ return x && ((r.pl && x.pl===r.pl) || normHook(x.h)===normHook(r.h)); });
+          if(dupR) return;
+          tr.push({ id:uid(), h:r.h, an:String(r.an||""), lk:(typeof r.lk==="number"?r.lk:null), pl:String(r.pl||""), d:String(r.d||""), ts:Date.now() });
+        });
+      }
+      if(obj.drafts && Array.isArray(obj.drafts[fa.id])){
+        if(!Array.isArray(DB.drafts[target])) DB.drafts[target]=[];
+        var td = DB.drafts[target];
+        obj.drafts[fa.id].forEach(function(r){
+          if(!r || typeof r.h!=="string" || !r.h.trim()) return;
+          var dupD = td.some(function(x){ return x && normHook((x.h||"")+(x.b||""))===normHook((r.h||"")+(r.b||"")); });
+          if(dupD) return;
+          td.push({ id:uid(), h:r.h, b:String(r.b||""), d:String(r.d||""), ts:Date.now() });
+        });
+      }
     });
   } else {
     var d = obj && obj.data ? obj.data : obj;
@@ -1777,7 +2184,7 @@ catch(e){ toast("この環境では保存が使えないため、閉じるとデ
 renderAll();
 
 /* ===== 自動更新チェック(v1.16): 起動3秒後に設置元の版を1回確認 ===== */
-var APP_VER = "1.20";
+var APP_VER = "1.21";
 setTimeout(function(){
   try{
     if(location.protocol.indexOf("http")!==0) return; // ローカル表示では何もしない
