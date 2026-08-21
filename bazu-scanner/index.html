@@ -1025,11 +1025,7 @@ const SB = (function(){
         fmtBalanceSplit(x).forEach(function(y){ out.push(y); });
         return;
       }
-      if (/」と伝えています。?$/.test(x) && !/^」と伝えています。?$/.test(x)){
-          out.push(x.replace(/」と伝えています/, "」と\n伝えています").split("\n")[0]);
-          out.push(x.replace(/^[\s\S]*」と(?=伝えています)/, ""));
-          return;
-        }
+        /* 「…」と伝えています。は「と」で改行せず1行のまま残す(2026-08-22: 手直し版に合わせて特別分割を撤去) */
         if (x.length > FMT_MAX && x.indexOf("「") >= 0){
           fmtSplitBracketSeg(x).forEach(function(y){ out.push(y); });
           return;
