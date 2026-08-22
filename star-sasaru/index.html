@@ -85,6 +85,16 @@
   .big-copy.done{border-color:var(--accent-dim)}
   .big-copy.done .bc-head{color:var(--accent)}
 
+  /* 投稿ボタン(コピーの緑と区別する金色系) */
+  .big-post{border-color:#5a4c30}
+  .big-post:active{background:#2c2618}
+  .big-post .bc-head{color:#d9c98f}
+  .big-post.done{border-color:var(--accent-dim)}
+  .big-post.done .bc-head{color:var(--accent)}
+  .post-status{font-size:11px;color:var(--ink-dim);line-height:1.8;margin:-4px 2px 16px;min-height:1.4em;letter-spacing:.03em;white-space:pre-wrap;word-break:break-word}
+  .post-status.err{color:var(--danger)}
+  .pst{color:#d9c98f}
+
   .nav-row{display:flex;gap:8px;margin-bottom:20px}
   .nav-btn{
     flex:1;background:var(--night-2);border:1px solid var(--card-edge);color:var(--ink);
@@ -231,6 +241,10 @@
       <button class="nav-btn" id="resetBtn">最初から</button>
     </div>
 
+    <div class="section-label">②の2 押すたびに1件投稿(Threadsへ直接・使うのは自由)</div>
+    <button class="big-copy big-post" id="bigPost"></button>
+    <div class="post-status" id="postStatus"></div>
+
     <div class="section-label">③ 一覧(1星座ずつ・タップで個別コピーもOK)</div>
     <div class="sign-row" id="signRow"></div>
     <div id="postList"></div>
@@ -244,6 +258,10 @@
   <div class="row">
     <button class="tool-btn" id="syncSetBtn">同期設定</button>
     <button class="tool-btn" id="syncNowBtn">今すぐ同期</button>
+  </div>
+  <div class="row">
+    <button class="tool-btn" id="postSetBtn">投稿の合鍵(設定)</button>
+    <button class="tool-btn" id="postTestBtn">投稿の接続テスト</button>
   </div>
   <div class="row">
     <button class="tool-btn danger" id="clearBtn">全部消して新しく貼る</button>
@@ -544,6 +562,30 @@ function splitBlocks(norm, headerFn){
   }
   return blocks.filter(b=>b);
 }
+// 掴み(見出しブロック)の後に続く見出しなしブロックは、同じ星座の本文(2枚目)として
+// 1件にまとめる(2026-08-22: 命令書v1.1=本文は見出しなし・空行入りの形に対応)。
+// 見出しブロックが1つも無い貼り付けは従来どおり空行区切りのまま1件ずつ。
+function groupTsukamiBody(blocks){
+  const headOf = b => isHeaderLine(String(b).split("\n")[0]);
+  if(!blocks.some(headOf)) return blocks.map(b => ({ text: b, sign: null }));
+  const out = [];
+  let i = 0;
+  while(i < blocks.length){
+    if(headOf(blocks[i])){
+      const sign = detectSign(blocks[i]);
+      out.push({ text: blocks[i], sign: sign });
+      const body = [];
+      let j = i + 1;
+      while(j < blocks.length && !headOf(blocks[j])){ body.push(blocks[j]); j++; }
+      if(body.length) out.push({ text: body.join("\n\n"), sign: sign });
+      i = j;
+    } else {
+      out.push({ text: blocks[i], sign: null });
+      i++;
+    }
+  }
+  return out;
+}
 function parseText(raw, now){
   const norm = normalizeNewlines(raw);
   let blocks = splitBlocks(norm, isHeaderLine);
@@ -553,9 +595,9 @@ function parseText(raw, now){
     if(loose.length > blocks.length) blocks = loose;
   }
   const t = numOr(now, Date.now());
-  return blocks.slice(0, LIMITS.posts).map((b, i) => ({
+  return groupTsukamiBody(blocks).slice(0, LIMITS.posts).map((b, i) => ({
     id: uid(), ts: t, seq: i,
-    sign: detectSign(b) || "その他", text: b, copied: false
+    sign: b.sign || detectSign(b.text) || "その他", text: b.text, copied: false
   }));
 }
 
@@ -597,8 +639,13 @@ const KEY2 = "threads-copy-machine-v2";
 const KEY1 = "threads-copy-machine-v1";      // 旧形式(移行元)
 const KEY_META = "threads-copy-machine-meta-v1"; // 端末ローカル(送信・差分比較に含めない §1-7)
 const KEY_SYNC = "threads-copy-machine-sync-v1"; // 同期設定(端末内保存)
+const KEY_POST = "threads-copy-machine-post-v1"; // 投稿の合鍵(端末内のみ・同期payloadには決して入れない)
 const GIST_FILE = "threads-copy-machine.enc.json";
 const DEFAULT_START = "乙女座";
+// Threads公式API(出典: developers.facebook.com/docs/threads/posts)
+const TH_API = "https://graph.threads.net/v1.0/";
+const POST_TEXT_MAX = 500;  // テキスト投稿の公式上限(字)
+const POST_DAY_MAX = 250;   // 24時間のAPI投稿数の公式上限(件)
 
 const PRESET = `牡羊座の皆さん
 勢いで動いたあと、ふと我に返って、、、
@@ -817,8 +864,9 @@ const PRESET = `牡羊座の皆さん
 気づけば、誰かの夢に巻き込まれてる、、、`;
 
 let payload = sanitizePayload({ startSign: { v: DEFAULT_START, ts: 0 } });
-let meta = { lastSyncAt: 0, history: [] }; // §1-7 端末ローカル。payloadには入れない
+let meta = { lastSyncAt: 0, history: [], postedLog: [] }; // §1-7 端末ローカル。payloadには入れない
 let syncCfg = null; // {token, gistId, pass, salt}
+let postCfg = null; // {uid, tok} 投稿の合鍵(端末内のみ)
 let filterSign = null;
 let bootDone = false;
 
@@ -856,6 +904,7 @@ async function save(fromSyncIntake){
 }
 async function saveMeta(){ try{ await stSet(KEY_META, JSON.stringify(meta)); }catch(e){} }
 async function saveSyncCfg(){ try{ await stSet(KEY_SYNC, syncCfg ? JSON.stringify(syncCfg) : ""); }catch(e){} }
+async function savePostCfg(){ try{ await stSet(KEY_POST, postCfg ? JSON.stringify(postCfg) : ""); }catch(e){} }
 
 function appendHistory(items){
   if(!items || !items.length) return;
@@ -898,10 +947,14 @@ async function load(){
       }
     }
   }catch(e){}
-  try{ const m = await stGet(KEY_META); if(m){ const d = JSON.parse(m); if(d && typeof d === "object"){ meta.lastSyncAt = numOr(d.lastSyncAt, 0); meta.history = Array.isArray(d.history) ? d.history.slice(0, LIMITS.history) : []; } } }catch(e){}
+  try{ const m = await stGet(KEY_META); if(m){ const d = JSON.parse(m); if(d && typeof d === "object"){ meta.lastSyncAt = numOr(d.lastSyncAt, 0); meta.history = Array.isArray(d.history) ? d.history.slice(0, LIMITS.history) : []; meta.postedLog = Array.isArray(d.postedLog) ? d.postedLog.slice(0, 200) : []; } } }catch(e){}
   try{
     const s = await stGet(KEY_SYNC);
     if(s){ const d = JSON.parse(s); if(d && typeof d.token === "string" && typeof d.pass === "string" && typeof d.salt === "string"){ syncCfg = d; } }
+  }catch(e){}
+  try{
+    const pc = await stGet(KEY_POST);
+    if(pc){ const d = JSON.parse(pc); if(d && typeof d.uid === "string" && typeof d.tok === "string"){ postCfg = d; } }
   }catch(e){}
 
   // 初回のみプリセット(全消し済みなら再投入しない)。IDは決定的=2台で同一(同期で重複しない)
@@ -950,6 +1003,7 @@ function render(){
   document.getElementById("mainArea").style.display = total ? "block" : "none";
   const done = posts.filter(p=>p.copied).length;
   const idx = Math.min(curIdx(posts), total);
+  const postedSet = new Set((meta.postedLog||[]).map(x=>x.id));
 
   const sel = document.getElementById("startSel");
   if(sel.options.length !== SIGN_ORDER.length){
@@ -976,6 +1030,7 @@ function render(){
       <div class="bc-text">${esc(p.text)}</div>
       <div class="bc-foot">${p.text.length}字${p.copied ? "・コピー済み(再コピーします)" : ""}</div>`;
   }
+  renderPost(posts, idx, total, postedSet);
 
   const row = document.getElementById("signRow");
   row.innerHTML = "";
@@ -1032,7 +1087,7 @@ function render(){
     el.innerHTML = `
       <div class="pc-text">${esc(p.text)}</div>
       <div class="pc-foot">
-        <span class="pc-status ${p.copied ? "done" : ""}">${esc(p.sign)} ${nth}本目・${p.text.length}字${p.copied ? "・✔コピー済み" : ""}${i === idx ? "・◀ 次はここ" : ""}</span>
+        <span class="pc-status ${p.copied ? "done" : ""}">${esc(p.sign)} ${nth}本目・${p.text.length}字${p.copied ? "・✔コピー済み" : ""}${postedSet.has(p.id) ? '・<span class="pst">✅投稿済み</span>' : ""}${i === idx ? "・◀ 次はここ" : ""}</span>
         <button class="pc-here">ここから</button>
         <button class="pc-copy">コピー</button>
       </div>`;
@@ -1057,6 +1112,23 @@ function render(){
   if(!posts.length){
     list.innerHTML = `<div class="empty-note">まだ投稿がありません。上に貼り付けて「分けて読み込む」を押してください。</div>`;
   }
+}
+
+// ---- 投稿ボタンの描画(コピーの大ボタンと連動・同じ現在位置を指す) ----
+function renderPost(posts, idx, total, postedSet){
+  const btn = document.getElementById("bigPost");
+  if(!btn) return;
+  if(idx >= total){
+    btn.className = "big-copy big-post done";
+    btn.innerHTML = `<div class="bc-head">✔ 最後まで来ています</div>
+      <div class="bc-text">タップで最初に戻ります。</div>`;
+    return;
+  }
+  const p = posts[idx];
+  const over = p.text.length > POST_TEXT_MAX;
+  btn.className = "big-copy big-post";
+  btn.innerHTML = `<div class="bc-head">📮 押すと上の1件をThreadsに投稿して次へ${postCfg ? "" : "(最初だけ合鍵の設定が要ります)"}</div>
+    <div class="bc-foot">${esc(p.sign)}・${p.text.length}字${over ? `・⚠ ${POST_TEXT_MAX}字を超えているため投稿できません(公式上限)` : ""}${postedSet && postedSet.has(p.id) ? "・✅この端末から投稿済み" : ""}</div>`;
 }
 
 // ---- コピー ----
@@ -1098,6 +1170,194 @@ async function seqCopy(){
     render();
   }finally{
     setTimeout(()=>{ seqBusy = false; }, 400);
+  }
+}
+
+// ---- Threadsへ直接投稿(任意機能) ----
+// 公式APIの2段階「①下書き(コンテナ)作成 → ②公開」を1タップで自動実行する。
+// 出典: developers.facebook.com/docs/threads/posts(テキスト500字まで・24時間250件まで)
+// 合鍵(トークン)は KEY_POST として端末内にだけ保存し、同期payloadには決して入れない。
+// 投稿の記録(postedLog)も端末ローカルのmetaに置く=既存の同期・マージ仕様に一切触らない。
+function setPostStatus(msg, err){
+  const el = document.getElementById("postStatus");
+  if(el){ el.textContent = msg || ""; el.className = "post-status" + (err ? " err" : ""); }
+}
+async function thFetch(path, params, isPost){
+  const usp = new URLSearchParams(params);
+  let res;
+  try{
+    res = await fetch(TH_API + path + (isPost ? "" : ("?" + usp.toString())), isPost ? {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: usp.toString()
+    } : undefined);
+  }catch(e){
+    throw new Error("Threadsに接続できません(電波・Wi-Fiを確認してください)");
+  }
+  let d = null;
+  try{ d = await res.json(); }catch(e){}
+  if(!res.ok || (d && d.error)){
+    const m = d && d.error ? (d.error.error_user_msg || d.error.message || JSON.stringify(d.error)) : ("HTTP " + res.status);
+    throw new Error(m);
+  }
+  return d || {};
+}
+function postedInLast24h(){
+  const lim = Date.now() - 24*60*60*1000;
+  return (meta.postedLog||[]).filter(x => numOr(x.at,0) > lim).length;
+}
+let postBusy = false;
+async function seqPost(){
+  if(postBusy) return;
+  if(!postCfg){ openPostSettings(); return; }
+  const posts = ordered();
+  const total = posts.length;
+  const idx = curIdx(posts);
+  if(idx >= total){
+    setCursorByIdx(posts, 0);
+    save(); render();
+    toast("最初に戻りました");
+    return;
+  }
+  const p = posts[idx];
+  if(p.text.length > POST_TEXT_MAX){
+    toast(`この投稿は${p.text.length}字で、公式上限の${POST_TEXT_MAX}字を超えているため投稿できません`, true);
+    return;
+  }
+  if(postedInLast24h() >= POST_DAY_MAX - 10){
+    toast(`24時間の投稿数が公式上限(${POST_DAY_MAX}件)に近いため止めました`, true);
+    return;
+  }
+  const postedSet = new Set((meta.postedLog||[]).map(x=>x.id));
+  if(postedSet.has(p.id)){
+    const r = await dialog({
+      title: "投稿済みの1件です",
+      body: "この1件はこの端末からすでに投稿しています。もう一度投稿すると、Threads上に同じ内容が2回並びます。",
+      buttons: [
+        { label: "もう一度投稿する", value: "yes", danger: true },
+        { label: "やめる", value: null, primary: true }
+      ]
+    });
+    if(!r || r.value !== "yes") return;
+  }else if(!(meta.postedLog||[]).length){
+    // はじめての1件だけ内容を見せて確認(2件目からはワンタッチ)
+    const r = await dialog({
+      title: "はじめての投稿(この確認は1回だけ)",
+      body: `この内容をThreadsに公開します:\n\n${p.text.slice(0,120)}${p.text.length>120?"…":""}`,
+      note: "次からは確認なしで、押すたびに1件ずつ投稿されます。",
+      buttons: [
+        { label: "投稿する", value: "yes", primary: true },
+        { label: "やめる", value: null, ghost: true }
+      ]
+    });
+    if(!r || r.value !== "yes") return;
+  }
+  postBusy = true;
+  const btn = document.getElementById("bigPost");
+  if(btn) btn.style.opacity = ".55";
+  try{
+    setPostStatus("下書き(コンテナ)を作っています…");
+    const c = await thFetch(encodeURIComponent(postCfg.uid) + "/threads",
+      { media_type: "TEXT", text: p.text, access_token: postCfg.tok }, true);
+    if(!c.id) throw new Error("下書きIDが返ってきませんでした");
+    setPostStatus("公開しています…");
+    await new Promise(r=> setTimeout(r, 2000));
+    let pub = null, lastErr = null;
+    for(let i = 0; i < 3; i++){
+      try{
+        pub = await thFetch(encodeURIComponent(postCfg.uid) + "/threads_publish",
+          { creation_id: c.id, access_token: postCfg.tok }, true);
+        break;
+      }catch(e){
+        lastErr = e;
+        if(i < 2){ setPostStatus(`公開をもう一度試しています(${i+2}回目)…`); await new Promise(r=> setTimeout(r, 5000)); }
+      }
+    }
+    if(!pub) throw lastErr || new Error("公開に失敗しました");
+    const now = Date.now();
+    p.copied = true;
+    p.ts = now;
+    setCursorByIdx(posts, idx + 1);
+    await save();
+    meta.postedLog = [{ id: p.id, sign: p.sign, at: now, tid: (typeof pub.id === "string" ? pub.id : "") }]
+      .concat(meta.postedLog || []).slice(0, 200);
+    await saveMeta();
+    setPostStatus(`✅ ${p.sign}を投稿しました(この端末から24時間で${postedInLast24h()}件)`);
+    toast(`${p.sign}を投稿しました(全体 ${idx+1}/${total})`);
+    render();
+  }catch(e){
+    setPostStatus("投稿できませんでした:" + (e && e.message ? e.message : "通信エラー"), true);
+    toast("投稿できませんでした(ボタン下の赤い説明を見てください)", true);
+  }finally{
+    postBusy = false;
+    if(btn) btn.style.opacity = "";
+  }
+}
+
+// 投稿の合鍵の設定(端末内のみ保存)
+async function openPostSettings(){
+  const s1 = await dialog({
+    title: "投稿の合鍵 1/2:ユーザーID",
+    body: "ThreadsのユーザーID(数字)を入れてください。",
+    note: postCfg ? "設定済みです。変えない場合はそのまま「次へ」。「設定を消す」でこの端末から合鍵を消せます。"
+      : "投稿には「threads_content_publish」権限つきのアクセストークンが必要です。閲覧・分析用の合鍵(再投稿庫のもの)では投稿できません。",
+    inputs: [{ name: "uid", placeholder: "数字のID", value: postCfg ? postCfg.uid : "" }],
+    buttons: [
+      { label: "次へ", value: "next", primary: true },
+      ...(postCfg ? [{ label: "設定を消す", value: "off", danger: true }] : []),
+      { label: "キャンセル", value: null, ghost: true }
+    ]
+  });
+  if(!s1) return;
+  if(s1.value === "off"){
+    postCfg = null;
+    await savePostCfg();
+    render();
+    setPostStatus("");
+    toast("投稿の合鍵を消しました");
+    return;
+  }
+  const uidv = (s1.inputs.uid || "").trim();
+  if(!/^[0-9]{5,}$/.test(uidv)){ toast("ユーザーIDは数字で入れてください", true); return; }
+  const s2 = await dialog({
+    title: "投稿の合鍵 2/2:アクセストークン",
+    body: "threads_content_publish 権限つきのアクセストークンを貼り付けてください。",
+    note: "この合鍵はこの端末の中にだけ保存します(2台同期・クラウドには入れません)。長期トークンは60日で切れるので、切れたら新しいものを貼り直してください。",
+    inputs: [{ name: "tok", placeholder: "長い文字列", password: true, value: postCfg ? postCfg.tok : "" }],
+    buttons: [
+      { label: "保存する", value: "go", primary: true },
+      { label: "キャンセル", value: null, ghost: true }
+    ]
+  });
+  if(!s2) return;
+  const tokv = (s2.inputs.tok || "").trim();
+  if(tokv.length < 20){ toast("トークンが短すぎます", true); return; }
+  postCfg = { uid: uidv, tok: tokv };
+  await savePostCfg();
+  render();
+  toast("保存しました。「投稿の接続テスト」で確認できます");
+}
+
+// 接続テスト: 投稿はせず、①名前 ②投稿権限と24時間枠 だけを読んで確認する
+async function postTest(){
+  if(!postCfg){ openPostSettings(); return; }
+  setPostStatus("接続テスト中…(投稿はしません)");
+  let who = null;
+  try{
+    who = await thFetch("me", { fields: "id,username", access_token: postCfg.tok }, false);
+  }catch(e){
+    setPostStatus("❌ 合鍵で名前を確認できません:" + e.message, true);
+    return;
+  }
+  const name = "@" + (who.username || "?") + (String(who.id) === postCfg.uid ? "" : `(⚠ IDが設定値と違います。正しいIDは ${who.id} かもしれません)`);
+  try{
+    const q = await thFetch(encodeURIComponent(postCfg.uid) + "/threads_publishing_limit",
+      { fields: "quota_usage,config", access_token: postCfg.tok }, false);
+    const d0 = (q.data && q.data[0]) ? q.data[0] : {};
+    const used = numOr(d0.quota_usage, -1);
+    setPostStatus(`✅ ${name} ・ 投稿できる合鍵です ・ 24時間の投稿使用 ${used >= 0 ? used : "?"} / ${POST_DAY_MAX}件`);
+  }catch(e){
+    setPostStatus(`⚠ ${name} は確認できましたが、投稿枠を読めません(投稿権限の無い合鍵の可能性):` + e.message, true);
   }
 }
 
@@ -1571,6 +1831,9 @@ document.getElementById("startSel").onchange = (ev)=>{
   toast(`${payload.startSign.v}はじまりに並べ直しました(コピー済みの印はそのまま)`);
 };
 document.getElementById("bigCopy").onclick = seqCopy;
+document.getElementById("bigPost").onclick = ()=> seqPost();
+document.getElementById("postSetBtn").onclick = ()=> openPostSettings();
+document.getElementById("postTestBtn").onclick = ()=> postTest();
 document.getElementById("backBtn").onclick = ()=>{
   const posts = ordered();
   const idx = curIdx(posts);
