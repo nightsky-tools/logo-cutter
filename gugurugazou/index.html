@@ -410,7 +410,16 @@ function splitPrompts(raw){
 // カードに⚠を出し、コピー時にも確認する
 const STYLE_LINE = /watercolor\s+art\s+style/i;
 function hasSubject(t){
-  const rest = String(t).split("\n").filter(ln => !STYLE_LINE.test(ln)).join(" ").replace(/\s+/g, " ").trim();
+  const rest = String(t).split("\n").map(ln => {
+    if(!STYLE_LINE.test(ln)) return ln;
+    // 同一行に様式と明示的な主題がある場合、主題の最初の文だけを判定に使う。
+    // 様式行だけ・短い主題・様式語を主題に置いた行は従来どおり警告する。
+    const subject = ln.match(/\b(?:clear\s+)?main\s+subject\s*:\s*([^.!?\r\n]+)/i);
+    if(!subject || STYLE_LINE.test(subject[1])) return "";
+    // 「main subject」とだけ名付けた既知の様式語・出力制約は主題の字数に数えない。
+    return subject[1].replace(/\b(?:delicate\s+washes|soft\s+gradients|painterly\s+edges|luminous\s+colors|high\s+detail|8k|no\s+text(?:\s+or\s+watermark)?|no\s+watermark|create\s+exactly\s+one\s+image\s+only|output\s+must\s+be\s+a\s+single\s+square\s+1:1\s+image|do\s+not\s+generate\s+multiple\s+images|variations|collages|grids|multi-panel\s+layouts|return\s+only\s+one\s+final\s+image)\b/gi, " ")
+      .replace(/[\s,;:|()\-]+/g, " ").trim();
+  }).join(" ").replace(/\s+/g, " ").trim();
   return rest.length >= 60;
 }
 function curIdx(){
